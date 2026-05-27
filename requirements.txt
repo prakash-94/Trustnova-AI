@@ -1,0 +1,54 @@
+# Banking AI Copilot — Dependencies
+# Phase 1 Foundation
+
+# --- Backend API ---
+fastapi
+uvicorn[standard]
+pydantic
+python-multipart
+python-dotenv
+httpx
+
+# --- Frontend ---
+streamlit
+requests
+
+# --- LLM / RAG ---
+langchain
+langchain-openai
+langchain-community
+langchain-text-splitters
+openai
+pinecone
+chromadb
+langchain-chroma
+sentence-transformers
+
+# --- Data ---
+pandas
+numpy
+faker
+sqlalchemy
+
+# --- ML / Fraud ---
+xgboost
+scikit-learn
+imbalanced-learn
+mlflow
+matplotlib
+seaborn
+shap
+torch
+
+# --- Auth (future) ---
+python-jose[cryptography]
+passlib[bcrypt]
+
+# --- Rate Limiting ---
+slowapi
+
+# --- Monitoring ---
+prometheus-fastapi-instrumentator
+
+# --- Testing ---
+pytest

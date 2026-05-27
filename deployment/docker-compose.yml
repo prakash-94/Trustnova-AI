@@ -1,0 +1,133 @@
+# =============================================================
+#  Banking AI Copilot — Docker Compose
+#  Full-stack: backend · frontend · ML service · ChromaDB
+#  Monitoring: Prometheus · Grafana
+# =============================================================
+# Usage:
+#   docker-compose up --build          # start all services
+#   docker-compose up -d               # start in background
+#   docker-compose down                # stop all services
+#   docker-compose logs -f backend     # tail backend logs
+
+services:
+  # ── FastAPI Backend ──────────────────────────────────────
+  backend:
+    build:
+      context: ..
+      dockerfile: deployment/Dockerfile.backend
+    container_name: copilot-backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - ../.env
+    environment:
+      - DATABASE_URL=sqlite:///./banking.db
+      - CHROMA_PERSIST_DIR=data/chroma_db
+      - VECTOR_DB=chroma
+    volumes:
+      - backend-data:/app/data
+      - ../banking.db:/app/banking.db
+    depends_on:
+      chromadb:
+        condition: service_started
+    networks:
+      - copilot-net
+    restart: unless-stopped
+
+  # ── Frontend (Nginx) ────────────────────────────────────
+  frontend:
+    build:
+      context: ..
+      dockerfile: deployment/Dockerfile.frontend
+    container_name: copilot-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - copilot-net
+    restart: unless-stopped
+
+  # ── ML Inference Service ────────────────────────────────
+  ml-service:
+    build:
+      context: ..
+      dockerfile: deployment/Dockerfile.ml
+    container_name: copilot-ml
+    ports:
+      - "8001:8001"
+    volumes:
+      - ../models:/app/models:ro
+    networks:
+      - copilot-net
+    restart: unless-stopped
+
+  # ── ChromaDB Vector Store ───────────────────────────────
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: copilot-chromadb
+    ports:
+      - "8002:8000"
+    volumes:
+      - chroma-data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+    networks:
+      - copilot-net
+    restart: unless-stopped
+
+  # ── Prometheus (Metrics) ────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: copilot-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=30d"
+      - "--web.enable-lifecycle"
+    networks:
+      - copilot-net
+    restart: unless-stopped
+
+  # ── Grafana (Dashboards) ────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: copilot-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=copilot2026
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=http://localhost:3000
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+    networks:
+      - copilot-net
+    restart: unless-stopped
+
+# ── Named Volumes ──────────────────────────────────────────
+volumes:
+  backend-data:
+    driver: local
+  chroma-data:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+
+# ── Network ────────────────────────────────────────────────
+networks:
+  copilot-net:
+    driver: bridge
+    name: copilot-network

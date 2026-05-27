@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+# Data
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+data/embeddings/*
+!data/embeddings/.gitkeep
+*.db
+
+# MLflow
+mlruns/
+
+# IDEs
+.vscode/
+.idea/
+
+# Docker
+deployment/grafana-data/
+deployment/prometheus-data/
+
+# OS files
+.DS_Store
+Thumbs.db
+

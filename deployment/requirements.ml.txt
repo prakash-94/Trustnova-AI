@@ -1,0 +1,9 @@
+# ML Inference Service — Minimal Dependencies
+fastapi
+uvicorn[standard]
+pydantic
+xgboost
+scikit-learn
+numpy
+pandas
+prometheus-fastapi-instrumentator

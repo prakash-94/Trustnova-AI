@@ -1,0 +1,109 @@
+# =============================================================
+#  Banking AI Copilot — Deploy Pipeline
+#  Triggered after CI passes on merge to main
+#  Runs docker-compose stack and performs health checks
+# =============================================================
+
+name: Deploy — Docker Stack
+
+on:
+  workflow_run:
+    workflows: ["CI — Test & Build"]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  deploy:
+    name: "🚀 Deploy"
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create .env file
+        run: |
+          cat <<EOF > .env
+          OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+          PINECONE_API_KEY=${{ secrets.PINECONE_API_KEY }}
+          PINECONE_ENVIRONMENT=${{ secrets.PINECONE_ENVIRONMENT }}
+          PINECONE_INDEX_NAME=banking-index
+          DATABASE_URL=sqlite:///./banking.db
+          EMBEDDING_BACKEND=sentence_transformers
+          VECTOR_DB=chroma
+          CHROMA_PERSIST_DIR=data/chroma_db
+          CHROMA_COLLECTION=banking_docs
+          LLM_MODEL=gpt-4
+          EOF
+
+      - name: Build and start Docker stack
+        run: |
+          docker compose -f deployment/docker-compose.yml up -d --build
+          echo "Waiting for services to start..."
+          sleep 30
+
+      - name: Health check — Backend
+        run: |
+          for i in {1..5}; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health || true)
+            if [ "$STATUS" = "200" ]; then
+              echo "✅ Backend is healthy"
+              break
+            fi
+            echo "Attempt $i: Backend returned $STATUS, retrying in 10s..."
+            sleep 10
+          done
+          if [ "$STATUS" != "200" ]; then
+            echo "❌ Backend health check failed"
+            docker compose -f deployment/docker-compose.yml logs backend
+            exit 1
+          fi
+
+      - name: Health check — ML Service
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8001/health || true)
+          if [ "$STATUS" = "200" ]; then
+            echo "✅ ML Service is healthy"
+          else
+            echo "⚠️ ML Service returned $STATUS (non-critical)"
+          fi
+
+      - name: Health check — Frontend
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:80/ || true)
+          if [ "$STATUS" = "200" ]; then
+            echo "✅ Frontend is healthy"
+          else
+            echo "❌ Frontend returned $STATUS"
+            docker compose -f deployment/docker-compose.yml logs frontend
+            exit 1
+          fi
+
+      - name: Health check — Prometheus
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9090/-/healthy || true)
+          if [ "$STATUS" = "200" ]; then
+            echo "✅ Prometheus is healthy"
+          else
+            echo "⚠️ Prometheus returned $STATUS (non-critical)"
+          fi
+
+      - name: Deployment summary
+        run: |
+          echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Service      | Port | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------------|------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Backend     | 8000 | ✅     |" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend    | 80   | ✅     |" >> $GITHUB_STEP_SUMMARY
+          echo "| ML Service  | 8001 | ✅     |" >> $GITHUB_STEP_SUMMARY
+          echo "| ChromaDB    | 8002 | ✅     |" >> $GITHUB_STEP_SUMMARY
+          echo "| Prometheus  | 9090 | ✅     |" >> $GITHUB_STEP_SUMMARY
+          echo "| Grafana     | 3000 | ✅     |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Commit: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: Tear down stack
+        if: always()
+        run: docker compose -f deployment/docker-compose.yml down

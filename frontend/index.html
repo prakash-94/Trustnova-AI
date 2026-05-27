@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="TrustNova AI - Enterprise Banking Intelligence Copilot Dashboard">
+  <title>TrustNova AI — Banking Intelligence Copilot</title>
+  <link rel="stylesheet" href="/static/css/dashboard.css">
+</head>
+<body>
+  <div class="bg-pattern"></div>
+  <div class="app-container">
+
+    <!-- Header -->
+    <header class="app-header">
+      <div class="logo">
+        <div class="logo-icon">T</div>
+        <div class="logo-text">TrustNova <span>AI</span></div>
+      </div>
+      <div class="header-status">
+        <div class="status-dot"></div>
+        <span id="headerStatus">Connecting...</span>
+      </div>
+    </header>
+
+    <!-- Tab Navigation -->
+    <nav class="tab-nav">
+      <button class="tab-btn active" data-tab="banker">
+        <span class="tab-icon">&#x1F464;</span> Banker Copilot
+      </button>
+      <button class="tab-btn" data-tab="fraud">
+        <span class="tab-icon">&#x1F6E1;</span> Fraud Monitor
+      </button>
+      <button class="tab-btn" data-tab="trust">
+        <span class="tab-icon">&#x2705;</span> AI Trust
+      </button>
+      <button class="tab-btn" data-tab="docs">
+        <span class="tab-icon">&#x1F4C4;</span> Documents
+      </button>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+
+      <!-- Section 1: Banker Copilot -->
+      <section id="tab-banker" class="tab-panel active">
+        <div class="banker-layout">
+          <!-- Left: Customer Profile -->
+          <div class="banker-left">
+            <div class="glass-card">
+              <div class="card-header">
+                <div class="card-title">&#x1F50D; Customer Search</div>
+              </div>
+              <div class="card-body">
+                <div class="search-container">
+                  <span class="search-icon">&#x1F50E;</span>
+                  <input type="text" id="customerSearch" class="search-input"
+                         placeholder="Search by name or customer ID..." autocomplete="off">
+                </div>
+                <div id="searchResults" style="margin-top:8px;"></div>
+              </div>
+            </div>
+
+            <!-- Profile Card -->
+            <div id="profileCard" class="glass-card" style="display:none;">
+              <div class="card-header">
+                <div class="card-title">&#x1F4CB; Customer Profile</div>
+                <span id="riskBadge" class="badge badge-green">Low Risk</span>
+              </div>
+              <div class="card-body">
+                <div class="profile-header">
+                  <div class="profile-avatar" id="profileAvatar">?</div>
+                  <div>
+                    <div class="profile-name" id="profileName">—</div>
+                    <div class="profile-subtitle" id="profileSubtitle">—</div>
+                  </div>
+                </div>
+                <div class="profile-stats">
+                  <div class="stat-item">
+                    <div class="stat-label">Balance</div>
+                    <div class="stat-value" id="statBalance">—</div>
+                  </div>
+                  <div class="stat-item">
+                    <div class="stat-label">Credit Score</div>
+                    <div class="stat-value" id="statCredit">—</div>
+                  </div>
+                  <div class="stat-item">
+                    <div class="stat-label">Account Type</div>
+                    <div class="stat-value" id="statType">—</div>
+                  </div>
+                  <div class="stat-item">
+                    <div class="stat-label">Retention</div>
+                    <div class="stat-value" id="statRetention">—</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Trust Score Gauge -->
+            <div id="trustGaugeCard" class="glass-card" style="display:none;">
+              <div class="card-header">
+                <div class="card-title">&#x1F3AF; Customer Trust Score</div>
+              </div>
+              <div class="card-body">
+                <div class="gauge-container">
+                  <svg class="gauge-svg" viewBox="0 0 140 80">
+                    <path d="M 10 75 A 60 60 0 0 1 130 75" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="10" stroke-linecap="round"/>
+                    <path id="gaugeArc" d="M 10 75 A 60 60 0 0 1 130 75" fill="none" stroke="url(#gaugeGrad)" stroke-width="10" stroke-linecap="round" stroke-dasharray="0 188"/>
+                    <defs>
+                      <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stop-color="#ef4444"/>
+                        <stop offset="50%" stop-color="#f59e0b"/>
+                        <stop offset="100%" stop-color="#10b981"/>
+                      </linearGradient>
+                    </defs>
+                  </svg>
+                  <div class="gauge-value" id="gaugeValue">—</div>
+                  <div class="gauge-label" id="gaugeTier">—</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Recommendations -->
+            <div id="recsCard" class="glass-card" style="display:none;">
+              <div class="card-header">
+                <div class="card-title">&#x1F4A1; Recommendations</div>
+              </div>
+              <div class="card-body" id="recsList"></div>
+            </div>
+          </div>
+
+          <!-- Right: Chat + Notes -->
+          <div class="banker-right">
+            <div class="glass-card chat-container" style="flex:1;">
+              <div class="card-header">
+                <div class="card-title">&#x1F4AC; AI Copilot Chat</div>
+                <span id="chatModel" class="badge badge-purple">GPT-4</span>
+              </div>
+              <div class="chat-messages" id="chatMessages">
+                <div class="empty-state">
+                  <div class="empty-icon">&#x1F916;</div>
+                  <p>Search for a customer, then ask questions about their profile, policies, or transactions.</p>
+                </div>
+              </div>
+              <div class="chat-input-row">
+                <input type="text" id="chatInput" class="chat-input" placeholder="Ask the AI copilot..." disabled>
+                <button id="chatSend" class="btn btn-primary" disabled>Send</button>
+              </div>
+            </div>
+
+            <!-- Interaction Notes -->
+            <div id="notesCard" class="glass-card" style="display:none;">
+              <div class="card-header">
+                <div class="card-title">&#x1F4DD; Recent Interaction Notes</div>
+              </div>
+              <div class="card-body" id="notesList"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 2: Fraud Monitor -->
+      <section id="tab-fraud" class="tab-panel">
+        <div class="grid-2" style="margin-bottom:16px;">
+          <div class="glass-card">
+            <div class="card-header">
+              <div class="card-title">&#x1F6A8; Fraud Alerts</div>
+              <button class="btn btn-sm btn-secondary" onclick="Fraud.refresh()">Refresh</button>
+            </div>
+            <div class="card-body">
+              <div class="alert-list" id="fraudAlertList">
+                <div class="empty-state"><div class="spinner"></div><p>Loading alerts...</p></div>
+              </div>
+            </div>
+          </div>
+          <div class="glass-card">
+            <div class="card-header">
+              <div class="card-title">&#x1F4CA; Risk Distribution</div>
+            </div>
+            <div class="card-body chart-container">
+              <canvas id="riskChart"></canvas>
+            </div>
+          </div>
+        </div>
+        <div class="glass-card">
+          <div class="card-header">
+            <div class="card-title">&#x1F50D; Quick Fraud Check</div>
+          </div>
+          <div class="card-body">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;">
+              <div>
+                <label class="stat-label">Amount ($)</label>
+                <input type="number" id="fraudAmount" class="search-input" style="width:120px" value="5000">
+              </div>
+              <div>
+                <label class="stat-label">Hour (0-23)</label>
+                <input type="number" id="fraudHour" class="search-input" style="width:80px" value="2" min="0" max="23">
+              </div>
+              <div>
+                <label class="stat-label">Geo Mismatch</label>
+                <select id="fraudGeo" class="search-input" style="width:80px"><option value="0">No</option><option value="1" selected>Yes</option></select>
+              </div>
+              <div>
+                <label class="stat-label">New Device</label>
+                <select id="fraudDevice" class="search-input" style="width:80px"><option value="0">No</option><option value="1" selected>Yes</option></select>
+              </div>
+              <button class="btn btn-primary" onclick="Fraud.checkTransaction()">&#x1F6E1; Check</button>
+            </div>
+            <div id="fraudCheckResult" style="margin-top:12px;"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 3: AI Trust Dashboard -->
+      <section id="tab-trust" class="tab-panel">
+        <div class="grid-2" style="margin-bottom:16px;">
+          <div class="glass-card">
+            <div class="card-header">
+              <div class="card-title">&#x1F3AF; Latest AI Trust Score</div>
+            </div>
+            <div class="card-body">
+              <div class="gauge-container">
+                <svg class="gauge-svg" viewBox="0 0 140 80">
+                  <path d="M 10 75 A 60 60 0 0 1 130 75" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="10" stroke-linecap="round"/>
+                  <path id="aiGaugeArc" d="M 10 75 A 60 60 0 0 1 130 75" fill="none" stroke="url(#gaugeGrad)" stroke-width="10" stroke-linecap="round" stroke-dasharray="0 188"/>
+                </svg>
+                <div class="gauge-value" id="aiGaugeValue">—</div>
+                <div class="gauge-label" id="aiGaugeTier">—</div>
+              </div>
+              <div class="trust-breakdown" id="trustBreakdown" style="margin-top:16px;"></div>
+            </div>
+          </div>
+          <div class="glass-card">
+            <div class="card-header">
+              <div class="card-title">&#x1F4C8; Trust Score Trend (30 Days)</div>
+            </div>
+            <div class="card-body chart-container">
+              <canvas id="trustTrendChart"></canvas>
+            </div>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="glass-card">
+            <div class="card-header">
+              <div class="card-title">&#x1F4DC; Retrieved Source Chunks</div>
+            </div>
+            <div class="card-body" id="sourceChunksPanel">
+              <div class="empty-state"><p>Chunks appear here after a chat query.</p></div>
+            </div>
+          </div>
+          <div class="glass-card">
+            <div class="card-header">
+              <div class="card-title">&#x2699; Model & Feedback Stats</div>
+            </div>
+            <div class="card-body" id="feedbackStatsPanel">
+              <div class="empty-state"><div class="spinner"></div><p>Loading...</p></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 4: Document Intelligence -->
+      <section id="tab-docs" class="tab-panel">
+        <div class="grid-2" style="margin-bottom:16px;">
+          <div class="glass-card">
+            <div class="card-header">
+              <div class="card-title">&#x1F4E4; Upload Documents</div>
+            </div>
+            <div class="card-body">
+              <div class="upload-zone" id="uploadZone">
+                <div class="upload-icon">&#x1F4C2;</div>
+                <div class="upload-text">Drag & drop files here or <span>browse</span></div>
+                <div style="color:var(--text-muted);font-size:0.75rem;margin-top:4px;">PDF, CSV, JSON, TXT supported</div>
+                <input type="file" id="fileInput" multiple accept=".pdf,.csv,.json,.txt" style="display:none;">
+              </div>
+              <div id="uploadStatus" style="margin-top:12px;"></div>
+            </div>
+          </div>
+          <div class="glass-card">
+            <div class="card-header">
+              <div class="card-title">&#x1F50D; Policy Query</div>
+            </div>
+            <div class="card-body">
+              <div style="display:flex;gap:8px;">
+                <input type="text" id="policyQuery" class="search-input" placeholder="Ask a policy question..." style="padding-left:14px;">
+                <button class="btn btn-primary" onclick="Docs.queryPolicy()">Ask</button>
+              </div>
+              <div id="policyResult" style="margin-top:12px;"></div>
+            </div>
+          </div>
+        </div>
+        <div class="glass-card">
+          <div class="card-header">
+            <div class="card-title">&#x1F4DA; Indexed Documents</div>
+            <button class="btn btn-sm btn-secondary" onclick="Docs.refreshIndex()">Refresh</button>
+          </div>
+          <div class="card-body">
+            <table class="doc-table" id="docIndexTable">
+              <thead><tr><th>Source</th><th>Type</th><th>Chunks</th><th>Status</th></tr></thead>
+              <tbody id="docIndexBody">
+                <tr><td colspan="4" class="empty-state"><p>Loading...</p></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Fraud Detail Modal -->
+  <div class="modal-overlay hidden" id="fraudModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="card-title">&#x1F6E1; Transaction Details</div>
+        <button class="modal-close" onclick="Fraud.closeModal()">&times;</button>
+      </div>
+      <div class="modal-body" id="fraudModalBody"></div>
+    </div>
+  </div>
+
+  <script src="/static/js/app.js"></script>
+  <script src="/static/js/banker.js"></script>
+  <script src="/static/js/fraud.js"></script>
+  <script src="/static/js/trust.js"></script>
+  <script src="/static/js/documents.js"></script>
+</body>
+</html>

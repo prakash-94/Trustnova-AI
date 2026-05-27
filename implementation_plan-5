@@ -1,0 +1,95 @@
+# Phase 5 — Fraud Detection Engine Implementation Plan
+
+## Current State
+
+**Already built (from earlier phases):**
+- ✅ Feature engineering (9 features in `FEATURE_COLS`)
+- ✅ SMOTE oversampling (`apply_smote()`)
+- ✅ Model 1 — XGBoost trained + saved to `models/fraud_detector_v1.pkl`
+- ✅ MLflow experiment logging
+- ✅ `/fraud/check` API endpoint wired to XGBoost
+- ✅ Model caching for fast inference
+- ✅ Evaluation suite (`evaluate_model.py`, 468 lines)
+
+**Missing (TODO.md gaps):**
+- ❌ Train/val/test split is 80/20 → should be 70/15/15 stratified
+- ❌ `merchant_risk` feature available in data but not in `FEATURE_COLS`
+- ❌ Model 2 — Random Forest (baseline comparison)
+- ❌ Model 3 — Isolation Forest (unsupervised outlier detection)
+- ❌ Model 4 — Autoencoder (PyTorch, reconstruction error)
+- ❌ Model 5 — LSTM (PyTorch, sequence model)
+- ❌ MLflow comparison of all 5 models
+- ❌ Ensemble scoring (average XGBoost + Isolation Forest)
+- ❌ SHAP values for per-prediction explanations
+- ❌ `fraud/explainer.py` — GPT-4 explanation engine
+- ❌ Store explanation text in `fraud_alerts` table
+
+---
+
+## Proposed Changes
+
+### Component 1: Feature Engineering Update
+
+#### [MODIFY] [fraud_detector.py](file:///e:/TrustNova%20AI/src/models/fraud_detector.py)
+- Add `merchant_risk` to `FEATURE_COLS` (10 features total, matching TODO spec)
+- Change split from 80/20 to 70/15/15 (train/validation/test) with stratification
+- Add SHAP TreeExplainer integration for per-prediction explanations
+- Retrain XGBoost with the new feature set
+
+---
+
+### Component 2: Multi-Model Training
+
+#### [NEW] [model_zoo.py](file:///e:/TrustNova%20AI/src/models/model_zoo.py)
+Central training script for all 5 models with MLflow comparison:
+
+| Model | Approach | Key Hyperparameters |
+|---|---|---|
+| **XGBoost** | Supervised, SMOTE | `n_estimators=200`, `max_depth=6`, `scale_pos_weight` |
+| **Random Forest** | Supervised, baseline | `n_estimators=200`, `max_depth=10`, `class_weight=balanced` |
+| **Isolation Forest** | Unsupervised, outlier | `contamination=0.015`, `n_estimators=200` |
+| **Autoencoder** | Semi-supervised, PyTorch | 3-layer encoder (10→8→4→8→10), MSE loss, threshold |
+| **LSTM** | Sequence, PyTorch | 10-txn windows, 2 LSTM layers, `hidden_dim=64` |
+
+- All 5 models logged to MLflow with PR-AUC, F1, precision, recall
+- Comparison dashboard output
+- Best model exported
+
+---
+
+### Component 3: SHAP Explanations + Fraud Explainer
+
+#### [NEW] [explainer.py](file:///e:/TrustNova%20AI/src/models/explainer.py)
+- SHAP `TreeExplainer` for XGBoost per-prediction values
+- Top 3 SHAP-ranked features per transaction
+- GPT-4 explanation via LLM router — generates human-readable narrative
+- Store explanation text in `fraud_alerts` table
+
+---
+
+### Component 4: Ensemble Scoring + API Update
+
+#### [MODIFY] [fraud.py](file:///e:/TrustNova%20AI/src/api/routes/fraud.py)
+- Add `explanation` field to response
+- Add ensemble scoring: average XGBoost + Isolation Forest probabilities
+- Return `models_used` list instead of single model
+
+---
+
+> [!IMPORTANT]
+> PyTorch is required for the Autoencoder and LSTM models. This will be installed as a dependency. The models use CPU-only inference to keep the setup lightweight.
+
+> [!NOTE]
+> The TODO specifies `merchant_risk` as a feature. It's present in our enriched data but wasn't included in `FEATURE_COLS`. Adding it brings us to 10 features matching the exact spec.
+
+## Verification Plan
+
+### Automated Tests
+- Re-run existing 143 tests (should still pass)
+- New test: `test_fraud_models.py` — verify all 5 models load and predict
+- New test: verify SHAP explanations return top 3 features
+- New test: verify ensemble scoring averages correctly
+
+### MLflow Validation
+- All 5 models logged with metrics
+- PR-AUC > 0.85 for XGBoost (primary target)
