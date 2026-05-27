@@ -15,6 +15,7 @@ requests
 
 # --- LLM / RAG ---
 langchain
+langchain-classic
 langchain-openai
 langchain-community
 langchain-text-splitters
@@ -22,6 +23,7 @@ openai
 pinecone
 chromadb
 langchain-chroma
+langchain-huggingface
 sentence-transformers
 
 # --- Data ---
