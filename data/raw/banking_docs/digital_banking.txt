@@ -1,0 +1,93 @@
+Citizens Bank — Digital Banking & Mobile App Guide
+
+1. ONLINE BANKING
+
+1.1 Getting Started
+- Enroll at citizensbank.com or through the mobile app
+- Requirements: Active Citizens Bank account, email address, U.S. mobile phone number
+- Two-factor authentication required for initial setup
+- Username must be 6-20 characters (letters and numbers only)
+- Password must be 8-32 characters with at least one uppercase letter, one number, and one special character
+
+1.2 Online Banking Features
+- View account balances and transaction history (up to 18 months)
+- Transfer funds between Citizens Bank accounts (instant)
+- Transfer to/from external accounts (1-3 business days)
+- Pay bills through Bill Pay (one-time or recurring)
+- Download statements (PDF) or export transactions (CSV)
+- Set up account alerts (balance thresholds, large transactions, direct deposits)
+- Manage beneficiaries and account nicknames
+- Order checks and manage debit card settings
+
+1.3 Bill Pay
+- Pay virtually anyone in the U.S.
+- Electronic payments: delivered in 1-2 business days
+- Check payments: delivered in 3-5 business days
+- Recurring payments: set up automatic payments on your schedule
+- eBills: receive and pay bills directly within online banking
+- Payment history retained for 18 months
+- Rush payments available for a $9.95 fee (next business day delivery)
+
+2. MOBILE APP
+
+2.1 App Features
+- Available for iOS (14.0+) and Android (8.0+)
+- Biometric login (Face ID, Touch ID, fingerprint)
+- Mobile check deposit (limits: $5,000/day for standard accounts, $25,000/day for premium)
+- Card management: lock/unlock cards, set spending limits, travel notifications
+- Branch and ATM locator with real-time wait times
+- Spending insights and budget tracking
+- Push notifications for transactions and alerts
+- Secure messaging with customer support
+
+2.2 Mobile Check Deposit
+- Endorsement required: Sign the back of the check and write "For Mobile Deposit at Citizens Bank"
+- Photo requirements: clear, well-lit image of front and back
+- Deposit limits vary by account type and tenure
+- Funds availability: $200 next business day, remainder within 2 business days
+- Checks must be in U.S. dollars drawn on a U.S. financial institution
+- Retain the physical check for 14 days after deposit
+
+3. ZELLE®
+
+3.1 Sending Money
+- Available through Citizens Bank mobile app and online banking
+- Send money using the recipient's email address or U.S. mobile phone number
+- Enrolled recipients receive funds within minutes
+- Non-enrolled recipients have 14 days to register before the payment expires
+- Daily sending limit: $2,500 (may vary by account type)
+- No fees for Citizens Bank customers
+
+3.2 Receiving Money
+- Funds deposited directly into your Citizens Bank checking account
+- No action needed if you're already enrolled
+- You can request money from other Zelle users
+
+3.3 Safety Tips
+- Only send money to people you know and trust
+- Zelle payments cannot be cancelled once the recipient has enrolled
+- Citizens Bank will never ask you to send yourself money via Zelle
+- Be cautious of scams involving overpayment or urgent requests
+
+4. SECURITY
+
+4.1 Multi-Factor Authentication
+- Required for login from new devices
+- Verification via text message, phone call, or authenticator app
+- Security questions as backup verification method
+- Trusted device management (revoke access anytime)
+
+4.2 Account Security Best Practices
+- Never share your password or security codes
+- Use unique passwords for banking (not reused from other sites)
+- Enable biometric login on your mobile device
+- Review account activity regularly
+- Set up transaction alerts for amounts over your typical spending
+- Log out when using shared or public computers
+- Keep your mobile app and device operating system updated
+
+4.3 Reporting Fraud
+- Call 1-800-922-9999 immediately if you suspect unauthorized access
+- Report suspicious emails to phishing@citizensbank.com
+- Disputed transactions investigated within 10 business days
+- Provisional credit provided within 5 business days for eligible disputes

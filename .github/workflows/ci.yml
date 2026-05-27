@@ -45,6 +45,13 @@ jobs:
           VECTOR_DB: "chroma"
           CHROMA_PERSIST_DIR: "data/chroma_db"
         run: |
+          python -m src.data.generate_customers
+          python -m src.data.generate_transactions
+          python -m src.data.generate_interactions
+          python -m src.data.generate_support_tickets
+          python -m src.data.generate_fraud_alerts
+          python -m src.data.generate_chat_transcripts
+          python -m src.data.generate_complaints
           python -m src.data.etl_pipeline
           python -m src.rag.document_loader
 

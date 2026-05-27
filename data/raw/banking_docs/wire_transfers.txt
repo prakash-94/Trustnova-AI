@@ -1,0 +1,68 @@
+Citizens Bank — Wire Transfer & International Banking
+
+1. DOMESTIC WIRE TRANSFERS
+
+1.1 Outgoing Domestic Wires
+- Available through online banking, in-branch, or by phone
+- Cut-off time: 5:00 PM ET for same-day processing
+- Funds typically received within hours (same business day)
+- Fee: $30 per outgoing domestic wire
+- Citizens Private Client: Fee waived
+
+1.2 Incoming Domestic Wires
+- No fee for receiving domestic wires
+- Provide sender with: Citizens Bank routing number, your account number, your full name
+- Routing number for wires: 011500120 (different from ACH routing number in some states)
+- Funds credited same day if received before 6:00 PM ET
+
+2. INTERNATIONAL WIRE TRANSFERS
+
+2.1 Outgoing International Wires
+- Available in-branch or by phone (not available online for most accounts)
+- Fee: $45 per outgoing international wire
+- Processing time: 1-5 business days depending on destination country
+- Exchange rate applied at time of processing (bank rate + margin)
+- SWIFT/BIC code required for recipient's bank
+- Recipient's full name, account number, and bank address required
+- Intermediary bank fees may apply ($15-$25)
+
+2.2 Incoming International Wires
+- Fee: $15 per incoming international wire
+- Provide sender with:
+  - Bank name: Citizens Bank, N.A.
+  - SWIFT code: CTZIUS33
+  - Routing number: 011500120
+  - Your account number
+  - Your full name and address
+- Exchange rate conversion applied automatically for foreign currency wires
+- Funds typically available within 1-2 business days
+
+3. FOREIGN CURRENCY
+
+3.1 Foreign Currency Exchange
+- Available at select branch locations
+- Common currencies available: EUR, GBP, CAD, JPY, MXN, CHF, AUD
+- Exotic currencies may require 3-5 business days to order
+- Exchange rate includes a spread (typically 2-3% above mid-market rate)
+- Minimum transaction: equivalent of $50 USD
+
+3.2 Foreign Currency Accounts
+- Available for business customers
+- Hold balances in major foreign currencies
+- Useful for companies with international operations
+- Interest may be paid on qualifying balances
+- Contact Business Banking for details: 1-800-340-5626
+
+4. INTERNATIONAL ACCOUNT ACCESS
+
+4.1 Using Your Debit Card Abroad
+- Notify Citizens Bank of travel plans before departure
+- International transaction fee: 3% of transaction amount
+- Citizens Quest Checking: No international transaction fees
+- ATM withdrawals abroad: $5 fee per transaction (plus ATM owner's fee)
+- Daily ATM withdrawal limit remains the same as domestic ($500 default)
+
+4.2 Currency Conversion for Card Transactions
+- Transactions in foreign currencies converted at Mastercard's exchange rate
+- Conversion occurs on the date the transaction is processed (not the purchase date)
+- Rate includes Citizens Bank's 3% international transaction fee (unless waived by account type)

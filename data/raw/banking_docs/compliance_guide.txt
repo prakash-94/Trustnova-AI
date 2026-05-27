@@ -1,0 +1,101 @@
+Citizens Bank — Compliance & Regulatory Guide for Branch Staff
+
+1. KNOW YOUR CUSTOMER (KYC)
+
+1.1 Customer Identification Program (CIP)
+All new account openings require verification of the following:
+- Full legal name
+- Date of birth
+- Residential address (PO Box not acceptable as sole address)
+- Government-issued photo ID (driver's license, passport, or state ID)
+- Social Security Number or Individual Taxpayer Identification Number (ITIN)
+
+1.2 Enhanced Due Diligence (EDD)
+Enhanced due diligence is required for:
+- Politically Exposed Persons (PEPs) and their immediate family members
+- Customers from OFAC-sanctioned countries
+- Accounts with expected high transaction volumes (>$100,000/month)
+- Non-resident alien accounts
+- Private banking relationships with balances exceeding $1 million
+
+1.3 Ongoing Monitoring
+- Transaction monitoring systems flag unusual activity automatically
+- Branch staff must report any suspicious behavior to the BSA/AML team
+- Customer profiles must be reviewed and updated at least annually
+- Changes in customer occupation, income, or address require profile updates
+
+2. ANTI-MONEY LAUNDERING (AML)
+
+2.1 Suspicious Activity Reporting (SAR)
+A Suspicious Activity Report must be filed when:
+- A transaction of $5,000 or more appears to involve funds from illegal activity
+- A transaction is designed to evade reporting requirements (structuring)
+- A transaction has no apparent business or lawful purpose
+- The customer provides false or misleading identification
+
+SAR filing must occur within 30 calendar days of detecting the suspicious activity. Do NOT inform the customer that a SAR has been or will be filed.
+
+2.2 Currency Transaction Reporting (CTR)
+- A CTR must be filed for any cash transaction exceeding $10,000 in a single business day
+- Multiple transactions by the same customer that aggregate over $10,000 must also be reported
+- CTRs must be filed within 15 calendar days of the transaction
+
+2.3 Structuring
+Structuring occurs when a customer breaks up transactions to avoid reporting thresholds. Examples:
+- Depositing $9,500 on Monday and $9,500 on Tuesday
+- Withdrawing exactly $9,900 repeatedly
+- Using multiple branches to make deposits just under $10,000
+
+If structuring is suspected, do NOT process the transaction. Report to your branch manager and the BSA team immediately.
+
+3. FAIR LENDING
+
+3.1 Equal Credit Opportunity Act (ECOA)
+Citizens Bank prohibits discrimination in lending based on:
+- Race, color, or national origin
+- Religion
+- Sex, marital status, or gender identity
+- Age (provided the applicant is of legal age)
+- Receipt of public assistance
+- Exercise of rights under the Consumer Credit Protection Act
+
+3.2 Fair Housing Act
+All mortgage and home equity lending decisions must comply with Fair Housing Act requirements. Redlining or steering customers based on the racial or ethnic composition of a neighborhood is strictly prohibited.
+
+3.3 Community Reinvestment Act (CRA)
+Citizens Bank is committed to meeting the credit needs of all communities in our assessment areas, including low- and moderate-income neighborhoods. Branch staff should actively promote products available to underserved communities.
+
+4. PRIVACY AND DATA PROTECTION
+
+4.1 Gramm-Leach-Bliley Act (GLBA)
+- Customer financial information must be protected at all times
+- Privacy notices must be provided to all new customers and annually thereafter
+- Customer information may NOT be shared with non-affiliated third parties without opt-out consent
+- Physical documents containing customer data must be stored in locked cabinets
+- Digital access to customer records requires role-based authentication
+
+4.2 Data Breach Response
+In the event of a suspected data breach:
+1. Immediately notify the Information Security team (ext. 4500)
+2. Document what data may have been compromised
+3. Do not attempt to investigate independently
+4. Preserve all evidence (do not delete emails, logs, etc.)
+5. The bank will notify affected customers within 60 days as required by law
+
+5. FRAUD PREVENTION
+
+5.1 Internal Fraud
+- Dual control is required for vault access and large cash transactions
+- No employee may process transactions on their own account or accounts of family members
+- All employees must complete annual fraud awareness training
+- Whistleblower protections apply — report concerns to Ethics Hotline: 1-800-555-0199
+
+5.2 External Fraud
+Common fraud types to watch for:
+- Check kiting: Exploiting float time between accounts
+- Identity theft: Customer using stolen credentials
+- Account takeover: Unauthorized access via social engineering
+- Elder fraud: Targeting elderly customers for financial exploitation
+- Romance scams: Third party directing customer to wire funds
+
+Branch staff must verify identity for all wire transfers over $5,000 and all account changes (address, phone, email, beneficiaries).

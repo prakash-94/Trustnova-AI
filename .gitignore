@@ -8,6 +8,8 @@ venv/
 # Data
 data/raw/*
 !data/raw/.gitkeep
+!data/raw/banking_docs/
+!data/raw/banking_docs/*
 data/processed/*
 !data/processed/.gitkeep
 data/embeddings/*
