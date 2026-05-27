@@ -38,6 +38,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Initialize Database and Vector Store
+        env:
+          DATABASE_URL: "sqlite:///./banking.db"
+          EMBEDDING_BACKEND: "sentence_transformers"
+          VECTOR_DB: "chroma"
+          CHROMA_PERSIST_DIR: "data/chroma_db"
+        run: |
+          python -m src.data.etl_pipeline
+          python -m src.rag.document_loader
+
       - name: Run pytest
         env:
           DATABASE_URL: "sqlite:///./banking.db"
