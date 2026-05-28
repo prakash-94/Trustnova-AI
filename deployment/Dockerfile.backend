@@ -27,7 +27,8 @@ RUN pip install --no-cache-dir --upgrade pip && \
 COPY src/ ./src/
 COPY models/ ./models/
 COPY data/ ./data/
-COPY banking.db ./banking.db
+# banking.db is NOT baked into the image — it is gitignored and must be
+# volume-mounted at runtime (see docker-compose.yml) or initialized on first start.
 
 # ── Expose & Run ─────────────────────────────────────────────
 EXPOSE 8000
