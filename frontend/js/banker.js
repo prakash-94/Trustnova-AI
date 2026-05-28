@@ -1,238 +1,271 @@
-/* ============================================================
-   Banker Copilot — Customer search, profile, chat, recommendations
-   ============================================================ */
-
+/* ── banker.js — Customer search, profile, chat, notes ── */
 const Banker = (() => {
   let currentCustomerId = null;
   let sessionId = null;
-  let searchTimeout = null;
+  let searchTimer = null;
 
-  // --- Init ---
-  document.addEventListener('DOMContentLoaded', () => {
-    const searchInput = document.getElementById('customerSearch');
-    searchInput.addEventListener('input', () => {
-      clearTimeout(searchTimeout);
-      searchTimeout = setTimeout(() => searchCustomers(searchInput.value.trim()), 300);
-    });
-    searchInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') searchCustomers(searchInput.value.trim());
+  // ── Customer Search ──────────────────────────────────────
+  function initSearch() {
+    const input = document.getElementById('customerSearch');
+    const results = document.getElementById('searchResults');
+
+    input.addEventListener('input', () => {
+      clearTimeout(searchTimer);
+      const q = input.value.trim();
+      if (q.length < 2) { results.innerHTML = ''; results.style.display = 'none'; return; }
+      searchTimer = setTimeout(() => doSearch(q), 300);
     });
 
-    document.getElementById('chatInput').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) sendChat();
-    });
-    document.getElementById('chatSend').addEventListener('click', sendChat);
-  });
-
-  // --- Customer Search ---
-  async function searchCustomers(query) {
-    if (!query || query.length < 2) {
-      document.getElementById('searchResults').innerHTML = '';
-      return;
-    }
-    try {
-      const data = await api.get(`/customer/search?q=${encodeURIComponent(query)}&limit=5`);
-      if (data.status === 'ok' && data.results && data.results.length > 0) {
-        document.getElementById('searchResults').innerHTML = data.results.map(c => `
-          <div class="alert-item" onclick="Banker.loadCustomer('${c.customer_id}')" style="cursor:pointer;">
-            <div class="profile-avatar" style="width:32px;height:32px;font-size:0.8rem;border-radius:8px;">${(c.name || '?')[0]}</div>
-            <div class="alert-info">
-              <div class="alert-title">${c.name || c.customer_id}</div>
-              <div class="alert-meta">${c.account_type || ''} | ${formatCurrency(c.balance)}</div>
-            </div>
-          </div>
-        `).join('');
-      } else {
-        // Try direct ID lookup
-        document.getElementById('searchResults').innerHTML = `
-          <div class="alert-item" onclick="Banker.loadCustomer('${query}')" style="cursor:pointer;">
-            <div class="alert-info"><div class="alert-title">Search for: ${query}</div>
-            <div class="alert-meta">Click to load by ID</div></div>
-          </div>`;
+    document.addEventListener('click', e => {
+      if (!e.target.closest('#customerSearch') && !e.target.closest('#searchResults')) {
+        results.innerHTML = ''; results.style.display = 'none';
       }
-    } catch {
-      document.getElementById('searchResults').innerHTML = `
-        <div class="alert-item" onclick="Banker.loadCustomer('${query}')" style="cursor:pointer;">
-          <div class="alert-info"><div class="alert-title">Load: ${query}</div></div>
-        </div>`;
-    }
+    });
+
+    document.getElementById('chatSend').addEventListener('click', sendMessage);
+    document.getElementById('chatInput').addEventListener('keydown', e => {
+      if (e.key === 'Enter') sendMessage();
+    });
+    document.getElementById('clearChatBtn').addEventListener('click', clearChat);
   }
 
-  // --- Load Customer ---
-  async function loadCustomer(customerId) {
-    currentCustomerId = customerId;
-    sessionId = null;
-    document.getElementById('searchResults').innerHTML = '';
-    document.getElementById('customerSearch').value = customerId;
-
+  async function doSearch(q) {
+    const results = document.getElementById('searchResults');
+    results.style.display = 'block';
+    results.innerHTML = `<div class="loading-state" style="padding:12px"><div class="spinner"></div></div>`;
     try {
-      const data = await api.get(`/customer/summary/${customerId}`);
-      if (data.status !== 'ok') {
-        alert(`Customer not found: ${data.error || customerId}`);
+      const d = await api.get(`/customer/search?q=${encodeURIComponent(q)}&limit=6`);
+      if (!d.results || !d.results.length) {
+        results.innerHTML = `<div class="search-result-item" style="color:var(--t3)">No customers found</div>`;
         return;
       }
-      renderProfile(data);
-      renderTrustGauge(data.trust_score);
-      renderRecommendations(data.recommendations);
-      renderNotes(data.rag_interaction_notes);
-      enableChat();
-    } catch (err) {
-      alert(`Error loading customer: ${err.message}`);
+      results.innerHTML = d.results.map(c => `
+        <div class="search-result-item" onclick="Banker.selectCustomer('${c.customer_id}')">
+          <div class="search-result-name">${c.name}</div>
+          <div class="search-result-meta">${c.customer_id} · ${c.account_type || ''} · ${fmt$(c.balance)}</div>
+        </div>`).join('');
+    } catch {
+      results.innerHTML = `<div class="search-result-item" style="color:var(--red)">Search failed</div>`;
     }
   }
 
-  function renderProfile(data) {
-    const p = data.profile || {};
-    document.getElementById('profileCard').style.display = '';
-    document.getElementById('profileAvatar').textContent = (p.name || '?')[0];
-    document.getElementById('profileName').textContent = p.name || data.customer_id;
-    document.getElementById('profileSubtitle').textContent = `ID: ${data.customer_id} | Age: ${p.age || '—'}`;
-    document.getElementById('statBalance').textContent = formatCurrency(p.balance);
+  async function selectCustomer(id) {
+    currentCustomerId = id;
+    sessionId = null;
+    document.getElementById('searchResults').innerHTML = '';
+    document.getElementById('searchResults').style.display = 'none';
+
+    // Reset chat
+    clearChat();
+    document.getElementById('chatInput').disabled = false;
+    document.getElementById('chatSend').disabled = false;
+
+    // Show skeletons
+    ['profileCard', 'trustGaugeCard', 'recsCard', 'notesCard'].forEach(x => {
+      document.getElementById(x).classList.remove('hidden');
+    });
+
+    try {
+      const d = await api.get(`/customer/summary/${id}`);
+      if (d.status !== 'ok') {
+        showToast('Customer not found', 'error'); return;
+      }
+      renderProfile(d);
+      renderTrustGauge(d.trust_score);
+      renderRecommendations(d.recommendations);
+      renderNotes(d.rag_interaction_notes);
+    } catch (e) {
+      showToast('Failed to load customer', 'error');
+    }
+  }
+
+  function renderProfile(d) {
+    const p = d.profile || {};
+    const risk = d.risk_profile || {};
+    const name = p.name || '—';
+
+    document.getElementById('profileAvatar').textContent = name[0] || '?';
+    document.getElementById('profileName').textContent = name;
+    document.getElementById('profileMeta').textContent =
+      `${p.account_type || '—'} · Age ${p.age || '—'} · Customer #${p.customer_id || '—'}`;
+    document.getElementById('statBalance').textContent = fmt$(p.balance);
     document.getElementById('statCredit').textContent = p.credit_score || '—';
     document.getElementById('statType').textContent = (p.account_type || '—').charAt(0).toUpperCase() + (p.account_type || '').slice(1);
+    document.getElementById('statRetention').textContent =
+      risk.retention_probability ? `${(risk.retention_probability * 100).toFixed(0)}%` : '—';
 
     // Risk badge
-    const risk = data.risk_profile;
+    const riskLevel = p.risk_level || risk.risk_level || 'Unknown';
     const badge = document.getElementById('riskBadge');
-    if (risk) {
-      const level = risk.risk_level || 'Low';
-      badge.className = `badge ${level === 'High' ? 'badge-red' : level === 'Medium' ? 'badge-amber' : 'badge-green'}`;
-      badge.textContent = level + ' Risk';
-      document.getElementById('statRetention').textContent = risk.retention_probability
-        ? (risk.retention_probability * 100).toFixed(0) + '%' : '—';
-    } else {
-      badge.className = 'badge badge-blue';
-      badge.textContent = 'N/A';
-      document.getElementById('statRetention').textContent = '—';
-    }
+    badge.textContent = riskLevel;
+    badge.className = `badge ${riskLevel === 'Low' ? 'badge-green' : riskLevel === 'High' ? 'badge-red' : 'badge-amber'}`;
+
+    // Update search box
+    document.getElementById('customerSearch').value = name;
   }
 
-  function renderTrustGauge(trustData) {
-    document.getElementById('trustGaugeCard').style.display = '';
-    if (trustData && trustData.score !== undefined) {
-      drawGauge('gaugeArc', 'gaugeValue', 'gaugeTier', Math.round(trustData.score), trustData.tier);
-    } else {
-      document.getElementById('gaugeValue').textContent = '—';
-      document.getElementById('gaugeTier').textContent = 'No data';
-    }
+  function renderTrustGauge(trustScore) {
+    if (!trustScore) return;
+    const score = Math.round(trustScore.score || 0);
+    const tier = trustScore.tier || '—';
+    drawGauge('gaugeArc', 'gaugeValue', 'gaugeTier', score, tier);
+    renderTrustBars('trustComponentBars', trustScore.components);
   }
 
   function renderRecommendations(recs) {
-    const card = document.getElementById('recsCard');
-    const list = document.getElementById('recsList');
-    if (!recs || recs.length === 0) { card.style.display = 'none'; return; }
-    card.style.display = '';
-    list.innerHTML = recs.map((r, i) => `
+    const el = document.getElementById('recsList');
+    if (!recs || !recs.length) { el.innerHTML = '<p style="color:var(--t3);font-size:.8rem">No recommendations.</p>'; return; }
+    el.innerHTML = recs.slice(0, 3).map(r => `
       <div class="rec-item">
-        <div class="rec-title">
-          <span class="badge badge-cyan">${i + 1}</span> ${r.product}
-        </div>
-        <div class="rec-reason">${r.reason}</div>
-        <div class="rec-confidence">
-          Confidence: ${(r.confidence * 100).toFixed(0)}% | ${r.category}
-        </div>
-      </div>
-    `).join('');
+        <div class="rec-title">💳 ${r.product || r.type || 'Product'}</div>
+        <div class="rec-reason">${r.reason || ''}</div>
+      </div>`).join('');
   }
 
   function renderNotes(notes) {
-    const card = document.getElementById('notesCard');
-    const list = document.getElementById('notesList');
-    if (!notes || notes.length === 0) { card.style.display = 'none'; return; }
-    card.style.display = '';
-    list.innerHTML = notes.slice(0, 3).map(n => `
-      <div class="note-item">
-        ${typeof n === 'string' ? n : n.text || n.content || JSON.stringify(n)}
-        <div class="note-date">${n.date || ''}</div>
-      </div>
-    `).join('');
-  }
-
-  // --- Chat ---
-  function enableChat() {
-    document.getElementById('chatInput').disabled = false;
-    document.getElementById('chatSend').disabled = false;
-    document.getElementById('chatMessages').innerHTML = `
-      <div class="chat-msg assistant">
-        Customer <strong>${currentCustomerId}</strong> loaded. Ask me anything about their profile, transactions, policies, or risk assessment.
-      </div>`;
-  }
-
-  async function sendChat() {
-    const input = document.getElementById('chatInput');
-    const question = input.value.trim();
-    if (!question) return;
-
-    input.value = '';
-    appendMsg('user', question);
-
-    // Show typing indicator
-    const typingId = 'typing-' + Date.now();
-    appendMsg('assistant', '<div class="spinner" style="width:18px;height:18px;"></div> Thinking...', typingId);
-
-    try {
-      const data = await api.post('/chat', {
-        question,
-        customer_id: currentCustomerId,
-        session_id: sessionId,
-      });
-
-      // Remove typing indicator
-      const typingEl = document.getElementById(typingId);
-      if (typingEl) typingEl.remove();
-
-      if (data.status === 'ok') {
-        sessionId = data.session_id;
-        let html = data.answer || 'No response.';
-
-        // Trust score inline
-        if (data.ai_trust_score !== null && data.ai_trust_score !== undefined) {
-          const score = Math.round(data.ai_trust_score);
-          const color = score >= 71 ? '#10b981' : score >= 41 ? '#f59e0b' : '#ef4444';
-          html += `<div class="trust-inline">
-            <span style="color:${color};font-weight:700;">Trust: ${score}/100</span>
-            <span class="badge badge-purple" style="font-size:0.65rem;">${data.model_used || 'GPT-4'}</span>
-          </div>`;
-        }
-
-        // Sources
-        if (data.sources && data.sources.length > 0) {
-          html += `<div class="chat-sources"><details><summary>${data.sources.length} source(s)</summary>`;
-          data.sources.forEach(s => {
-            html += `<div class="source-item">${s.source} ${s.doc_type ? '(' + s.doc_type + ')' : ''}</div>`;
-          });
-          html += '</details></div>';
-        }
-
-        appendMsg('assistant', html);
-
-        // Update AI Trust dashboard data
-        if (data.ai_trust_score !== null) {
-          Trust.updateFromChat(data);
-        }
-      } else {
-        appendMsg('assistant', `Error: ${data.error || 'Unknown error'}`);
-      }
-    } catch (err) {
-      const typingEl = document.getElementById(typingId);
-      if (typingEl) typingEl.remove();
-      appendMsg('assistant', `Error: ${err.message}`);
+    const el = document.getElementById('notesList');
+    const badge = document.getElementById('notesBadge');
+    if (!notes || !notes.length) {
+      el.innerHTML = '<p style="color:var(--t3);font-size:.8rem">No recent notes.</p>';
+      if (badge) badge.textContent = '0';
+      return;
     }
+    if (badge) badge.textContent = notes.length;
+    el.innerHTML = notes.slice(0, 5).map(n => `
+      <div class="note-item">
+        <div>${n.content || n.text || n.banker_notes || JSON.stringify(n)}</div>
+        <div class="note-date">${fmtDate(n.timestamp || n.date)}</div>
+      </div>`).join('');
   }
 
-  function appendMsg(role, html, id) {
-    const container = document.getElementById('chatMessages');
-    // Remove empty state
-    const empty = container.querySelector('.empty-state');
+  // ── Chat ─────────────────────────────────────────────────
+  async function sendMessage() {
+    const input = document.getElementById('chatInput');
+    const q = input.value.trim();
+    if (!q) return;
+    input.value = '';
+
+    const msgs = document.getElementById('chatMessages');
+
+    // Clear empty state on first message
+    const empty = msgs.querySelector('.chat-empty');
     if (empty) empty.remove();
 
-    const div = document.createElement('div');
-    div.className = `chat-msg ${role}`;
-    div.innerHTML = html;
-    if (id) div.id = id;
-    container.appendChild(div);
-    container.scrollTop = container.scrollHeight;
+    // User bubble
+    msgs.innerHTML += `<div class="chat-bubble user">${escHtml(q)}</div>`;
+    scrollChat();
+
+    // Thinking bubble
+    const thinkId = 'think-' + Date.now();
+    msgs.innerHTML += `<div class="chat-bubble assistant" id="${thinkId}">
+      <div class="loading-state" style="padding:0;gap:8px;justify-content:flex-start">
+        <div class="spinner"></div><span style="color:var(--t2)">Thinking…</span>
+      </div>
+    </div>`;
+    scrollChat();
+
+    try {
+      const body = { question: q };
+      if (currentCustomerId) body.customer_id = currentCustomerId;
+      if (sessionId) body.session_id = sessionId;
+
+      const d = await api.post('/chat', body);
+      sessionId = d.session_id || sessionId;
+
+      const think = document.getElementById(thinkId);
+      if (think) {
+        const trust = d.ai_trust_score ? Math.round(d.ai_trust_score) : null;
+        const sources = (d.sources || []).slice(0, 4);
+        const srcHtml = sources.length ? `
+          <details class="bubble-sources">
+            <summary>📎 ${sources.length} source${sources.length > 1 ? 's' : ''}</summary>
+            <div style="margin-top:6px">${sources.map(s => `<span class="source-pill">${s.source || s.doc_type || 'doc'}</span>`).join('')}</div>
+          </details>` : '';
+
+        const trustHtml = trust !== null ? `
+          <div class="bubble-trust">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="currentColor" stroke-width="2"/></svg>
+            AI Trust Score: <strong style="color:${trust>=71?'#10b981':trust>=41?'#f59e0b':'#ef4444'}">${trust}/100</strong>
+            <span class="badge ${d.trust_tier==='Trusted'?'badge-green':d.trust_tier==='Moderate'?'badge-amber':'badge-red'}" style="font-size:.6rem">${d.trust_tier||''}</span>
+          </div>` : '';
+
+        const rid = 'r' + Date.now();
+        think.innerHTML = `<div>${escHtml(d.answer || 'No response.')}</div>
+          ${srcHtml}${trustHtml}
+          <div class="feedback-row">
+            <button class="fb-btn approve" onclick="Banker.sendFeedback('approve','${rid}','${escHtml(q)}','${escHtml(d.answer||'')}')">👍 Approve</button>
+            <button class="fb-btn reject" onclick="Banker.sendFeedback('reject','${rid}','${escHtml(q)}','${escHtml(d.answer||'')}')">👎 Reject</button>
+          </div>`;
+
+        // Push to Trust tab
+        Trust.updateFromChat(d);
+      }
+    } catch (e) {
+      const think = document.getElementById(thinkId);
+      if (think) think.innerHTML = `<span style="color:var(--red)">⚠️ Error: ${e.message}</span>`;
+    }
+    scrollChat();
   }
 
-  return { loadCustomer, searchCustomers };
+  async function sendFeedback(type, responseId, prompt, response) {
+    if (!sessionId) return;
+    try {
+      await api.post('/feedback', {
+        session_id: sessionId,
+        response_id: responseId,
+        feedback_type: type,
+        prompt: prompt,
+        response_text: response,
+        model_used: 'gpt-4',
+        trust_score: 75,
+      });
+      showToast(type === 'approve' ? '👍 Feedback recorded' : '👎 Feedback recorded');
+    } catch { /* silent */ }
+  }
+
+  function clearChat() {
+    const msgs = document.getElementById('chatMessages');
+    msgs.innerHTML = `<div class="chat-empty">
+      <div class="chat-empty-icon">🤖</div>
+      <p>Search for a customer, then ask the AI copilot about their profile, policies, or transactions.</p>
+      <div class="chat-suggestions">
+        <button class="chip" data-q="What is the AML policy for large transactions?">AML policy</button>
+        <button class="chip" data-q="What are wire transfer limits?">Wire limits</button>
+        <button class="chip" data-q="Summarise this customer's risk profile.">Risk summary</button>
+      </div>
+    </div>`;
+    msgs.querySelectorAll('.chat-suggestions .chip').forEach(c => {
+      c.addEventListener('click', () => {
+        document.getElementById('chatInput').value = c.dataset.q;
+        sendMessage();
+      });
+    });
+    sessionId = null;
+  }
+
+  function scrollChat() {
+    const el = document.getElementById('chatMessages');
+    if (el) el.scrollTop = el.scrollHeight;
+  }
+
+  function escHtml(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function showToast(msg, type = 'ok') {
+    const t = document.createElement('div');
+    t.textContent = msg;
+    Object.assign(t.style, {
+      position:'fixed', bottom:'24px', right:'24px', zIndex:'999',
+      padding:'10px 18px', borderRadius:'10px', fontSize:'.82rem', fontWeight:'600',
+      background: type === 'error' ? '#ef4444' : '#10b981', color:'#fff',
+      boxShadow:'0 4px 14px rgba(0,0,0,.4)', transition:'opacity .3s',
+    });
+    document.body.appendChild(t);
+    setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 2500);
+  }
+
+  document.addEventListener('DOMContentLoaded', initSearch);
+
+  return { selectCustomer, sendMessage, sendFeedback, clearChat };
 })();

@@ -1,176 +1,153 @@
-/* ============================================================
-   AI Trust Dashboard — Gauge, breakdown, source chunks, trend
-   ============================================================ */
-
+/* ── trust.js — AI Trust dashboard, trend chart, source chunks ── */
 const Trust = (() => {
   let initialized = false;
+  let trendChart = null;
   let lastChatData = null;
 
-  function init() {
+  async function init() {
     if (initialized) return;
     initialized = true;
-    loadHistory();
-    loadFeedbackStats();
+    await loadStats();
+    await loadTrend();
   }
 
-  // Called from Banker chat after each response
-  function updateFromChat(data) {
-    lastChatData = data;
-    const score = Math.round(data.ai_trust_score || 0);
-    const tier = data.trust_tier || (score >= 71 ? 'Trusted' : score >= 41 ? 'Moderate' : 'High Risk');
+  // Called by banker.js after every chat response
+  function updateFromChat(chatData) {
+    lastChatData = chatData;
 
-    drawGauge('aiGaugeArc', 'aiGaugeValue', 'aiGaugeTier', score, tier);
-    renderBreakdown(data.trust_components);
-    renderSourceChunks(data.retrieved_chunks);
-  }
+    const score = Math.round(chatData.ai_trust_score || 0);
+    const tier  = chatData.trust_tier || '—';
 
-  function renderBreakdown(components) {
-    const container = document.getElementById('trustBreakdown');
-    if (!components || Object.keys(components).length === 0) {
-      container.innerHTML = '<div class="empty-state"><p>No trust data yet.</p></div>';
-      return;
+    // Update gauge
+    drawGauge('aiGaugeArc', 'aiGaugeValue', null, score, tier);
+    const el = document.getElementById('aiGaugeValue');
+    if (el) el.style.color = score >= 71 ? '#10b981' : score >= 41 ? '#f59e0b' : '#ef4444';
+
+    // Tier badge
+    const badge = document.getElementById('trustTierBadge');
+    if (badge) {
+      badge.textContent = tier;
+      badge.className = `badge ${tier === 'Trusted' ? 'badge-green' : tier === 'Moderate' ? 'badge-amber' : 'badge-red'}`;
     }
 
-    const labels = {
-      retrieval_confidence: 'Retrieval Confidence',
-      hallucination_risk: 'Hallucination Risk',
-      model_agreement: 'Model Agreement',
-      citation_quality: 'Citation Quality',
-      source_coverage: 'Source Coverage',
-    };
+    // Hide hint
+    const hint = document.getElementById('trustHint');
+    if (hint) hint.style.display = 'none';
 
-    container.innerHTML = Object.entries(components).map(([key, val]) => {
-      const pct = Math.round(val * 100);
-      const color = pct >= 70 ? '#10b981' : pct >= 40 ? '#f59e0b' : '#ef4444';
-      // For hallucination_risk, lower is better
-      const displayColor = key === 'hallucination_risk'
-        ? (pct <= 30 ? '#10b981' : pct <= 60 ? '#f59e0b' : '#ef4444')
-        : color;
-      return `
-        <div class="trust-metric">
-          <div class="trust-metric-label">${labels[key] || key}</div>
-          <div class="trust-metric-bar">
-            <div class="trust-metric-fill" style="width:${pct}%;background:${displayColor};"></div>
-          </div>
-          <div class="trust-metric-value" style="color:${displayColor}">${pct}%</div>
-        </div>`;
+    // Component bars
+    renderTrustBars('aiTrustComponentBars', chatData.trust_components || {});
+
+    // Source chunks
+    renderSourceChunks(chatData.retrieved_chunks || [], chatData.sources || []);
+
+    // Refresh trend
+    loadTrend();
+  }
+
+  function renderSourceChunks(chunks, sources) {
+    const el = document.getElementById('sourceChunksPanel');
+    const badge = document.getElementById('chunkCount');
+    if (!el) return;
+    if (!chunks.length) {
+      el.innerHTML = `<div class="empty-state"><div style="font-size:2rem">📄</div><p>Source chunks appear here after a chat query.</p></div>`;
+      if (badge) badge.textContent = '0 chunks';
+      return;
+    }
+    if (badge) badge.textContent = `${chunks.length} chunk${chunks.length > 1 ? 's' : ''}`;
+    el.innerHTML = chunks.map((c, i) => {
+      const src = sources[i] || {};
+      return `<div class="chunk-item">
+        <div>${String(c).slice(0, 280)}${c.length > 280 ? '…' : ''}</div>
+        <div class="chunk-src">📎 ${src.source || src.doc_type || 'Source ' + (i+1)}</div>
+      </div>`;
     }).join('');
   }
 
-  function renderSourceChunks(chunks) {
-    const container = document.getElementById('sourceChunksPanel');
-    if (!chunks || chunks.length === 0) {
-      container.innerHTML = '<div class="empty-state"><p>No source chunks retrieved.</p></div>';
-      return;
-    }
-    container.innerHTML = chunks.slice(0, 5).map((c, i) => `
-      <div class="note-item" style="border-left-color:var(--accent-cyan);">
-        <div style="font-size:0.72rem;color:var(--accent-cyan);margin-bottom:4px;">Chunk ${i + 1}</div>
-        ${c.length > 300 ? c.slice(0, 300) + '...' : c}
-      </div>
-    `).join('');
-  }
-
-  async function loadHistory() {
+  async function loadTrend() {
     try {
-      const data = await api.get('/trust/ai-history?limit=30');
-      if (data.status === 'ok' && data.history && data.history.length > 0) {
-        renderTrendChart(data.history);
-        // Show the latest score
-        const latest = data.history[0];
-        if (latest && latest.final_score !== undefined) {
-          const score = Math.round(latest.final_score);
-          const tier = score >= 71 ? 'Trusted' : score >= 41 ? 'Moderate' : 'High Risk';
-          drawGauge('aiGaugeArc', 'aiGaugeValue', 'aiGaugeTier', score, tier);
-          renderBreakdown(latest.components || {});
-        }
-      }
-    } catch { /* ignore */ }
+      const d = await api.get('/trust/ai-history?limit=20');
+      const history = (d.history || []).reverse();
+      renderTrendChart(history);
+    } catch { /* silent */ }
   }
 
   function renderTrendChart(history) {
-    const canvas = document.getElementById('trustTrendChart');
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    const w = canvas.parentElement.clientWidth;
-    canvas.width = w; canvas.height = 200;
-    ctx.clearRect(0, 0, w, 200);
+    const ctx = document.getElementById('trustTrendChart');
+    if (!ctx) return;
+    if (trendChart) trendChart.destroy();
 
-    const scores = history.map(h => h.final_score || 0).reverse();
-    const len = scores.length;
-    if (len < 2) return;
+    const labels = history.map((_, i) => `#${i + 1}`);
+    const scores = history.map(h => Math.round(h.final_score || 0));
 
-    const padL = 40, padR = 20, padT = 10, padB = 30;
-    const chartW = w - padL - padR;
-    const chartH = 200 - padT - padB;
-
-    // Grid lines
-    ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-    ctx.lineWidth = 1;
-    for (let i = 0; i <= 4; i++) {
-      const y = padT + (i / 4) * chartH;
-      ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
-      ctx.fillStyle = '#64748b';
-      ctx.font = '10px Inter';
-      ctx.textAlign = 'right';
-      ctx.fillText(Math.round(100 - (i / 4) * 100), padL - 6, y + 4);
-    }
-
-    // Line
-    const grad = ctx.createLinearGradient(padL, 0, w - padR, 0);
-    grad.addColorStop(0, '#6366f1');
-    grad.addColorStop(1, '#22d3ee');
-    ctx.strokeStyle = grad;
-    ctx.lineWidth = 2;
-    ctx.lineJoin = 'round';
-    ctx.beginPath();
-    scores.forEach((s, i) => {
-      const x = padL + (i / (len - 1)) * chartW;
-      const y = padT + (1 - s / 100) * chartH;
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    });
-    ctx.stroke();
-
-    // Fill area
-    const areaGrad = ctx.createLinearGradient(0, padT, 0, padT + chartH);
-    areaGrad.addColorStop(0, 'rgba(99, 102, 241, 0.15)');
-    areaGrad.addColorStop(1, 'rgba(99, 102, 241, 0)');
-    ctx.lineTo(padL + chartW, padT + chartH);
-    ctx.lineTo(padL, padT + chartH);
-    ctx.closePath();
-    ctx.fillStyle = areaGrad;
-    ctx.fill();
-
-    // Dots
-    scores.forEach((s, i) => {
-      const x = padL + (i / (len - 1)) * chartW;
-      const y = padT + (1 - s / 100) * chartH;
-      ctx.beginPath();
-      ctx.arc(x, y, 3, 0, Math.PI * 2);
-      ctx.fillStyle = '#6366f1';
-      ctx.fill();
+    trendChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          label: 'AI Trust Score',
+          data: scores,
+          borderColor: '#6366f1',
+          backgroundColor: 'rgba(99,102,241,.1)',
+          fill: true,
+          tension: 0.4,
+          pointBackgroundColor: scores.map(s => s >= 71 ? '#10b981' : s >= 41 ? '#f59e0b' : '#ef4444'),
+          pointRadius: 4,
+          borderWidth: 2,
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { color: 'rgba(255,255,255,.04)' }, ticks: { color: '#64748b', font: { size: 10 } } },
+          y: {
+            min: 0, max: 100,
+            grid: { color: 'rgba(255,255,255,.04)' },
+            ticks: { color: '#64748b', font: { size: 10 } },
+          },
+        },
+      },
     });
   }
 
-  async function loadFeedbackStats() {
+  async function loadStats() {
+    const el = document.getElementById('feedbackStatsPanel');
     try {
-      const data = await api.get('/feedback/stats');
-      const container = document.getElementById('feedbackStatsPanel');
-      if (data.status === 'ok' && data.stats) {
-        const s = data.stats;
-        container.innerHTML = `
-          <div class="profile-stats">
-            <div class="stat-item"><div class="stat-label">Total Feedback</div><div class="stat-value">${s.total_feedback || 0}</div></div>
-            <div class="stat-item"><div class="stat-label">Agreement Rate</div><div class="stat-value">${s.agreement_rate ? (s.agreement_rate * 100).toFixed(0) + '%' : '—'}</div></div>
-            <div class="stat-item"><div class="stat-label">False Positives</div><div class="stat-value">${s.model_false_positives || 0}</div></div>
-            <div class="stat-item"><div class="stat-label">False Negatives</div><div class="stat-value">${s.model_false_negatives || 0}</div></div>
-          </div>`;
-      } else {
-        container.innerHTML = '<div class="empty-state"><p>No feedback data yet.</p></div>';
+      const d = await api.get('/feedback/report?days=30');
+      const r = d.report || d;
+      const total = r.total_feedback || 0;
+      const overall = r.overall || {};
+
+      if (!total) {
+        el.innerHTML = `<div class="empty-state"><p>No feedback data yet.<br>Use the Banker Copilot to generate data.</p></div>`;
+        return;
       }
+
+      el.innerHTML = `
+        <div class="stats-grid" style="grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+          <div class="stat-tile"><div class="stat-label">Total Feedback</div><div class="stat-val">${total}</div></div>
+          <div class="stat-tile"><div class="stat-label">Approval Rate</div><div class="stat-val" style="color:var(--green)">${((overall.approval_rate||0)*100).toFixed(0)}%</div></div>
+          <div class="stat-tile"><div class="stat-label">Rejection Rate</div><div class="stat-val" style="color:var(--red)">${((overall.rejection_rate||0)*100).toFixed(0)}%</div></div>
+          <div class="stat-tile"><div class="stat-label">Edit Rate</div><div class="stat-val" style="color:var(--amber)">${((overall.edit_rate||0)*100).toFixed(0)}%</div></div>
+        </div>
+        ${renderModelTable(r.by_model || {})}`;
     } catch {
-      document.getElementById('feedbackStatsPanel').innerHTML = '<div class="empty-state"><p>Could not load stats.</p></div>';
+      el.innerHTML = `<div class="empty-state"><p>Stats unavailable.</p></div>`;
     }
+  }
+
+  function renderModelTable(byModel) {
+    const entries = Object.entries(byModel);
+    if (!entries.length) return '';
+    return `<table class="data-table">
+      <thead><tr><th>Model</th><th>Total</th><th>Approval</th><th>Rejection</th></tr></thead>
+      <tbody>${entries.map(([m, s]) => `<tr>
+        <td><span class="badge badge-purple">${m}</span></td>
+        <td>${s.total || 0}</td>
+        <td style="color:var(--green)">${((s.approval_rate||0)*100).toFixed(0)}%</td>
+        <td style="color:var(--red)">${((s.rejection_rate||0)*100).toFixed(0)}%</td>
+      </tr>`).join('')}</tbody>
+    </table>`;
   }
 
   return { init, updateFromChat };

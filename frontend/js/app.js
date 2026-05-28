@@ -1,102 +1,164 @@
-/* ============================================================
-   App Controller — Tab routing, API client, shared utilities
-   ============================================================ */
-
+/* ── app.js — Shared utilities, tab routing, API client ── */
 const API = window.location.origin;
 
-// --- API Client ---
 const api = {
   async get(path) {
-    const res = await fetch(`${API}${path}`);
-    return res.json();
+    const r = await fetch(`${API}${path}`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json();
   },
   async post(path, body) {
-    const res = await fetch(`${API}${path}`, {
+    const r = await fetch(`${API}${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
-    return res.json();
+    return r.json();
   },
   async upload(path, formData) {
-    const res = await fetch(`${API}${path}`, { method: 'POST', body: formData });
-    return res.json();
+    const r = await fetch(`${API}${path}`, { method: 'POST', body: formData });
+    return r.json();
   },
 };
 
-// --- Tab Routing ---
+// ── Tab routing ────────────────────────────────────────────
+const pageMeta = {
+  banker: { title: 'Banker Copilot', sub: 'Search a customer and ask the AI copilot anything.' },
+  fraud:  { title: 'Fraud Monitor', sub: 'Real-time fraud alerts and transaction risk scoring.' },
+  trust:  { title: 'AI Trust Dashboard', sub: 'Monitor AI response quality and trust components.' },
+  docs:   { title: 'Document Intelligence', sub: 'Upload documents and query banking policies.' },
+};
+
 document.addEventListener('DOMContentLoaded', () => {
-  const tabs = document.querySelectorAll('.tab-btn');
-  const panels = document.querySelectorAll('.tab-panel');
+  // Nav click
+  document.querySelectorAll('.nav-item').forEach(btn => {
+    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+  });
 
-  tabs.forEach(btn => {
-    btn.addEventListener('click', () => {
-      const target = btn.dataset.tab;
-      tabs.forEach(t => t.classList.remove('active'));
-      panels.forEach(p => p.classList.remove('active'));
-      btn.classList.add('active');
-      document.getElementById(`tab-${target}`).classList.add('active');
-
-      // Trigger load on first visit
-      if (target === 'fraud') Fraud.init();
-      if (target === 'trust') Trust.init();
-      if (target === 'docs') Docs.init();
+  // Chat suggestions
+  document.querySelectorAll('.chat-suggestions .chip').forEach(c => {
+    c.addEventListener('click', () => {
+      const q = c.dataset.q;
+      document.getElementById('chatInput').value = q;
+      Banker.sendMessage();
     });
   });
+
+  // Policy query suggestions
+  document.querySelectorAll('.policy-suggestions .chip').forEach(c => {
+    c.addEventListener('click', () => {
+      document.getElementById('policyQuery').value = c.dataset.pq;
+      Docs.queryPolicy();
+    });
+  });
+
+  // Clock
+  updateClock();
+  setInterval(updateClock, 1000);
 
   // Health check
   checkHealth();
 });
 
+function switchTab(tab) {
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  const navEl = document.getElementById(`nav-${tab}`);
+  if (navEl) navEl.classList.add('active');
+  const panelEl = document.getElementById(`tab-${tab}`);
+  if (panelEl) panelEl.classList.add('active');
+
+  const m = pageMeta[tab] || {};
+  document.getElementById('pageTitle').textContent = m.title || tab;
+  document.getElementById('pageSub').textContent = m.sub || '';
+
+  if (tab === 'fraud') Fraud.init();
+  if (tab === 'trust') Trust.init();
+  if (tab === 'docs') Docs.init();
+}
+
 async function checkHealth() {
+  const dot = document.getElementById('statusDot');
+  const label = document.getElementById('statusLabel');
   try {
-    const data = await api.get('/health');
-    if (data.status === 'ok') {
-      document.getElementById('headerStatus').textContent = 'System Online';
+    const d = await api.get('/health');
+    if (d.status === 'ok') {
+      dot.className = 'status-indicator online';
+      label.textContent = 'System Online';
     }
   } catch {
-    document.getElementById('headerStatus').textContent = 'Offline';
-    document.querySelector('.status-dot').style.background = '#ef4444';
+    dot.className = 'status-indicator error';
+    label.textContent = 'Offline';
   }
 }
 
-// --- Gauge Drawing Utility ---
-function drawGauge(arcId, valueId, tierId, score, tier) {
-  const maxDash = 188;
-  const dash = (score / 100) * maxDash;
+function updateClock() {
+  const el = document.getElementById('clockEl');
+  if (el) el.textContent = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+}
+
+// ── Gauge ──────────────────────────────────────────────────
+function drawGauge(arcId, scoreId, tierId, score, tier) {
+  const maxDash = 251;
+  const dash = (Math.min(100, Math.max(0, score)) / 100) * maxDash;
   const arc = document.getElementById(arcId);
   if (arc) {
+    setTimeout(() => arc.setAttribute('stroke-dasharray', `${dash} ${maxDash}`), 50);
     arc.style.transition = 'stroke-dasharray 1s ease';
-    arc.setAttribute('stroke-dasharray', `${dash} ${maxDash}`);
   }
-  const valEl = document.getElementById(valueId);
+  const valEl = document.getElementById(scoreId);
   if (valEl) {
-    animateNumber(valEl, score);
+    animCount(valEl, score);
     valEl.style.color = score >= 71 ? '#10b981' : score >= 41 ? '#f59e0b' : '#ef4444';
   }
   const tierEl = document.getElementById(tierId);
   if (tierEl) tierEl.textContent = tier || '';
 }
 
-function animateNumber(el, target) {
-  let current = 0;
-  const step = Math.ceil(target / 30);
-  const timer = setInterval(() => {
-    current += step;
-    if (current >= target) { current = target; clearInterval(timer); }
-    el.textContent = Math.round(current);
-  }, 20);
+function animCount(el, target) {
+  let cur = 0;
+  const step = Math.max(1, Math.ceil(target / 40));
+  const t = setInterval(() => {
+    cur = Math.min(cur + step, target);
+    el.textContent = Math.round(cur);
+    if (cur >= target) clearInterval(t);
+  }, 18);
 }
 
-// --- Badge Utility ---
-function riskBadge(level) {
-  const map = {
-    'Low': 'badge-green', 'Medium': 'badge-amber', 'High': 'badge-red',
-    'Trusted': 'badge-green', 'Moderate': 'badge-amber', 'High Risk': 'badge-red',
+// ── Trust component bars ───────────────────────────────────
+function renderTrustBars(containerId, components) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  if (!components || !Object.keys(components).length) { el.innerHTML = ''; return; }
+  const labels = {
+    retrieval_confidence: 'Retrieval Confidence',
+    hallucination_prob: 'Hallucination Risk',
+    model_agreement: 'Model Agreement',
+    citation_quality: 'Citation Quality',
+    prompt_reliability: 'Prompt Reliability',
   };
+  el.innerHTML = Object.entries(components).map(([k, v]) => {
+    const pct = Math.round(v * 100);
+    const col = pct >= 70 ? '#10b981' : pct >= 40 ? '#f59e0b' : '#ef4444';
+    return `<div class="trust-bar-row">
+      <span class="trust-bar-label">${labels[k] || k}</span>
+      <div class="trust-bar-track"><div class="trust-bar-fill" style="width:${pct}%;background:${col}"></div></div>
+      <span class="trust-bar-val">${pct}%</span>
+    </div>`;
+  }).join('');
+}
+
+// ── Badges / helpers ───────────────────────────────────────
+function riskBadge(level) {
+  const map = { Low: 'badge-green', Medium: 'badge-amber', High: 'badge-red', Trusted: 'badge-green', Moderate: 'badge-amber', 'High Risk': 'badge-red' };
   return `<span class="badge ${map[level] || 'badge-blue'}">${level}</span>`;
 }
 
-function formatCurrency(val) {
-  return '$' + Number(val || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+function fmt$(v) {
+  return '$' + Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+
+function fmtDate(s) {
+  if (!s) return '—';
+  return new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }

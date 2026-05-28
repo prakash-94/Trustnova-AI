@@ -1,134 +1,129 @@
-/* ============================================================
-   Fraud Monitor — Alert feed, risk chart, detail modal, override
-   ============================================================ */
-
+/* ── fraud.js — Fraud monitor, alert feed, chart, checker ── */
 const Fraud = (() => {
   let initialized = false;
-  let alerts = [];
+  let riskChart = null;
+  let alertsData = [];
 
-  function init() {
+  async function init() {
     if (initialized) return;
     initialized = true;
-    refresh();
+    await refresh();
   }
 
   async function refresh() {
+    const feed = document.getElementById('fraudAlertFeed');
+    feed.innerHTML = `<div class="loading-state"><div class="spinner"></div><span>Loading alerts…</span></div>`;
     try {
-      const data = await api.get('/fraud/alerts?limit=20');
-      if (data.status === 'ok' && data.alerts) {
-        alerts = data.alerts;
-        renderAlerts(data.alerts);
-        renderChart(data.alerts);
-      } else {
-        renderAlerts([]);
-      }
-    } catch {
-      renderAlerts([]);
+      const d = await api.get('/fraud/alerts?limit=50');
+      alertsData = d.alerts || [];
+      renderFeed(alertsData);
+      renderKpis(alertsData);
+      renderChart(alertsData);
+      updateBadge(alertsData);
+    } catch (e) {
+      feed.innerHTML = `<div class="loading-state" style="color:var(--red)">⚠️ Failed to load alerts</div>`;
     }
   }
 
-  function renderAlerts(list) {
-    const container = document.getElementById('fraudAlertList');
-    if (!list || list.length === 0) {
-      container.innerHTML = '<div class="empty-state"><p>No fraud alerts found.</p></div>';
+  function updateBadge(alerts) {
+    const high = alerts.filter(a => (a.risk_score || 0) >= 0.7).length;
+    const badge = document.getElementById('fraudBadgeCount');
+    if (badge) badge.textContent = high || '0';
+  }
+
+  function renderKpis(alerts) {
+    const high = alerts.filter(a => (a.risk_score || 0) >= 0.7).length;
+    const med  = alerts.filter(a => (a.risk_score || 0) >= 0.3 && (a.risk_score || 0) < 0.7).length;
+    const low  = alerts.filter(a => (a.risk_score || 0) < 0.3).length;
+    const avg  = alerts.length ? (alerts.reduce((s, a) => s + (a.risk_score || 0), 0) / alerts.length) : 0;
+
+    document.getElementById('kpiHighCount').textContent = high;
+    document.getElementById('kpiMedCount').textContent = med;
+    document.getElementById('kpiLowCount').textContent = low;
+    document.getElementById('kpiAvgRisk').textContent = (avg * 100).toFixed(0) + '%';
+  }
+
+  function renderFeed(alerts) {
+    const el = document.getElementById('fraudAlertFeed');
+    if (!alerts.length) {
+      el.innerHTML = `<div class="empty-state"><div style="font-size:2rem">🛡️</div><p>No fraud alerts found.</p></div>`;
       return;
     }
-    container.innerHTML = list.map((a, i) => {
-      const score = parseFloat(a.risk_score || a.fraud_probability || 0);
+    el.innerHTML = alerts.slice(0, 30).map((a, i) => {
+      const score = a.risk_score || 0;
       const tier = score >= 0.7 ? 'High' : score >= 0.3 ? 'Medium' : 'Low';
-      const color = tier === 'High' ? '#ef4444' : tier === 'Medium' ? '#f59e0b' : '#10b981';
-      return `
-        <div class="alert-item" onclick="Fraud.showDetail(${i})">
-          <div class="alert-risk-bar" style="background:${color}"></div>
-          <div class="alert-info">
-            <div class="alert-title">${a.customer_id || 'Unknown'} — ${formatCurrency(a.amount || 0)}</div>
-            <div class="alert-meta">${a.reason || a.explanation || tier + ' Risk'} | ${(a.timestamp || '').slice(0, 10)}</div>
-          </div>
-          <div class="alert-score" style="color:${color}">${(score * 100).toFixed(0)}%</div>
-        </div>`;
+      const col  = score >= 0.7 ? '#ef4444' : score >= 0.3 ? '#f59e0b' : '#10b981';
+      const pct  = Math.round(score * 100);
+      return `<div class="alert-item" onclick="Fraud.openModal(${i})">
+        <div class="alert-bar ${tier.toLowerCase()}"></div>
+        <div class="alert-info">
+          <div class="alert-title">${a.transaction_id || a.alert_id || 'Alert #' + (i+1)}</div>
+          <div class="alert-meta">${a.customer_id || '—'} · ${fmtDate(a.timestamp || a.created_at)}</div>
+        </div>
+        <div>
+          <span class="badge ${tier === 'High' ? 'badge-red' : tier === 'Medium' ? 'badge-amber' : 'badge-green'}">${tier}</span>
+        </div>
+        <div class="alert-score" style="color:${col}">${pct}%</div>
+      </div>`;
     }).join('');
   }
 
-  function renderChart(list) {
-    const canvas = document.getElementById('riskChart');
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    const w = canvas.parentElement.clientWidth;
-    canvas.width = w; canvas.height = 200;
-    ctx.clearRect(0, 0, w, 200);
+  function renderChart(alerts) {
+    const ctx = document.getElementById('riskDistChart');
+    if (!ctx) return;
+    if (riskChart) riskChart.destroy();
 
-    // Build histogram
-    const buckets = Array(10).fill(0);
-    (list || []).forEach(a => {
-      const score = parseFloat(a.risk_score || a.fraud_probability || 0);
-      const idx = Math.min(9, Math.floor(score * 10));
-      buckets[idx]++;
+    const buckets = [0, 0, 0, 0, 0]; // 0-20, 20-40, 40-60, 60-80, 80-100
+    alerts.forEach(a => {
+      const s = Math.min(1, Math.max(0, a.risk_score || 0));
+      buckets[Math.min(4, Math.floor(s * 5))]++;
     });
 
-    const maxVal = Math.max(...buckets, 1);
-    const barW = (w - 60) / 10;
-    const barArea = 160;
-
-    // Bars
-    buckets.forEach((val, i) => {
-      const h = (val / maxVal) * barArea;
-      const x = 40 + i * barW;
-      const y = 180 - h;
-      const pct = (i + 0.5) / 10;
-      const r = Math.round(239 * pct + 16 * (1 - pct));
-      const g = Math.round(68 * pct + 185 * (1 - pct));
-      const b = Math.round(68 * pct + 129 * (1 - pct));
-      ctx.fillStyle = `rgba(${r},${g},${b},0.7)`;
-      ctx.beginPath();
-      ctx.roundRect(x + 2, y, barW - 4, h, 4);
-      ctx.fill();
+    riskChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: ['0–20%', '20–40%', '40–60%', '60–80%', '80–100%'],
+        datasets: [{
+          label: 'Transactions',
+          data: buckets,
+          backgroundColor: ['#10b981','#22d3ee','#f59e0b','#f97316','#ef4444'],
+          borderRadius: 6, borderSkipped: false,
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { color: 'rgba(255,255,255,.05)' }, ticks: { color: '#94a3b8', font: { size: 11 } } },
+          y: { grid: { color: 'rgba(255,255,255,.05)' }, ticks: { color: '#94a3b8', font: { size: 11 } } },
+        },
+      },
     });
-
-    // Labels
-    ctx.fillStyle = '#64748b';
-    ctx.font = '10px Inter, sans-serif';
-    ctx.textAlign = 'center';
-    for (let i = 0; i <= 10; i++) {
-      ctx.fillText(`${i * 10}%`, 40 + i * barW, 196);
-    }
-    ctx.textAlign = 'right';
-    for (let i = 0; i <= 4; i++) {
-      const val = Math.round(maxVal * i / 4);
-      ctx.fillText(val, 35, 180 - (i / 4) * barArea + 4);
-    }
   }
 
-  function showDetail(index) {
-    const a = alerts[index];
+  function openModal(idx) {
+    const a = alertsData[idx];
     if (!a) return;
-
-    const score = parseFloat(a.risk_score || a.fraud_probability || 0);
+    const score = a.risk_score || 0;
     const tier = score >= 0.7 ? 'High' : score >= 0.3 ? 'Medium' : 'Low';
-
-    document.getElementById('fraudModalBody').innerHTML = `
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
-        <div class="alert-score" style="font-size:2rem;color:${tier === 'High' ? '#ef4444' : tier === 'Medium' ? '#f59e0b' : '#10b981'}">
-          ${(score * 100).toFixed(1)}%
-        </div>
-        <div>
-          <div style="font-size:1.1rem;font-weight:700;">Fraud Risk: ${riskBadge(tier)}</div>
-          <div style="color:var(--text-secondary);font-size:0.8rem;">Customer: ${a.customer_id || '—'}</div>
-        </div>
+    const body = document.getElementById('fraudModalBody');
+    body.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+        <div class="stat-tile"><div class="stat-label">Transaction ID</div><div class="stat-val" style="font-size:.85rem">${a.transaction_id || a.alert_id || '—'}</div></div>
+        <div class="stat-tile"><div class="stat-label">Customer</div><div class="stat-val" style="font-size:.85rem">${a.customer_id || '—'}</div></div>
+        <div class="stat-tile"><div class="stat-label">Risk Score</div><div class="stat-val" style="color:${score>=.7?'#ef4444':score>=.3?'#f59e0b':'#10b981'}">${Math.round(score*100)}%</div></div>
+        <div class="stat-tile"><div class="stat-label">Risk Tier</div><div class="stat-val">${riskBadge(tier)}</div></div>
+        <div class="stat-tile"><div class="stat-label">Status</div><div class="stat-val">${a.status || '—'}</div></div>
+        <div class="stat-tile"><div class="stat-label">Timestamp</div><div class="stat-val" style="font-size:.8rem">${fmtDate(a.timestamp || a.created_at)}</div></div>
       </div>
-      <div class="profile-stats" style="margin-bottom:16px;">
-        <div class="stat-item"><div class="stat-label">Amount</div><div class="stat-value">${formatCurrency(a.amount)}</div></div>
-        <div class="stat-item"><div class="stat-label">Timestamp</div><div class="stat-value" style="font-size:0.85rem;">${(a.timestamp || '—').slice(0, 19)}</div></div>
-        <div class="stat-item"><div class="stat-label">Model</div><div class="stat-value">${a.model_used || 'XGBoost'}</div></div>
-        <div class="stat-item"><div class="stat-label">Status</div><div class="stat-value">${a.status || 'Pending'}</div></div>
-      </div>
-      ${a.explanation ? `<div class="glass-card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">AI Explanation</div></div><div class="card-body" style="font-size:0.85rem;line-height:1.6;">${a.explanation}</div></div>` : ''}
-      <div style="display:flex;gap:8px;">
-        <button class="btn btn-success" onclick="Fraud.override(${index}, 'approve')">&#x2705; Approve (Not Fraud)</button>
-        <button class="btn btn-danger" onclick="Fraud.override(${index}, 'reject')">&#x26A0; Confirm Fraud</button>
-      </div>
-      <div id="overrideResult" style="margin-top:12px;"></div>
-    `;
-
+      ${a.reason || a.explanation ? `<div class="chunk-item" style="border-left:3px solid var(--amber)">
+        <strong style="font-size:.78rem;color:var(--amber)">⚠️ Risk Explanation</strong>
+        <div style="margin-top:8px;color:var(--t2)">${a.reason || a.explanation}</div>
+      </div>` : ''}
+      <div style="margin-top:14px;display:flex;gap:8px">
+        <button class="btn btn-ghost btn-sm" onclick="Fraud.closeModal()">Close</button>
+        <button class="btn btn-sm" style="background:var(--grad-r);color:#fff" onclick="Fraud.closeModal()">Override — Mark Safe</button>
+      </div>`;
     document.getElementById('fraudModal').classList.remove('hidden');
   }
 
@@ -136,61 +131,46 @@ const Fraud = (() => {
     document.getElementById('fraudModal').classList.add('hidden');
   }
 
-  async function override(index, type) {
-    const a = alerts[index];
-    try {
-      const data = await api.post('/feedback', {
-        session_id: 'fraud_monitor',
-        response_id: a.transaction_id || `fraud_${index}`,
-        feedback_type: type,
-        prompt: `Fraud check for ${a.customer_id}`,
-        model_used: a.model_used || 'XGBoost',
-        trust_score: parseFloat(a.risk_score || 0) * 100,
-      });
-      document.getElementById('overrideResult').innerHTML = `
-        <div class="badge badge-green" style="font-size:0.8rem;padding:6px 12px;">
-          Feedback submitted: ${type}
-        </div>`;
-    } catch (err) {
-      document.getElementById('overrideResult').innerHTML = `<span style="color:#ef4444;">Error: ${err.message}</span>`;
-    }
-  }
-
   async function checkTransaction() {
-    const amount = parseFloat(document.getElementById('fraudAmount').value) || 5000;
-    const hour = parseInt(document.getElementById('fraudHour').value) || 2;
-    const geo = parseInt(document.getElementById('fraudGeo').value) || 0;
-    const device = parseInt(document.getElementById('fraudDevice').value) || 0;
+    const resultEl = document.getElementById('fraudCheckResult');
+    resultEl.innerHTML = `<div class="loading-state"><div class="spinner"></div><span>Checking…</span></div>`;
 
-    document.getElementById('fraudCheckResult').innerHTML = '<div class="spinner"></div>';
+    const body = {
+      amount:           parseFloat(document.getElementById('fraudAmount').value) || 1000,
+      hour:             parseInt(document.getElementById('fraudHour').value) || 12,
+      geo_mismatch:     parseInt(document.getElementById('fraudGeo').value) || 0,
+      device_new:       parseInt(document.getElementById('fraudDevice').value) || 0,
+      credit_score:     parseInt(document.getElementById('fraudCredit').value) || 650,
+      merchant_risk:    parseFloat(document.getElementById('fraudMerchant').value) || 0.3,
+      is_weekend:       new Date().getDay() % 6 === 0 ? 1 : 0,
+      amount_zscore:    2.0,
+      velocity_30m:     1,
+      account_age_days: 365,
+      use_ensemble:     true,
+    };
 
     try {
-      const data = await api.post('/fraud/check', {
-        amount, hour, geo_mismatch: geo, device_new: device,
-        use_ensemble: true,
-      });
+      const d = await api.post('/fraud/check', body);
+      const prob = Math.round((d.fraud_probability || 0) * 100);
+      const tier = d.risk_tier || '—';
+      const col  = tier === 'High' ? '#ef4444' : tier === 'Medium' ? '#f59e0b' : '#10b981';
 
-      if (data.status === 'ok') {
-        const prob = data.fraud_probability || 0;
-        const tier = data.risk_tier || 'Low';
-        const color = tier === 'High' ? '#ef4444' : tier === 'Medium' ? '#f59e0b' : '#10b981';
-        let html = `
-          <div style="display:flex;align-items:center;gap:12px;">
-            <div style="font-size:1.5rem;font-weight:800;color:${color};">${(prob * 100).toFixed(1)}%</div>
-            ${riskBadge(tier)}
-            <span style="color:var(--text-secondary);font-size:0.8rem;">${data.models_used ? data.models_used.join(' + ') : ''} | ${data.latency_ms}ms</span>
-          </div>`;
-        if (data.explanation) {
-          html += `<div style="margin-top:8px;font-size:0.82rem;color:var(--text-secondary);line-height:1.5;">${data.explanation}</div>`;
-        }
-        document.getElementById('fraudCheckResult').innerHTML = html;
-      } else {
-        document.getElementById('fraudCheckResult').innerHTML = `<span style="color:#ef4444;">${data.error || 'Error'}</span>`;
-      }
-    } catch (err) {
-      document.getElementById('fraudCheckResult').innerHTML = `<span style="color:#ef4444;">Error: ${err.message}</span>`;
+      const factors = (d.top_risk_factors || []).slice(0, 3).map(f =>
+        `<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:.78rem;color:var(--t2)">
+          <strong style="color:var(--t1)">${f.feature}</strong>: value ${Number(f.value).toFixed(2)}, importance ${Number(f.importance).toFixed(3)}
+        </div>`).join('');
+
+      resultEl.innerHTML = `
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:12px">
+          <div style="font-size:2rem;font-weight:900;color:${col}">${prob}%</div>
+          <div>${riskBadge(tier)}<div style="font-size:.72rem;color:var(--t2);margin-top:4px">Models: ${(d.models_used||[]).join('+')}</div></div>
+        </div>
+        ${factors ? `<div style="margin-bottom:10px">${factors}</div>` : ''}
+        ${d.explanation ? `<div class="chunk-item" style="font-size:.78rem;color:var(--t2)">${d.explanation}</div>` : ''}`;
+    } catch (e) {
+      resultEl.innerHTML = `<span style="color:var(--red)">⚠️ Check failed: ${e.message}</span>`;
     }
   }
 
-  return { init, refresh, showDetail, closeModal, override, checkTransaction };
+  return { init, refresh, openModal, closeModal, checkTransaction };
 })();
