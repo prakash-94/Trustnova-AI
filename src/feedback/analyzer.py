@@ -37,6 +37,24 @@ class FeedbackAnalyzer:
 
     def __init__(self, db_url: str = DATABASE_URL):
         self.engine = create_engine(db_url)
+        self._ensure_tables()
+
+    def _ensure_tables(self):
+        """Create the alerts table if it doesn't exist."""
+        with self.engine.connect() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS alerts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    customer_id TEXT,
+                    alert_type TEXT,
+                    severity TEXT,
+                    message TEXT,
+                    details TEXT,
+                    status TEXT DEFAULT 'open',
+                    created_at TEXT NOT NULL
+                )
+            """))
+            conn.commit()
 
     # ==================================================================
     # Weekly Report

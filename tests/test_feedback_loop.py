@@ -52,6 +52,50 @@ def seed_feedback(store):
     from sqlalchemy import create_engine, text
     engine = create_engine("sqlite:///./banking.db")
 
+    # Ensure all required tables exist before clearing them.
+    # On a clean CI environment, these tables are only created lazily when
+    # their respective module classes are first instantiated. We must ensure
+    # they exist before issuing DELETE statements to avoid OperationalError.
+    with engine.connect() as conn:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS prompt_versions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                template_name TEXT NOT NULL,
+                version INTEGER NOT NULL,
+                old_prompt_hash TEXT,
+                suggestion TEXT NOT NULL,
+                reason TEXT,
+                rejection_count INTEGER DEFAULT 0,
+                status TEXT DEFAULT 'suggested',
+                created_at TEXT NOT NULL
+            )
+        """))
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS chunk_feedback (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                chunk_hash TEXT UNIQUE NOT NULL,
+                chunk_text TEXT,
+                source TEXT,
+                positive_count INTEGER DEFAULT 0,
+                negative_count INTEGER DEFAULT 0,
+                weight REAL DEFAULT 1.0,
+                updated_at TEXT NOT NULL
+            )
+        """))
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS alerts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                customer_id TEXT,
+                alert_type TEXT,
+                severity TEXT,
+                message TEXT,
+                details TEXT,
+                status TEXT DEFAULT 'open',
+                created_at TEXT NOT NULL
+            )
+        """))
+        conn.commit()
+
     # Clear existing tables for clean test
     with engine.connect() as conn:
         conn.execute(text("DELETE FROM ai_feedback"))
@@ -239,10 +283,11 @@ class TestFeedbackAnalyzer:
         """Should handle empty data gracefully."""
         from sqlalchemy import create_engine, text
         engine = create_engine("sqlite:///./banking.db")
-        # Save existing data
+        # Save existing data (no-op, just guards the report call below)
         backup = None
         try:
-            backup = engine.execute(text("SELECT * FROM ai_feedback"))
+            with engine.connect() as conn:
+                backup = conn.execute(text("SELECT * FROM ai_feedback")).fetchall()
         except Exception:
             pass
 
