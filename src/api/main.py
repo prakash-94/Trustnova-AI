@@ -88,9 +88,18 @@ app.include_router(feedback.router, prefix="/feedback", tags=["Feedback Loop"])
 
 
 # --- Static Files (Phase 9 Dashboard) ---
-frontend_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "frontend")
-if os.path.exists(frontend_dir):
+# src/api/main.py → go up 2 levels → project root → frontend/
+_file_relative = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "frontend")
+)
+_cwd_relative = os.path.join(os.getcwd(), "frontend")
+frontend_dir = _file_relative if os.path.isdir(_file_relative) else _cwd_relative
+
+if os.path.isdir(frontend_dir):
     app.mount("/static", StaticFiles(directory=frontend_dir), name="static")
+    print(f"  Dashboard: serving from {frontend_dir}")
+else:
+    print(f"  WARNING: frontend dir not found! Tried:\n    {_file_relative}\n    {_cwd_relative}")
 
 
 # --- Dashboard Route ---
@@ -99,8 +108,12 @@ async def serve_dashboard():
     """Serve the enterprise dashboard SPA."""
     index_path = os.path.join(frontend_dir, "index.html")
     if os.path.exists(index_path):
-        return FileResponse(index_path, media_type="text/html")
-    return {"error": "Dashboard not found. Ensure frontend/index.html exists."}
+        return FileResponse(
+            index_path,
+            media_type="text/html",
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+        )
+    return {"error": f"Dashboard not found at {index_path}. Run from project root."}
 
 
 # --- Health Check ---

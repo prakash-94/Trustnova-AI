@@ -10,7 +10,7 @@
 #   docker-compose logs -f backend     # tail backend logs
 
 services:
-  # ── FastAPI Backend ──────────────────────────────────────
+  # ── FastAPI Backend ───────────────────────────────────────────
   backend:
     build:
       context: ..
@@ -24,9 +24,22 @@ services:
       - DATABASE_URL=sqlite:///./banking.db
       - CHROMA_PERSIST_DIR=data/chroma_db
       - VECTOR_DB=chroma
+      # Pass through critical API keys explicitly (env_file handles them,
+      # but explicit env vars take priority and make debugging easier)
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4}
+      - EMBEDDING_BACKEND=${EMBEDDING_BACKEND:-sentence_transformers}
     volumes:
       - backend-data:/app/data
       - ../banking.db:/app/banking.db
+      - ../frontend:/app/frontend:ro  # so backend can serve /dashboard on port 8000 too
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     depends_on:
       chromadb:
         condition: service_started
@@ -34,7 +47,7 @@ services:
       - copilot-net
     restart: unless-stopped
 
-  # ── Frontend (Nginx) ────────────────────────────────────
+  # ── Frontend (Nginx) ───────────────────────────────────────
   frontend:
     build:
       context: ..
@@ -43,7 +56,8 @@ services:
     ports:
       - "80:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     networks:
       - copilot-net
     restart: unless-stopped
