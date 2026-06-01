@@ -4,22 +4,41 @@ const API = window.location.origin;
 const api = {
   async get(path) {
     const r = await fetch(`${API}${path}`);
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    if (!r.ok) throw new Error(`HTTP ${r.status} from GET ${path}`);
     return r.json();
   },
   async post(path, body) {
-    const r = await fetch(`${API}${path}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    return r.json();
+    // 120-second timeout for GPT-4 responses
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 120000);
+    try {
+      const r = await fetch(`${API}${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: ctrl.signal,
+      });
+      clearTimeout(timer);
+      if (!r.ok) {
+        const txt = await r.text().catch(() => '');
+        throw new Error(`HTTP ${r.status} — ${txt.slice(0,200) || r.statusText}`);
+      }
+      return r.json();
+    } catch (e) {
+      clearTimeout(timer);
+      if (e.name === 'AbortError') throw new Error('Request timed out after 120s. The AI model may be slow — try again.');
+      // "Failed to fetch" = network-level error. Include URL for debugging.
+      if (e.message === 'Failed to fetch') throw new Error(`Network error: cannot reach ${API}${path}. Check backend is running.`);
+      throw e;
+    }
   },
   async upload(path, formData) {
     const r = await fetch(`${API}${path}`, { method: 'POST', body: formData });
+    if (!r.ok) throw new Error(`HTTP ${r.status} upload error`);
     return r.json();
   },
 };
+
 
 // ── Tab routing ────────────────────────────────────────────
 const pageMeta = {
