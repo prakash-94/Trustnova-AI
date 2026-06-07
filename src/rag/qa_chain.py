@@ -13,7 +13,6 @@ import os
 from typing import Dict, List, Optional
 
 from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI
 from langchain_classic.chains import ConversationalRetrievalChain
 from langchain_classic.memory import ConversationBufferWindowMemory
 from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate
@@ -23,8 +22,9 @@ from src.rag.vector_store import get_vector_store
 load_dotenv()
 
 # --- Configuration ---
-LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4")
-TOP_K = 5  # Number of chunks to retrieve
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "groq").lower().strip()
+LLM_MODEL    = os.getenv("LLM_MODEL",    "llama-3.3-70b-versatile")
+TOP_K        = 5  # Number of chunks to retrieve
 
 
 # --- Prompt Templates ---
@@ -57,16 +57,31 @@ in the format "According to [Source], ...".
 
 
 def get_llm(model: str = LLM_MODEL, temperature: float = 0.1):
-    """Initialize the LLM."""
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise ValueError("OPENAI_API_KEY not set in .env")
+    """Return a LangChain chat model — Groq by default, OpenAI as fallback."""
+    provider = LLM_PROVIDER
 
+    if provider == "groq":
+        groq_key = os.getenv("GROQ_API_KEY")
+        if not groq_key:
+            raise ValueError("GROQ_API_KEY not set in .env")
+        from langchain_groq import ChatGroq
+        return ChatGroq(
+            model=model,
+            temperature=temperature,
+            groq_api_key=groq_key,
+            max_tokens=2048,
+        )
+
+    # OpenAI fallback
+    openai_key = os.getenv("OPENAI_API_KEY")
+    if not openai_key:
+        raise ValueError("OPENAI_API_KEY not set in .env")
+    from langchain_openai import ChatOpenAI
     return ChatOpenAI(
         model_name=model,
         temperature=temperature,
-        openai_api_key=api_key,
-        max_tokens=1024,
+        openai_api_key=openai_key,
+        max_tokens=2048,
     )
 
 
@@ -79,10 +94,10 @@ def create_qa_chain(
     Create a Conversational Retrieval QA chain.
 
     Uses the configured vector store backend (ChromaDB or Pinecone)
-    and OpenAI LLM for answer generation.
+    and the active LLM provider (Groq by default, OpenAI as fallback).
 
     Args:
-        model: OpenAI model name
+        model: Model name (default from LLM_MODEL env var)
         temperature: LLM temperature (lower = more deterministic)
         memory_window: Number of conversation turns to remember
 
