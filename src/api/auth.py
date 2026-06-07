@@ -23,10 +23,11 @@ import os
 from datetime import datetime, timedelta
 from typing import Optional, List
 
+import bcrypt as _bcrypt
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
-from passlib.context import CryptContext
 from jose import JWTError, jwt
 from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
@@ -68,7 +69,12 @@ DEMO_USERS = [
 ]
 
 # ── Crypto ────────────────────────────────────────────────────
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+def _hash_pw(password: str) -> str:
+    return _bcrypt.hashpw(password.encode(), _bcrypt.gensalt()).decode()
+
+def _verify_pw(password: str, hashed: str) -> bool:
+    return _bcrypt.checkpw(password.encode(), hashed.encode())
+
 bearer_scheme = HTTPBearer(auto_error=False)
 
 router = APIRouter()
@@ -127,7 +133,7 @@ def _create_user_if_missing(username: str, password: str, role: str, full_name: 
         ).fetchone()
         if existing:
             return
-        hashed = pwd_context.hash(password)
+        hashed = _hash_pw(password)
         conn.execute(text("""
             INSERT INTO users (username, hashed_password, role, full_name, is_active, created_at)
             VALUES (:u, :h, :r, :fn, 1, :ts)
@@ -296,7 +302,7 @@ async def login(request: LoginRequest):
     - compliance / Comply@2026
     """
     user = _get_user(request.username)
-    if not user or not pwd_context.verify(request.password, user["hashed_password"]):
+    if not user or not _verify_pw(request.password, user["hashed_password"]):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password.",
