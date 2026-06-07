@@ -7,7 +7,7 @@ Integrates with:
   - Phase 4: session memory (DB-backed) and LLM router
   - Phase 6: AI Trust Scoring — real-time trust score on every response
 """
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict
 import traceback
@@ -64,7 +64,7 @@ class ChatResponse(BaseModel):
 
 
 @router.post("", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+async def chat(request: ChatRequest, http_request: Request = None):
     """
     AI Copilot Chat — ask banking questions with RAG-powered responses.
 

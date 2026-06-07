@@ -11,12 +11,15 @@ import os
 from contextlib import asynccontextmanager
 from datetime import datetime
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from dotenv import load_dotenv
 from prometheus_fastapi_instrumentator import Instrumentator
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 # Load environment variables
 load_dotenv()
@@ -42,6 +45,11 @@ async def lifespan(app: FastAPI):
     print("\n  Banking AI Copilot — Shutting Down")
 
 
+# --- Rate Limiter ---
+# RATE_LIMIT env var: default "60/minute". Override per environment.
+_rate_limit = os.getenv("RATE_LIMIT", "60/minute")
+limiter = Limiter(key_func=get_remote_address, default_limits=[_rate_limit])
+
 # --- FastAPI App ---
 app = FastAPI(
     title="Banking AI Copilot",
@@ -56,13 +64,28 @@ app = FastAPI(
 )
 
 
+# --- Attach Limiter State ---
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
 # --- CORS Middleware ---
+# CORS_ORIGINS env var is a comma-separated list of allowed origins.
+# Example: CORS_ORIGINS=https://app.yourdomain.com,https://admin.yourdomain.com
+# Defaults to "*" for local development only.
+_cors_origins_raw = os.getenv("CORS_ORIGINS", "*")
+_cors_origins = (
+    ["*"]
+    if _cors_origins_raw.strip() == "*"
+    else [o.strip() for o in _cors_origins_raw.split(",") if o.strip()]
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, restrict to specific origins
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_cors_origins,
+    allow_credentials=_cors_origins_raw.strip() != "*",  # credentials require explicit origin list
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Request-ID"],
 )
 
 

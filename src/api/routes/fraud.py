@@ -13,7 +13,7 @@ import pickle
 import traceback
 
 import numpy as np
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 from typing import Optional, List
 
@@ -131,7 +131,7 @@ async def get_fraud_alerts(limit: int = 20):
 
 
 @router.post("/check", response_model=FraudCheckResponse)
-async def fraud_check(transaction: TransactionInput):
+async def fraud_check(transaction: TransactionInput, request: Request = None):
     """
     Check a transaction for fraud risk.
 

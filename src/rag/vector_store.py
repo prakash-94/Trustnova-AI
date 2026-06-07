@@ -283,3 +283,65 @@ def similarity_search_interactions(query: str, k: int = 5, filter_dict: Optional
         return store.similarity_search(query, k=k, filter=filter_dict)
     else:
         return store.similarity_search(query, k=k)
+
+
+def get_collection_stats() -> dict:
+    """
+    Return metadata about indexed documents in the vector store.
+
+    For ChromaDB: queries the collection to get unique source files and chunk counts.
+    For Pinecone: returns index stats via the Pinecone API.
+
+    Returns:
+        dict with 'documents' (list of per-source metadata) and 'total_chunks' (int)
+    """
+    backend = VECTOR_DB.lower().strip()
+
+    try:
+        if backend == "chroma":
+            from langchain_chroma import Chroma
+            embeddings = get_embeddings()
+            store = Chroma(
+                collection_name=CHROMA_COLLECTION,
+                embedding_function=embeddings,
+                persist_directory=CHROMA_PERSIST_DIR,
+            )
+            # Get all document metadata from the collection
+            collection = store._collection
+            result = collection.get(include=["metadatas"])
+            metadatas = result.get("metadatas", []) or []
+
+            # Aggregate per-source stats
+            source_stats: dict = {}
+            for meta in metadatas:
+                src = meta.get("source", "unknown")
+                if src not in source_stats:
+                    source_stats[src] = {
+                        "source": src,
+                        "doc_type": meta.get("doc_type", "general"),
+                        "chunk_count": 0,
+                    }
+                source_stats[src]["chunk_count"] += 1
+
+            documents = sorted(source_stats.values(), key=lambda x: x["chunk_count"], reverse=True)
+            total_chunks = sum(d["chunk_count"] for d in documents)
+
+            return {"documents": documents, "total_chunks": total_chunks}
+
+        elif backend == "pinecone":
+            from pinecone import Pinecone
+            api_key = os.getenv("PINECONE_API_KEY")
+            pc = Pinecone(api_key=api_key)
+            index_name = PINECONE_INDEX_NAME
+            index = pc.Index(index_name)
+            stats = index.describe_index_stats()
+            total = int(stats.get("total_vector_count", 0))
+            return {
+                "documents": [{"source": index_name, "doc_type": "pinecone_index", "chunk_count": total}],
+                "total_chunks": total,
+            }
+
+    except Exception as e:
+        print(f"  [VectorStore] get_collection_stats error: {e}")
+
+    return {"documents": [], "total_chunks": 0}
