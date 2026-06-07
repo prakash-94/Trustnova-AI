@@ -13,9 +13,11 @@ import pickle
 import traceback
 
 import numpy as np
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 from typing import Optional, List
+
+from src.api.auth import CurrentUser, require_permission
 
 router = APIRouter()
 
@@ -104,7 +106,10 @@ def _get_isolation_forest_score(txn_dict: dict) -> Optional[float]:
 
 
 @router.get("/alerts", tags=["Fraud Detection"])
-async def get_fraud_alerts(limit: int = 20):
+async def get_fraud_alerts(
+    limit: int = 20,
+    current_user: CurrentUser = Depends(require_permission("fraud")),
+):
     """
     Get recent fraud alerts from the database.
     Returns flagged transactions with risk scores for the Fraud Monitor dashboard.
@@ -131,7 +136,11 @@ async def get_fraud_alerts(limit: int = 20):
 
 
 @router.post("/check", response_model=FraudCheckResponse)
-async def fraud_check(transaction: TransactionInput, request: Request = None):
+async def fraud_check(
+    transaction: TransactionInput,
+    request: Request = None,
+    current_user: CurrentUser = Depends(require_permission("fraud")),
+):
     """
     Check a transaction for fraud risk.
 

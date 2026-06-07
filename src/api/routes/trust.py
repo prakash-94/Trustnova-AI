@@ -8,9 +8,11 @@ Both layers store score history in SQLite for audit and trend analysis.
 """
 import traceback
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict
+
+from src.api.auth import CurrentUser, get_current_user, log_audit
 
 router = APIRouter()
 
@@ -53,7 +55,11 @@ class AITrustHistoryResponse(BaseModel):
 # ──────────────────────────────────────────────────────────────
 
 @router.get("/score/{customer_id}", response_model=TrustScoreResponse)
-async def get_trust_score(customer_id: str):
+async def get_trust_score(
+    customer_id: str,
+    http_request: Request = None,
+    current_user: CurrentUser = Depends(get_current_user),
+):
     """
     Get the trust score for a customer.
 
@@ -68,6 +74,9 @@ async def get_trust_score(customer_id: str):
     """
     try:
         from src.models.trust_scorer import TrustScoreCalculator
+
+        ip = http_request.client.host if http_request and http_request.client else ""
+        log_audit(current_user.username, "read", "trust_score", customer_id, ip)
 
         calculator = TrustScoreCalculator()
         result = calculator.calculate(customer_id)
@@ -100,7 +109,11 @@ async def get_trust_score(customer_id: str):
 
 
 @router.get("/history/{customer_id}", response_model=TrustHistoryResponse)
-async def get_trust_history(customer_id: str, limit: int = 10):
+async def get_trust_history(
+    customer_id: str,
+    limit: int = 10,
+    current_user: CurrentUser = Depends(get_current_user),
+):
     """
     Get historical trust scores for a customer.
 
@@ -133,7 +146,11 @@ async def get_trust_history(customer_id: str, limit: int = 10):
 # ──────────────────────────────────────────────────────────────
 
 @router.get("/ai-history", response_model=AITrustHistoryResponse)
-async def get_ai_trust_history(session_id: str = None, limit: int = 20):
+async def get_ai_trust_history(
+    session_id: str = None,
+    limit: int = 20,
+    current_user: CurrentUser = Depends(get_current_user),
+):
     """
     Get historical AI response trust scores.
 

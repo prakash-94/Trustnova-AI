@@ -3,6 +3,8 @@ const Banker = (() => {
   let currentCustomerId = null;
   let sessionId = null;
   let searchTimer = null;
+  // Keyed by rid — holds {prompt, response} for feedback without embedding in DOM attributes
+  const _feedbackStore = {};
 
   // ── Customer Search ──────────────────────────────────────
   function initSearch() {
@@ -27,6 +29,16 @@ const Banker = (() => {
       if (e.key === 'Enter') sendMessage();
     });
     document.getElementById('clearChatBtn').addEventListener('click', clearChat);
+
+    // Delegated feedback button handler — avoids inline onclick with user data
+    document.getElementById('chatMessages').addEventListener('click', e => {
+      const btn = e.target.closest('[data-fb-rid]');
+      if (!btn) return;
+      const rid  = btn.dataset.fbRid;
+      const type = btn.dataset.fbType;
+      const data = _feedbackStore[rid];
+      if (data) sendFeedback(type, rid, data.prompt, data.response);
+    });
   }
 
   async function doSearch(q) {
@@ -40,10 +52,13 @@ const Banker = (() => {
         return;
       }
       results.innerHTML = d.results.map(c => `
-        <div class="search-result-item" onclick="Banker.selectCustomer('${c.customer_id}')">
-          <div class="search-result-name">${c.name}</div>
-          <div class="search-result-meta">${c.customer_id} · ${c.account_type || ''} · ${fmt$(c.balance)}</div>
+        <div class="search-result-item" data-cid="${escHtml(c.customer_id)}">
+          <div class="search-result-name">${escHtml(c.name)}</div>
+          <div class="search-result-meta">${escHtml(c.customer_id)} · ${escHtml(c.account_type || '')} · ${fmt$(c.balance)}</div>
         </div>`).join('');
+      results.querySelectorAll('.search-result-item[data-cid]').forEach(item => {
+        item.addEventListener('click', () => selectCustomer(item.dataset.cid));
+      });
     } catch {
       results.innerHTML = `<div class="search-result-item" style="color:var(--red)">Search failed</div>`;
     }
@@ -190,11 +205,12 @@ const Banker = (() => {
           </div>` : '';
 
         const rid = 'r' + Date.now();
+        _feedbackStore[rid] = { prompt: q, response: d.answer || '' };
         think.innerHTML = `<div>${escHtml(d.answer || 'No response.')}</div>
           ${srcHtml}${trustHtml}
           <div class="feedback-row">
-            <button class="fb-btn approve" onclick="Banker.sendFeedback('approve','${rid}','${escHtml(q)}','${escHtml(d.answer||'')}')">👍 Approve</button>
-            <button class="fb-btn reject" onclick="Banker.sendFeedback('reject','${rid}','${escHtml(q)}','${escHtml(d.answer||'')}')">👎 Reject</button>
+            <button class="fb-btn approve" data-fb-rid="${rid}" data-fb-type="approve">👍 Approve</button>
+            <button class="fb-btn reject"  data-fb-rid="${rid}" data-fb-type="reject">👎 Reject</button>
           </div>`;
 
         // Push to Trust tab

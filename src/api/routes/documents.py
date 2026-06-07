@@ -8,9 +8,11 @@ import os
 import tempfile
 import traceback
 
-from fastapi import APIRouter, UploadFile, File
+from fastapi import APIRouter, Depends, UploadFile, File
 from pydantic import BaseModel
 from typing import Optional, List
+
+from src.api.auth import CurrentUser, require_permission, get_current_user
 
 router = APIRouter()
 
@@ -26,7 +28,9 @@ class UploadResponse(BaseModel):
 
 
 @router.get("/index", tags=["Document Intelligence"])
-async def get_document_index():
+async def get_document_index(
+    current_user: CurrentUser = Depends(require_permission("documents")),
+):
     """
     List all indexed documents in the vector store.
     Returns document metadata for the Document Intelligence dashboard.
@@ -48,7 +52,10 @@ async def get_document_index():
 
 
 @router.post("/upload", response_model=UploadResponse)
-async def upload_documents(files: List[UploadFile] = File(...)):
+async def upload_documents(
+    files: List[UploadFile] = File(...),
+    current_user: CurrentUser = Depends(require_permission("documents")),
+):
     """
     Upload banking documents for RAG indexing.
 

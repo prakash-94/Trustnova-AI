@@ -11,9 +11,11 @@ Phase 8 endpoints:
 import traceback
 from datetime import datetime
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from typing import Optional, List
+
+from src.api.auth import CurrentUser, require_permission, get_current_user
 
 router = APIRouter()
 
@@ -65,7 +67,10 @@ class FeedbackResponse(BaseModel):
 
 
 @router.post("", response_model=FeedbackResponse)
-async def submit_feedback(request: FeedbackRequest):
+async def submit_feedback(
+    request: FeedbackRequest,
+    current_user: CurrentUser = Depends(require_permission("feedback")),
+):
     """
     Submit feedback on an AI response.
 
@@ -151,7 +156,9 @@ async def submit_feedback(request: FeedbackRequest):
 
 
 @router.get("/stats", response_model=FeedbackResponse)
-async def get_feedback_stats():
+async def get_feedback_stats(
+    current_user: CurrentUser = Depends(get_current_user),
+):
     """
     Get feedback statistics summary.
 
@@ -178,7 +185,10 @@ async def get_feedback_stats():
 
 
 @router.get("/report", response_model=FeedbackResponse)
-async def get_feedback_report(days: int = 7):
+async def get_feedback_report(
+    days: int = 7,
+    current_user: CurrentUser = Depends(get_current_user),
+):
     """
     Generate a weekly feedback quality report.
 
@@ -205,7 +215,9 @@ async def get_feedback_report(days: int = 7):
 
 
 @router.get("/retrieval-health", response_model=FeedbackResponse)
-async def get_retrieval_health():
+async def get_retrieval_health(
+    current_user: CurrentUser = Depends(get_current_user),
+):
     """
     Get retrieval chunk quality health report.
 
@@ -236,7 +248,9 @@ async def get_retrieval_health():
 
 
 @router.get("/prompt-health", response_model=FeedbackResponse)
-async def get_prompt_health():
+async def get_prompt_health(
+    current_user: CurrentUser = Depends(get_current_user),
+):
     """
     Get prompt template health report.
 

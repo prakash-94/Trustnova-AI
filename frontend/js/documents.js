@@ -35,7 +35,7 @@ const Docs = (() => {
 
     try {
       const d = await api.upload('/documents/upload', formData);
-      const indexed = d.indexed || d.files_processed || 0;
+      const indexed = d.chunks_created || d.indexed || 0;
       status.innerHTML = `<div class="chunk-item" style="border-left:3px solid var(--green);color:var(--green)">
         ✅ Successfully indexed ${indexed} document(s). Refreshing index…
       </div>`;
@@ -78,7 +78,7 @@ const Docs = (() => {
     tbody.innerHTML = `<tr><td colspan="4" class="loading-cell"><div class="loading-state"><div class="spinner"></div><span>Loading…</span></div></td></tr>`;
 
     try {
-      const d = await api.get('/documents/list');
+      const d = await api.get('/documents/index');
       const docs = d.documents || d.files || [];
 
       if (!docs.length) {

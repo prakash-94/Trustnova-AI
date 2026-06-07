@@ -7,9 +7,11 @@ risk profile (Phase 7), and product recommendations (Phase 7).
 """
 import traceback
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 from typing import Optional, List
+
+from src.api.auth import CurrentUser, require_permission, log_audit
 
 router = APIRouter()
 
@@ -31,7 +33,12 @@ class CustomerSummaryResponse(BaseModel):
 
 
 @router.get("/search", tags=["Customer Intelligence"])
-async def search_customers(q: str = "", limit: int = 5):
+async def search_customers(
+    q: str = "",
+    limit: int = 5,
+    http_request: Request = None,
+    current_user: CurrentUser = Depends(require_permission("customer")),
+):
     """
     Search customers by name or ID.
     Returns matching customer records for the dashboard search bar.
@@ -62,7 +69,11 @@ async def search_customers(q: str = "", limit: int = 5):
 
 
 @router.get("/summary/{customer_id}", response_model=CustomerSummaryResponse)
-async def get_customer_summary(customer_id: str):
+async def get_customer_summary(
+    customer_id: str,
+    http_request: Request = None,
+    current_user: CurrentUser = Depends(require_permission("customer")),
+):
     """
     Get a full 360-degree customer profile.
 
@@ -75,6 +86,10 @@ async def get_customer_summary(customer_id: str):
     """
     try:
         from src.rag.customer_context import get_full_customer_context
+
+        # Audit log PII access
+        ip = http_request.client.host if http_request and http_request.client else ""
+        log_audit(current_user.username, "read", "customer_profile", customer_id, ip)
 
         context = get_full_customer_context(customer_id)
 
