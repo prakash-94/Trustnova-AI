@@ -9,7 +9,7 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 COPY frontend-react/package*.json ./
-RUN npm ci --prefer-offline
+RUN npm ci
 
 COPY frontend-react/ ./
 RUN npm run build
