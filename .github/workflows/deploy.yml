@@ -46,7 +46,7 @@ jobs:
       - name: Health check — Backend
         run: |
           for i in {1..5}; do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health || true)
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8001/health || true)
             if [ "$STATUS" = "200" ]; then
               echo "✅ Backend is healthy"
               break
@@ -62,7 +62,7 @@ jobs:
 
       - name: Health check — ML Service
         run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8001/health || true)
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8003/health || true)
           if [ "$STATUS" = "200" ]; then
             echo "✅ ML Service is healthy"
           else
@@ -95,9 +95,9 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Service      | Port | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|-------------|------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Backend     | 8000 | ✅     |" >> $GITHUB_STEP_SUMMARY
+          echo "| Backend     | 8001 | ✅     |" >> $GITHUB_STEP_SUMMARY
           echo "| Frontend    | 80   | ✅     |" >> $GITHUB_STEP_SUMMARY
-          echo "| ML Service  | 8001 | ✅     |" >> $GITHUB_STEP_SUMMARY
+          echo "| ML Service  | 8003 | ✅     |" >> $GITHUB_STEP_SUMMARY
           echo "| ChromaDB    | 8002 | ✅     |" >> $GITHUB_STEP_SUMMARY
           echo "| Prometheus  | 9090 | ✅     |" >> $GITHUB_STEP_SUMMARY
           echo "| Grafana     | 3000 | ✅     |" >> $GITHUB_STEP_SUMMARY
