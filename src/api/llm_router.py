@@ -70,8 +70,9 @@ TOKEN_COSTS = {
     "gpt-3.5-turbo":             {"input": 0.0005,  "output": 0.0015},
 }
 
-MAX_RETRIES           = 3
-INITIAL_BACKOFF_SECS  = 2
+MAX_RETRIES            = 3
+INITIAL_BACKOFF_SECS   = 2
+INITIAL_BACKOFF_SECONDS = INITIAL_BACKOFF_SECS   # alias for tests
 
 
 # ── DB helpers ─────────────────────────────────────────────────
