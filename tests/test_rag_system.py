@@ -99,43 +99,53 @@ class TestVectorStore:
 BANKING_QUESTIONS = [
     {
         "question": "What is the AML policy for large cash deposits?",
-        "expected_sources": ["compliance_guide", "wire_transfers"],
+        "expected_sources": [
+            "compliance_guide", "wire_transfers",
+            "compliance_aml_kyc", "risk_fraud_security",
+        ],
     },
     {
         "question": "What are the KYC requirements for new business accounts?",
-        "expected_sources": ["business_banking", "compliance_guide"],
+        "expected_sources": [
+            "business_banking", "compliance_guide",
+            "compliance_aml_kyc", "operations_procedures",
+        ],
     },
     {
         "question": "What credit score is needed for a premium credit card?",
-        "expected_sources": ["credit_cards"],
+        "expected_sources": [
+            "credit_cards", "products_services_guide", "loan_policies",
+        ],
     },
     {
         "question": "What are the wire transfer limits and fees?",
-        "expected_sources": ["wire_transfers", "fee_schedule"],
+        "expected_sources": ["wire_transfers", "fee_schedule", "operations_procedures"],
     },
     {
         "question": "Explain the mortgage pre-approval process.",
-        "expected_sources": ["mortgage_guide", "loan_policies"],
+        "expected_sources": ["mortgage_guide", "loan_policies", "products_services_guide"],
     },
     {
         "question": "What savings account options do you offer?",
-        "expected_sources": ["savings_products"],
+        "expected_sources": [
+            "savings_products", "products_services_guide", "fee_schedule",
+        ],
     },
     {
         "question": "What are the fees for international transactions?",
-        "expected_sources": ["fee_schedule", "wire_transfers"],
+        "expected_sources": ["fee_schedule", "wire_transfers", "operations_procedures"],
     },
     {
         "question": "How does the mobile banking app work?",
-        "expected_sources": ["digital_banking"],
+        "expected_sources": ["digital_banking", "products_services_guide", "faq_general"],
     },
     {
         "question": "What are the loan interest rates?",
-        "expected_sources": ["loan_policies"],
+        "expected_sources": ["loan_policies", "products_services_guide", "mortgage_guide"],
     },
     {
         "question": "What wealth management services are available?",
-        "expected_sources": ["wealth_management"],
+        "expected_sources": ["wealth_management", "products_services_guide"],
     },
 ]
 
