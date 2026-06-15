@@ -166,7 +166,6 @@ class TrustScoreCalculator:
         age_days = customer.get("account_age_days") or 0
         if not age_days and customer.get("created_at"):
             try:
-                from datetime import datetime
                 created = datetime.fromisoformat(str(customer["created_at"])[:19])
                 age_days = (datetime.now() - created).days
             except Exception:

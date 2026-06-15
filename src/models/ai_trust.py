@@ -89,22 +89,8 @@ class AITrustScorer:
         if not similarity_scores:
             return 0.0
 
-        # Sort descending, take top 3 with rank weights
-        sorted_scores = sorted(similarity_scores, reverse=True)
-        weights = [0.50, 0.30, 0.20]
-        top = sorted_scores[:3]
-        if len(top) == 1:
-            weighted = top[0]
-        elif len(top) == 2:
-            w = [0.65, 0.35]
-            weighted = sum(s * w for s, w in zip(top, w))
-        else:
-            weighted = sum(s * w for s, w in zip(top, weights))
-
-        # Calibrate: all-MiniLM-L6-v2 cosine similarities top out at ~0.72.
-        # Multiply by 1.30 + 0.05 offset so a typical 0.68 score → 0.934.
-        calibrated = min(1.0, weighted * 1.30 + 0.05)
-        return max(0.0, calibrated)
+        avg = sum(similarity_scores) / len(similarity_scores)
+        return max(0.0, min(1.0, avg))
 
     # ==================================================================
     # Component 2: Hallucination Probability
@@ -127,7 +113,7 @@ class AITrustScorer:
             Float in [0, 1]. Lower = less hallucination = more trustworthy.
         """
         if not source_chunks or not answer:
-            return 0.30  # Unknown — moderate risk
+            return 0.5  # Unknown — moderate risk
 
         try:
             from src.api.llm_router import route
@@ -239,8 +225,8 @@ Respond with ONLY a valid JSON object on one line:
         elif overlap >= 0.25:
             raw = 0.20
         else:
-            # Low overlap in banking context: likely paraphrase / synonym mismatch
-            raw = 0.25
+            # Low overlap → likely fabricated or out-of-context response
+            raw = 0.70
         return self._apply_citation_cap(raw, answer)
 
     # ==================================================================
@@ -264,7 +250,7 @@ Respond with ONLY a valid JSON object on one line:
             Float in [0, 1]. Higher = more agreement.
         """
         if not answer_secondary:
-            return 0.95  # Default when secondary model not available (Llama 3.3 70B is highly consistent)
+            return 0.7  # Default when secondary model not available
 
         tokens_a = set(answer_primary.lower().split())
         tokens_b = set(answer_secondary.lower().split())
@@ -346,11 +332,11 @@ Answer:"""
         if matches >= 3:
             return 1.0
         elif matches == 2:
-            return 0.9   # Very good — 2 section citations
+            return 0.9
         elif matches == 1:
-            return 0.7   # Good — 1 section citation
+            return 0.5
         else:
-            return 0.5   # Floor: AI may still use retrieved context implicitly
+            return 0.0
 
     # ==================================================================
     # Component 5: Prompt Reliability
