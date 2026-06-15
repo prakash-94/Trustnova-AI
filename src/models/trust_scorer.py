@@ -77,7 +77,7 @@ class TrustScoreCalculator:
 
     def _get_customer_data(self, customer_id: str) -> Optional[Dict]:
         """Fetch customer data from SQLite."""
-        query = text("SELECT * FROM customers WHERE id = :cid")
+        query = text("SELECT * FROM customers WHERE customer_id = :cid")
         df = pd.read_sql(query, self.engine, params={"cid": customer_id})
         if df.empty:
             return None
@@ -273,7 +273,7 @@ class TrustScoreCalculator:
         Calculate trust scores for all customers (or a limited batch).
         Returns a DataFrame with scores.
         """
-        query = "SELECT id AS customer_id FROM customers"
+        query = "SELECT customer_id FROM customers"
         if limit:
             query += f" LIMIT {limit}"
 

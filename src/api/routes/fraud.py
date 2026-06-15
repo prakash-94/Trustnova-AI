@@ -7,6 +7,26 @@ from src.models.database import engine
 
 router = APIRouter()
 
+_iso_model_cache = None
+
+
+def _get_isolation_forest_score(txn: dict):
+    """Return a [0,1] anomaly probability via Isolation Forest, or None if model unavailable."""
+    global _iso_model_cache
+    import os, pickle, pandas as pd
+    from src.models.fraud_detector import FEATURE_COLS
+    model_path = os.path.join("models", "fraud_isolation_forest.pkl")
+    if not os.path.exists(model_path):
+        return None
+    if _iso_model_cache is None:
+        with open(model_path, "rb") as f:
+            _iso_model_cache = pickle.load(f)
+    features = pd.DataFrame([txn])[FEATURE_COLS].fillna(0)
+    raw = _iso_model_cache.decision_function(features)[0]
+    # decision_function returns negative for anomalies; convert to [0,1] probability
+    prob = float(1 / (1 + (raw + 0.5) * 4))
+    return max(0.0, min(1.0, prob))
+
 
 def _severity(score: float) -> str:
     if score >= 0.85: return "critical"

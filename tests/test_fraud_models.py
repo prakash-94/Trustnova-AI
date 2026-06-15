@@ -18,6 +18,18 @@ import pickle
 import numpy as np
 import pandas as pd
 
+# Skip all pkl-dependent tests when the models directory is absent (e.g. CI).
+# Run  python -m src.models.model_zoo  locally to generate the pkl files.
+_MODELS_DIR = "models"
+_models_available = (
+    os.path.isdir(_MODELS_DIR)
+    and len([f for f in os.listdir(_MODELS_DIR) if f.endswith(".pkl")]) >= 5
+)
+_skip_no_models = pytest.mark.skipif(
+    not _models_available,
+    reason="pkl model files not present — run src.models.model_zoo to generate them",
+)
+
 
 # ============================================================
 # Feature Engineering Tests
@@ -53,6 +65,7 @@ class TestFeatureEngineering:
 # ============================================================
 # Model Loading Tests
 # ============================================================
+@_skip_no_models
 class TestModelLoading:
     """Test all 5 models can be loaded from disk."""
 
@@ -112,6 +125,7 @@ SAFE_TXN = {
 }
 
 
+@_skip_no_models
 class TestXGBoostPrediction:
     """Test XGBoost prediction function."""
 
@@ -154,6 +168,7 @@ class TestXGBoostPrediction:
             assert "contribution" in factor
 
 
+@_skip_no_models
 class TestRandomForestPrediction:
     """Test Random Forest prediction."""
 
@@ -168,6 +183,7 @@ class TestRandomForestPrediction:
         assert 0.0 <= prob <= 1.0
 
 
+@_skip_no_models
 class TestIsolationForestPrediction:
     """Test Isolation Forest prediction."""
 
@@ -182,6 +198,7 @@ class TestIsolationForestPrediction:
         assert isinstance(raw_score, (float, np.floating))
 
 
+@_skip_no_models
 class TestAutoencoderPrediction:
     """Test Autoencoder prediction."""
 
@@ -209,6 +226,7 @@ class TestAutoencoderPrediction:
         assert error >= 0
 
 
+@_skip_no_models
 class TestLSTMPrediction:
     """Test LSTM prediction."""
 
@@ -246,6 +264,7 @@ class TestLSTMPrediction:
 # ============================================================
 # SHAP Explanation Tests
 # ============================================================
+@_skip_no_models
 class TestSHAPExplanations:
     """Test SHAP-based feature attribution."""
 
@@ -285,6 +304,7 @@ class TestSHAPExplanations:
 # ============================================================
 # Fraud Explainer Tests
 # ============================================================
+@_skip_no_models
 class TestFraudExplainer:
     """Test the full explanation pipeline."""
 
@@ -319,6 +339,7 @@ class TestFraudExplainer:
 # ============================================================
 # Ensemble Scoring Tests
 # ============================================================
+@_skip_no_models
 class TestEnsembleScoring:
     """Test ensemble scoring (XGBoost + Isolation Forest)."""
 
