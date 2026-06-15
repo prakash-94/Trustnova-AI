@@ -25,7 +25,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # Log in so docker can cache-from GHCR layers built by CI
       - name: Log in to GitHub Container Registry
