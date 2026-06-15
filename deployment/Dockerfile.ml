@@ -29,11 +29,11 @@ RUN pip install --upgrade pip && \
 COPY deployment/ml_service.py ./ml_service.py
 
 # ── ML model artefacts ────────────────────────────────────────
-# Models are generated locally (not stored in git).
-# Place pkl files in models/ before building this image.
-# Run: python -m src.models.train  to generate them.
+# Models are generated locally and not stored in git.
+# Volume-mount the models/ directory at runtime:
+#   docker run -v /path/to/models:/app/models ...
+# The service returns null gracefully when a model file is absent.
 RUN mkdir -p /app/models
-COPY models/ /app/models/
 
 # ── Non-root user ─────────────────────────────────────────────
 RUN useradd -m -u 1001 appuser && chown -R appuser:appuser /app
