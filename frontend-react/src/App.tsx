@@ -13,5 +13,6 @@ export default function App() {
   }, []);
 
   if (!authed) return <LoginPage onLogin={() => setAuthed(true)} />;
-  return <BankerCopilot onLogout={() => { Auth.clear(); setAuthed(false); }} />;
+  const user = Auth.getUser()!;
+  return <BankerCopilot user={user} onLogout={() => { Auth.clear(); setAuthed(false); }} />;
 }

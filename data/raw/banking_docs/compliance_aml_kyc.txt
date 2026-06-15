@@ -1,0 +1,146 @@
+Citizens Bank — BSA/AML Compliance & KYC Program
+
+OVERVIEW
+
+This document defines Citizens Bank's Bank Secrecy Act (BSA) and Anti-Money Laundering (AML) compliance program, Customer Identification Program (CIP), Know Your Customer (KYC) procedures, OFAC sanctions screening, and Suspicious Activity Report (SAR) / Currency Transaction Report (CTR) filing requirements.
+
+BSA/AML PROGRAM
+
+1. PROGRAM GOVERNANCE
+
+1.1 BSA Officer
+- A designated BSA/AML Compliance Officer is responsible for day-to-day program oversight
+- Reports directly to the Chief Compliance Officer and Board of Directors
+- Authority to file SARs independently and escalate to law enforcement
+
+1.2 Board Oversight
+- Board receives quarterly AML program updates
+- Annual BSA/AML risk assessment reviewed and approved by the Board
+- Independent audit of BSA/AML program conducted annually
+
+1.3 Four Pillars
+- Written policies, procedures, and controls
+- Designated compliance officer with sufficient authority
+- Ongoing employee training program
+- Independent testing/audit of the program
+
+2. CUSTOMER IDENTIFICATION PROGRAM (CIP)
+
+2.1 Minimum Information Required — Individuals
+- Full legal name (as appears on government-issued ID)
+- Date of birth
+- Address (residential street address; PO Box acceptable only if street address also provided)
+- Identification number (SSN for US persons; passport/ITIN for non-US persons)
+
+2.2 Minimum Information Required — Entities
+- Legal name of entity
+- Principal place of business address
+- EIN or taxpayer identification number
+- Beneficial ownership information (25% ownership threshold per FinCEN CDD Rule)
+
+2.3 Identity Verification Methods
+- Documentary: government-issued photo ID (driver's license, passport, state ID)
+- Non-documentary: credit bureau verification, knowledge-based authentication (KBA)
+- All new accounts require verification within 30 days of account opening
+- Expired IDs not accepted; must be valid at time of verification
+
+2.4 Customer Due Diligence (CDD)
+- Standard Due Diligence: all retail and business customers
+- Enhanced Due Diligence (EDD): high-risk customers, PEPs, high-risk jurisdictions
+- EDD triggers: high AML risk rating, PEP status, sanctions hits, adverse media, large cash usage
+
+3. KNOW YOUR CUSTOMER (KYC)
+
+3.1 Risk Rating Categories
+- Low Risk: US-based, stable income, standard products, no adverse history
+- Medium Risk: complex ownership, international connections, moderate transaction volumes
+- High Risk: PEPs, high-value cash transactions, high-risk countries, adverse media
+- Very High Risk: sanctions hits, confirmed fraud, or linked to criminal activity
+
+3.2 Ongoing Monitoring
+- Low risk: annual review
+- Medium risk: semi-annual review
+- High risk: quarterly review with manager sign-off
+- Very high risk: monthly review; escalation to BSA Officer required
+
+3.3 Politically Exposed Persons (PEPs)
+- PEPs defined as current/former senior government officials and their immediate family
+- Automatic EDD required for all PEPs
+- Source of funds and source of wealth documentation mandatory
+- Senior management approval required to onboard or continue PEP relationships
+
+4. OFAC SANCTIONS SCREENING
+
+4.1 Screening Requirements
+- All new customers screened against OFAC Specially Designated Nationals (SDN) list at onboarding
+- Ongoing screening: all existing customers re-screened within 24 hours of SDN list updates
+- All wire transfers screened before execution
+- International transactions screened against country-level sanctions programs
+
+4.2 Hit Resolution
+- Potential hits generate automatic account freeze pending review
+- BSA team must clear or escalate within 1 business day
+- Confirmed hits: account blocked, assets frozen, OFAC report filed within 10 business days
+- False positives documented and cleared with supervisor sign-off
+
+5. TRANSACTION MONITORING
+
+5.1 Automated System Rules (key examples)
+- Cash transactions ≥ $10,000 in a single day (CTR trigger)
+- Multiple cash transactions totaling ≥ $10,000 structured over consecutive days (structuring alert)
+- Wire transfers to/from high-risk jurisdictions ≥ $5,000
+- Rapid movement of funds: deposit + withdrawal of ≥ 80% within 5 business days
+- Round-dollar transactions: multiple round-dollar amounts on same account in 24 hours
+- New account activity: large transactions within 30 days of account opening
+
+5.2 Alert Review
+- Level 1 review: AML analyst within 5 business days
+- Level 2 escalation: BSA Officer within 2 business days of Level 1 escalation
+- 30-day clock for SAR filing begins on date the bank first knows of suspicious activity
+
+6. SAR FILING REQUIREMENTS
+
+6.1 Mandatory Filing Triggers
+- Known or suspected criminal violation involving $5,000+ where bank is victim or conduit
+- Transaction of $5,000+ involving funds from illegal activity
+- Insider abuse of any amount
+- Terrorism financing of any amount
+
+6.2 Filing Process
+- BSA Officer approves all SARs before submission
+- Filed electronically via FinCEN BSA E-Filing System within 30 days of detection
+- 60-day extension available if subject is unidentifiable
+- SARs and supporting documentation retained for 5 years
+
+6.3 SAR Confidentiality
+- Strict prohibition on tipping off SAR subjects (18 U.S.C. § 1513)
+- SAR existence may not be disclosed to any person outside the bank except FinCEN and law enforcement
+- "No duty to disclose" protection under 31 U.S.C. § 5318(g)(2)
+
+7. CURRENCY TRANSACTION REPORTS (CTR)
+
+7.1 Filing Requirements
+- Required for cash-in or cash-out transactions exceeding $10,000 in a single business day
+- Multiple transactions by same person on same day must be aggregated
+- Filed within 15 calendar days of transaction
+- Retained for 5 years
+
+7.2 CTR Exemptions
+- Phase I: banks, government entities, listed public companies
+- Phase II: non-listed businesses with established cash-intensive history
+- Exemption review: annual for Phase II; must be revoked if suspicious activity detected
+
+8. EMPLOYEE TRAINING
+
+- All employees: annual BSA/AML awareness training (mandatory)
+- Customer-facing staff: enhanced training on CIP and suspicious activity identification
+- BSA/AML team: advanced training including FinCEN guidance and typologies
+- New hires: BSA training within 30 days of start date
+
+9. RECORD RETENTION
+
+- CIP records: 5 years after account closure
+- SAR records: 5 years from filing date
+- CTR records: 5 years from filing date
+- Transaction records: 5 years
+- OFAC screening records: 5 years

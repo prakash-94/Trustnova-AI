@@ -1,0 +1,122 @@
+Citizens Bank — Corporate Overview & Regulatory Profile
+
+OVERVIEW
+
+Citizens Bank is a full-service commercial bank headquartered in the United States, providing retail banking, business banking, lending, wealth management, and treasury services to individuals, small businesses, and mid-market commercial clients.
+
+CORPORATE PROFILE
+
+1. COMPANY INFORMATION
+
+1.1 Legal Entity
+- Full legal name: Citizens Bank, National Association
+- Charter type: National bank (chartered by the Office of the Comptroller of the Currency)
+- FDIC certificate number: on file with FDIC
+- Federal Reserve member: Yes (member bank)
+- Holding company: Citizens Financial Group
+
+1.2 Mission & Values
+- Mission: To help our customers, colleagues, and communities reach their potential
+- Values: Integrity, Accountability, Collaboration, Excellence, Customer Focus
+- Community Reinvestment Act (CRA) rating: Outstanding (most recent examination)
+
+1.3 Scale & Footprint
+- Total assets: approximately $222 billion
+- Total deposits: approximately $175 billion
+- Total loans: approximately $140 billion
+- Branches: approximately 1,200 across the United States
+- ATMs: approximately 3,300 nationwide
+- Employees: approximately 18,000
+
+2. REGULATORY STANDING
+
+2.1 Primary Regulators
+- Office of the Comptroller of the Currency (OCC): primary federal regulator for national bank
+- Federal Reserve Board (FRB): regulates holding company and systemic risk
+- Consumer Financial Protection Bureau (CFPB): consumer protection supervision
+- Financial Crimes Enforcement Network (FinCEN): BSA/AML reporting and compliance
+- Office of Foreign Assets Control (OFAC): sanctions compliance
+
+2.2 Key Regulatory Requirements
+- Capital adequacy: Basel III/IV framework; CET1 ratio target above 10%
+- Stress testing: DFAST submission required annually
+- Recovery and Resolution Planning: living will filed with regulators biennially
+- Volcker Rule compliance: no proprietary trading; permitted fund activities only
+
+2.3 Consumer Regulations
+- Truth in Lending Act (TILA) / Regulation Z: loan disclosures
+- Equal Credit Opportunity Act (ECOA) / Regulation B: fair lending
+- Home Mortgage Disclosure Act (HMDA) / Regulation C: mortgage reporting
+- Electronic Fund Transfer Act / Regulation E: consumer electronic payments
+- Real Estate Settlement Procedures Act (RESPA): mortgage servicing
+- Gramm-Leach-Bliley Act (GLBA): customer data privacy
+
+3. PRODUCTS & SERVICES SUMMARY
+
+3.1 Retail Banking
+- Checking accounts (personal, student, senior)
+- Savings accounts, money market accounts, certificates of deposit
+- Debit and credit cards
+- Personal loans, auto loans, home equity loans/lines
+- Mortgage origination and servicing
+- Digital banking: mobile app, online banking, Zelle P2P payments
+
+3.2 Business Banking
+- Business checking and savings accounts
+- Business lines of credit (up to $500,000)
+- SBA loans (7(a) and 504 programs)
+- Commercial real estate loans
+- Treasury and cash management services
+- Merchant processing and payroll services
+
+3.3 Commercial & Institutional
+- Commercial loans and credit facilities (>$5 million)
+- Syndicated lending participation
+- Trade finance and letters of credit
+- Foreign exchange and interest rate hedging
+- Investment banking referral program
+
+3.4 Wealth Management
+- Citizens Investment Services: brokerage and advisory
+- Fiduciary trust services
+- Retirement planning (IRA, SEP, SIMPLE, 401(k) advisory)
+- Estate planning coordination
+- Private banking for high-net-worth clients (>$1 million in investable assets)
+
+4. FINANCIAL HIGHLIGHTS
+
+4.1 Capital Ratios (as of most recent regulatory filing)
+- Common Equity Tier 1 (CET1): 10.6%
+- Tier 1 Capital Ratio: 11.2%
+- Total Capital Ratio: 13.4%
+- Leverage Ratio: 8.9%
+- All ratios above "well-capitalized" minimums under PCA framework
+
+4.2 Asset Quality
+- Non-Performing Loan (NPL) ratio: 1.8%
+- Net Charge-Off (NCO) ratio: 0.42%
+- Allowance for Credit Losses (ACL) to loans: 1.65%
+- Provision coverage ratio: 138%
+
+4.3 Profitability
+- Return on Assets (ROA): 1.02%
+- Return on Equity (ROE): 11.4%
+- Net Interest Margin (NIM): 3.18%
+- Efficiency ratio: 59.2%
+
+5. COMMUNITY COMMITMENT
+
+5.1 Community Reinvestment Act (CRA)
+- "Outstanding" CRA rating — top 10% of national banks
+- $50 billion, 5-year community investment commitment
+- Focus areas: affordable housing, small business lending, economic development
+
+5.2 Diversity, Equity & Inclusion
+- Signatory to UN Principles for Responsible Banking
+- Annual pay equity analysis; corrective actions taken
+- Minority Business Enterprise (MBE) procurement goal: 15% of addressable spend
+
+5.3 Environmental Commitment
+- Net-zero operational emissions target by 2030
+- Sustainable finance commitment: $50 billion by 2030
+- TCFD-aligned climate risk disclosures published annually

@@ -6,6 +6,8 @@ interface Props {
   className?: string;
   onClick?: () => void;
   hover?: boolean;
+  animate?: boolean;
+  delay?: number;
 }
 
 export default function GlassCard({ children, className, onClick, hover }: Props) {

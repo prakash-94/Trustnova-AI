@@ -1,0 +1,157 @@
+Citizens Bank — Operations Procedures Manual
+
+OVERVIEW
+
+This manual defines standard operating procedures for branch and back-office operations including account opening, identity verification, transaction processing, wire transfers, dispute handling, and regulatory reporting workflows.
+
+ACCOUNT OPERATIONS
+
+1. ACCOUNT OPENING PROCEDURES
+
+1.1 New Account Workflow
+Step 1: Collect customer information (CIP minimum requirements)
+Step 2: Scan and verify government-issued ID
+Step 3: Run OFAC and fraud screening (automated, real-time)
+Step 4: Complete risk rating questionnaire (AML risk assessment)
+Step 5: Obtain required signatures and disclosures
+Step 6: Fund account with opening deposit (minimum per product)
+Step 7: Issue debit card and activate online banking enrollment
+
+1.2 Required Disclosures at Account Opening
+- Truth in Savings disclosure (Reg DD)
+- Electronic Fund Transfer disclosure (Reg E)
+- Privacy Notice (GLBA)
+- Funds Availability Policy (Reg CC)
+- Overdraft opt-in/opt-out election
+
+1.3 Account Opening Holds
+- New accounts: holds may be placed per Reg CC availability schedule
+- Exception holds for new customers: up to 9 business days for first 30 days
+- Large deposits (> $5,000): may hold amounts over $5,000 for up to 7 business days
+
+2. IDENTITY VERIFICATION WORKFLOW
+
+2.1 In-Branch Verification
+- Primary ID: unexpired government photo ID (driver's license, state ID, passport)
+- Secondary ID (if primary insufficient): credit/debit card, utility bill (within 60 days)
+- Record ID number, issuing state, expiration date in core system
+- Photocopy or scan ID and retain in customer file
+
+2.2 Online/Digital Verification
+- Document scan: AI-powered ID capture and liveness check
+- Knowledge-based authentication (KBA): 4-of-5 questions correctly answered
+- Device fingerprint and IP geolocation risk scoring
+- Failed verification: account pended; customer contacted within 1 business day
+
+2.3 Non-US Persons
+- Passport required; ITIN or EIN for tax identification
+- Additional documentation may be required depending on country of origin
+- Enhanced screening for FATF high-risk country nationals
+
+3. TRANSACTION PROCESSING
+
+3.1 Funds Availability (Regulation CC)
+- Cash deposits: next business day
+- Local checks: 2nd business day
+- Non-local checks: 5th business day
+- Official/certified checks: next business day (first $5,525 same day)
+- New accounts (< 30 days): holds extended per exception schedule
+
+3.2 Cut-off Times
+- Branch cash deposits: 5:00 PM local time
+- ATM deposits: 9:00 PM local time
+- ACH files: 5:00 PM ET for next-day settlement
+- Domestic wire (outbound): 4:00 PM ET for same-day
+- International wire (outbound): 2:00 PM ET for same-day
+
+3.3 Stop Payment Orders
+- Customer may stop payment on a check via app, phone, or branch
+- Stop payment fee: $35 per item
+- Effective for 6 months; renewable
+- Cannot stop payment on certified or cashier's checks
+
+4. WIRE TRANSFER PROCEDURES
+
+4.1 Domestic Wire Processing
+- Outbound wires require account holder authentication (MFA or in-person)
+- Amounts > $10,000: verbal confirmation call to account holder required
+- Amounts > $50,000: dual approval (teller + supervisor) required
+- Same-day cutoff: 4:00 PM ET via Fedwire
+
+4.2 International Wire Processing
+- SWIFT required; intermediary bank and IBAN/sort code as applicable
+- OFAC screening run before release; confirmed match = hold and escalate to BSA
+- Amounts > $25,000: compliance review (up to 2 business days)
+- Customer receives written disclosure per Remittance Transfer Rule (Reg E) for consumer wires
+
+4.3 Wire Recall Procedures
+- Recall request initiated via SWIFT gSRP or Fedwire recall message
+- Recall does not guarantee recovery; beneficiary bank cooperation required
+- Customer notified of recall attempt and outcome within 5 business days
+
+5. OVERDRAFT PROCEDURES
+
+5.1 Overdraft Coverage Options
+- Standard overdraft service: covers checks, ACH, and recurring debits (opted-in accounts)
+- Opt-out: debit card transactions declined at POS if insufficient funds
+- Overdraft protection: linked savings account sweeps (no fee if available funds)
+- Overdraft line of credit: pre-approved credit line; interest charged on balance
+
+5.2 Overdraft Fees
+- NSF/returned item fee: $35 per item
+- Overdraft paid fee: $35 per item (waived if balance restored by end of business day)
+- Maximum fees per day: 3 overdraft/NSF fees per account per day
+- Accounts overdrawn > 60 days: account closed and referred to collections
+
+6. DISPUTE AND ERROR RESOLUTION
+
+6.1 Regulation E (Electronic Transactions)
+- Unauthorized electronic transaction: must be reported within 60 days of statement
+- Provisional credit: within 5 business days of claim (10 business days for new accounts)
+- Investigation complete: within 10 business days (45 days for international or POS)
+- If investigation not complete in 10 days: provisional credit becomes permanent pending outcome
+
+6.2 Check Dispute (UCC Article 4)
+- Alteration or forgery: customer has up to 1 year to report
+- Bank's liability: recredit within 2 business days of discovery after investigation
+
+6.3 Dispute Escalation
+- Level 1: Branch/Phone banker (0-5 business days)
+- Level 2: Operations dispute team (5-10 business days)
+- Level 3: Compliance and legal review (complex cases)
+- CFPB complaint: bank must respond within 15 calendar days
+
+7. BRANCH OPERATIONS
+
+7.1 Cash Management
+- Teller cash limits: $15,000 per drawer
+- Vault cash limits: branch-specific; set by Operations
+- Dual custody required for vault access at all times
+- Daily cash counts reconciled at open and close; discrepancies > $50 reported to Operations
+
+7.2 Teller Transaction Limits
+- Check cashing (non-account holder): $500 maximum
+- Cash advances on credit card: $1,000 maximum per day
+- Money orders: $1,000 maximum per item; unlimited per day
+
+7.3 Opening and Closing Procedures
+- Opening: dual custody vault open; system login audit trail; cash count verified
+- Closing: all teller drawers reconciled; vault balanced; alarms set per security protocol
+- Discrepancy reporting: submitted to Branch Operations before branch close
+
+8. REGULATORY REPORTING
+
+8.1 Currency Transaction Reports (CTRs)
+- Auto-generated by core system for cash transactions > $10,000
+- Teller must flag aggregated transactions by same customer on same day
+- BSA team files CTR via FinCEN E-Filing within 15 days
+
+8.2 Suspicious Activity Reports (SARs)
+- BSA alert generated → Level 1 analyst review → BSA Officer approval → FinCEN filing
+- 30-day clock from date of initial detection
+- Tellers must report unusual customer behavior to BSA team immediately via SARs hotline
+
+8.3 Gift Cards and Monetary Instruments
+- Monetary instruments (money orders, cashier's checks) purchased with cash > $3,000:
+  require customer identification and logging
+- Gift cards: cannot be purchased with cash > $10,000 (structuring controls apply)

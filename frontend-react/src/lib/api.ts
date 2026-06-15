@@ -1,362 +1,775 @@
 import { Auth } from './auth';
-import type { Customer, Account, Transaction, Loan } from '@/types/banking';
+import type {
+  Customer, Customer360, Account, Transaction,
+  Loan, AMLCase, KYCRecord, KYCQueueItem,
+  FraudAlert, RiskProfile,
+} from '@/types/banking';
 
-async function request<T>(path: string, opts: RequestInit = {}): Promise<T> {
-  const token = Auth.getToken();
-  const res = await fetch(path, {
-    ...opts,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(opts.headers ?? {}),
-    },
-  });
-  if (!res.ok) {
-    let msg = `HTTP ${res.status}`;
-    try { const d = await res.json(); msg = d.detail ?? d.message ?? msg; } catch {}
-    throw new Error(msg);
+export class APIError extends Error {
+  status: number;
+  constructor(detail: string, status: number) {
+    super(detail);
+    this.status = status;
   }
-  return res.json() as Promise<T>;
+}
+
+async function request<T>(url: string, options: RequestInit = {}, opts?: { skipAuthRedirect?: boolean }): Promise<T> {
+  const token = Auth.getToken();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options.headers as Record<string, string>),
+  };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const res = await fetch(url, { ...options, headers });
+
+  if (res.status === 401) {
+    if (!opts?.skipAuthRedirect) {
+      Auth.clear();
+      window.location.href = '/';
+    }
+    let detail = 'Invalid credentials';
+    try { const e = await res.json(); detail = e.detail ?? detail; } catch { /* */ }
+    throw new APIError(detail, res.status);
+  }
+  if (res.status === 403) {
+    throw new APIError('Access denied', res.status);
+  }
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`;
+    try { const e = await res.json(); detail = e.detail ?? detail; } catch { /* */ }
+    throw new APIError(detail, res.status);
+  }
+  const ct = res.headers.get('content-type') ?? '';
+  if (ct.includes('application/json')) return res.json() as Promise<T>;
+  return null as unknown as T;
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 export const authApi = {
   login: (username: string, password: string) =>
-    request<{ access_token: string; token_type: string; user: { username: string; full_name: string; role: string; role_label: string; permissions: string[]; nav_sections: string[] } }>('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
-  logout: () => request<{ message: string }>('/auth/logout', { method: 'POST' }),
-  me: () => request<{ username: string; full_name: string; role: string; role_label: string; permissions: string[]; nav_sections: string[] }>('/auth/me'),
+    request<{
+      access_token: string; token_type: string; expires_in: number;
+      user: { username: string; full_name: string; role: string; role_label: string; permissions: string[]; nav_sections: string[] };
+    }>('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }, { skipAuthRedirect: true }),
+
+  me: () => request<{ username: string; role: string; role_label: string; full_name: string; permissions: string[]; nav_sections: string[] }>('/auth/me'),
+  logout: () => request<void>('/auth/logout', { method: 'POST' }),
 };
 
 // ── Chat ──────────────────────────────────────────────────────────────────────
+export type ChatResult = {
+  answer: string;
+  sources: { document: string; page?: string; freshness?: number }[];
+  confidence: number;
+  agent_name: string;
+  latency_ms: number;
+  metadata: Record<string, unknown>;
+  trust_score?: { final_score: number; tier: string; components: Record<string, number> };
+};
+
 export const chatApi = {
-  send: (message: string, history?: { role: string; content: string }[], sessionId?: string) =>
-    request<{ response: string; message?: string; session_id: string; trust_score?: number; sources?: any[] }>('/chat', { method: 'POST', body: JSON.stringify({ message, history, session_id: sessionId }) }),
+  send: (question: string, agent_id?: string, customer_id?: string, context?: Record<string, unknown>) =>
+    request<ChatResult>('/chat', { method: 'POST', body: JSON.stringify({ question, agent_id, customer_id, context }) }),
+
+  /** Stream response via SSE. Returns an abort function. */
+  streamSend: (
+    question: string,
+    agent_id: string | undefined,
+    customer_id: string | undefined,
+    onToken: (token: string) => void,
+    onDone: (result: ChatResult) => void,
+    onError: (err: string) => void,
+  ): (() => void) => {
+    const token = Auth.getToken();
+    const controller = new AbortController();
+
+    (async () => {
+      try {
+        const res = await fetch('/chat/stream', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ question, agent_id, customer_id }),
+          signal: controller.signal,
+        });
+
+        if (res.status === 401) { Auth.clear(); window.location.href = '/'; return; }
+        if (!res.ok) {
+          const e = await res.json().catch(() => ({}));
+          onError(e.detail ?? `HTTP ${res.status}`);
+          return;
+        }
+
+        const reader = res.body!.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() ?? '';
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.type === 'token') onToken(data.content);
+              else if (data.type === 'done') onDone(data as ChatResult);
+            } catch { /* malformed chunk */ }
+          }
+        }
+      } catch (err) {
+        if ((err as Error).name !== 'AbortError') {
+          onError(err instanceof Error ? err.message : 'Stream error');
+        }
+      }
+    })();
+
+    return () => controller.abort();
+  },
 };
 
 // ── Customers ─────────────────────────────────────────────────────────────────
+export type NewCustomer = {
+  first_name: string; last_name: string; email: string;
+  phone?: string;
+  credit_score?: number;
+  annual_income?: number;
+  aml_risk_rating?: string;
+  account_type?: string;
+  opening_balance?: number;
+  address_city?: string;
+  address_state?: string;
+  // legacy fields kept for backward compat
+  age?: number; income?: number;
+  risk_level?: string; balance?: number;
+};
+export type KpiStats = {
+  total_customers: number; ai_queries_today: number;
+  fraud_open: number; fraud_total: number; fraud_critical: number;
+  loan_count: number; loan_pending: number; kyc_pending: number;
+  trust_score_avg: number; docs_indexed: number;
+  high_risk_customers: number; avg_credit_score: number; aml_open: number;
+};
+
 export const customersApi = {
   search: (q: string, limit = 20) =>
-    request<{ customers: Customer[]; results?: Customer[]; total: number }>(`/customers/search?q=${encodeURIComponent(q)}&limit=${limit}`),
-  list: (params?: { limit?: number; offset?: number }) => {
+    request<{ results: Customer[]; total: number }>(`/customers/search?q=${encodeURIComponent(q)}&limit=${limit}`),
+  get: (id: string) => request<Customer>(`/customers/${id}`),
+  list: (params?: { limit?: number; offset?: number; risk_level?: string }) => {
     const p = new URLSearchParams();
-    if (params?.limit)  p.set('limit',  String(params.limit));
+    if (params?.limit)  p.set('limit', String(params.limit));
     if (params?.offset) p.set('offset', String(params.offset));
+    if (params?.risk_level) p.set('risk_level', params.risk_level);
     return request<{ customers: Customer[]; total: number }>(`/customers/list?${p}`);
   },
-  get: (id: string) => request<Customer>(`/customers/${id}`),
-  summary: (id: string) => request<{ customer: Customer; accounts: Account[]; summary: Record<string, unknown> }>(`/customers/${id}/summary`),
   accounts: (id: string) => request<{ accounts: Account[] }>(`/customers/${id}/accounts`),
-  transactions: (id: string, limit = 50) => request<{ transactions: Transaction[] }>(`/customers/${id}/transactions?limit=${limit}`),
-  stats: () => request<{ total: number; active: number; high_risk: number; kyc_pending: number }>('/customers/stats/overview'),
-  create: (data: Partial<Customer> & { first_name: string; last_name: string; email: string }) =>
-    request<{ id: string; message: string }>('/customers', { method: 'POST', body: JSON.stringify(data) }),
+  transactions: (id: string, limit = 20) => request<{ transactions: Transaction[] }>(`/customers/${id}/transactions?limit=${limit}`),
+  summary: (id: string) => request<Customer360>(`/customers/${id}/summary`),
+  stats: () => request<{ total_customers: number; ai_queries_today: number }>('/customers/stats/overview'),
+  create: (data: NewCustomer) => request<{ customer: Customer; message: string }>(
+    '/customers', { method: 'POST', body: JSON.stringify(data) }
+  ),
 };
 
-// ── Accounts ──────────────────────────────────────────────────────────────────
-export const accountsApi = {
-  list: (params?: { type?: string; status?: string; limit?: number; offset?: number }) => {
-    const p = new URLSearchParams();
-    if (params?.type)   p.set('type',   params.type);
-    if (params?.status) p.set('status', params.status);
-    if (params?.limit)  p.set('limit',  String(params.limit));
-    if (params?.offset) p.set('offset', String(params.offset));
-    return request<{ accounts: Account[]; total: number }>(`/accounts?${p}`);
-  },
-  stats: () => request<{ total: number; active: number; by_type: Record<string, number>; total_balance_cents: number }>('/accounts/stats'),
-};
-
-// ── Transactions ──────────────────────────────────────────────────────────────
-export const transactionsApi = {
-  list: (params?: { period?: string; limit?: number; offset?: number }) => {
-    const p = new URLSearchParams();
-    if (params?.period) p.set('period', params.period);
-    if (params?.limit)  p.set('limit',  String(params.limit));
-    if (params?.offset) p.set('offset', String(params.offset));
-    return request<{ transactions: Transaction[]; total: number }>(`/transactions?${p}`);
-  },
-  stats: () => request<{ total: number; today: number; flagged: number; total_volume_cents: number }>('/transactions/stats'),
+export const kpiApi = {
+  stats: () => request<KpiStats>('/kpi/stats'),
+  get: () => request<KpiStats>('/kpi/stats'),
+  aiTrustInfo: () => request<{
+    entries: Record<string, unknown>[];
+    storage: Record<string, string>;
+    scoring_weights: Record<string, { weight: number; description: string }>;
+    tiers: Record<string, string>;
+  }>('/kpi/ai-trust/recent'),
 };
 
 // ── Loans ─────────────────────────────────────────────────────────────────────
+export interface LoanDetail {
+  loan: Loan;
+  customer: {
+    customer_id: string; name: string; email: string; age: number;
+    income: number; income_cents: number; credit_score: number;
+    risk_level: string; account_type: string; balance: number;
+    balance_cents: number; account_opened: string; account_age_days: number;
+    sentiment_avg: number;
+  };
+  trust_score: {
+    score: number; tier: string;
+    account_age_component: number; credit_score_component: number;
+    fraud_history_component: number; sentiment_component: number;
+    interaction_component: number; timestamp: string;
+  };
+  fraud_alerts: { alert_id: string; risk_score: number; reason: string; status: string; timestamp: string }[];
+  transactions: {
+    id: string; amount_cents: number; type: string; merchant: string;
+    category: string; location: string; timestamp: string;
+    is_fraud: boolean; merchant_risk: string;
+  }[];
+  loan_history: {
+    id: string; loan_type: string; loan_label: string; status: string;
+    requested_cents: number; outstanding_cents: number;
+    interest_rate: number; term_months: number; origination_date: string;
+    is_delinquent: boolean; risk_grade: string;
+  }[];
+  kyc: {
+    identity_verified: boolean; income_verified: boolean; address_verified: boolean;
+    document_status: string; aml_check: string; pep_check: string;
+    risk_rating: string; avg_fraud_risk_score: number;
+    total_fraud_alerts: number; open_alerts: number;
+  };
+}
+
 export const loansApi = {
-  list: (params?: { loan_type?: string; status?: string; limit?: number; offset?: number }) => {
+  list: (status?: string, loan_type?: string, limit = 200) => {
     const p = new URLSearchParams();
-    if (params?.loan_type) p.set('loan_type', params.loan_type);
-    if (params?.status)    p.set('status',    params.status);
-    if (params?.limit)     p.set('limit',     String(params.limit));
+    if (status) p.set('status', status);
+    if (loan_type) p.set('loan_type', loan_type);
+    p.set('limit', String(limit));
     return request<{ loans: Loan[]; total: number }>(`/loans?${p}`);
   },
-  stats: () => request<{ total: number; pending: number; approved: number; active: number; total_value_cents: number }>('/loans/stats/portfolio'),
-  portfolio: () => request<{ total: number; total_portfolio_cents: number; total_outstanding_cents: number; avg_interest_rate: number; by_type: Record<string, number> }>('/loans/stats/portfolio'),
-  get: (id: string) => request<Loan>(`/loans/${id}/detail`),
-  customerLoans: (customerId: string) => request<{ loans: Loan[] }>(`/loans/customer/${customerId}`),
-  byCustomer: (customerId: string) => request<{ loans: Loan[] }>(`/loans/customer/${customerId}`),
+  get: (id: string) => request<Loan>(`/loans/${id}`),
+  detail: (id: string) => request<LoanDetail>(`/loans/${id}/detail`),
+  forCustomer: (customerId: string) => request<{ loans: Loan[]; summary: Record<string, unknown> }>(`/loans/customer/${customerId}`),
+  portfolio: (loan_type?: string) => request<Record<string, unknown>>(
+    loan_type ? `/loans/stats/portfolio?loan_type=${loan_type}` : '/loans/stats/portfolio'
+  ),
 };
 
 // ── AML ───────────────────────────────────────────────────────────────────────
-export interface AmlCase {
-  id: number; customer_id: string; alert_type: string; risk_level: string;
-  status: string; description: string; sar_filed: boolean; assigned_to: string;
-  resolution: string; created_at: string; updated_at: string;
-}
 export const amlApi = {
-  list: (params?: { status?: string; risk_level?: string; limit?: number }) => {
+  cases: (params?: { status?: string; severity?: string; customer_id?: string; limit?: number }) => {
     const p = new URLSearchParams();
-    if (params?.status)     p.set('status',     params.status);
-    if (params?.risk_level) p.set('risk_level', params.risk_level);
-    if (params?.limit)      p.set('limit',      String(params.limit));
-    return request<{ cases: AmlCase[]; total: number }>(`/aml/cases?${p}`);
+    if (params?.status) p.set('status', params.status);
+    if (params?.severity) p.set('severity', params.severity);
+    if (params?.customer_id) p.set('customer_id', params.customer_id);
+    if (params?.limit) p.set('limit', String(params.limit));
+    return request<{ cases: AMLCase[]; summary: Record<string, number>; total: number }>(`/aml/cases?${p}`);
   },
-  cases: (params?: { status?: string; risk_level?: string; limit?: number }) => {
-    const p = new URLSearchParams();
-    if (params?.status)     p.set('status',     params.status ?? '');
-    if (params?.risk_level) p.set('risk_level', params.risk_level ?? '');
-    if (params?.limit)      p.set('limit',      String(params.limit ?? 100));
-    return request<{ cases: AmlCase[]; total: number }>(`/aml/cases?${p}`);
-  },
-  stats: () => request<{ total: number; open: number; investigating: number; escalated: number; closed: number; resolved: number; high_risk: number; sar_filed: number }>('/aml/stats/summary'),
-  update: (id: number, data: Partial<AmlCase>) =>
-    request<{ message: string }>(`/aml/cases/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
-  updateCase: (id: number, data: Partial<AmlCase>) =>
-    request<{ message: string }>(`/aml/cases/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  case: (id: string) => request<AMLCase>(`/aml/cases/${id}`),
+  summary: () => request<Record<string, unknown>>('/aml/stats/summary'),
 };
 
 // ── KYC ───────────────────────────────────────────────────────────────────────
-export interface KycRecord {
-  id: number; customer_id: string; document_type: string; status: string;
-  verified_by: string; verification_date: string; expiry_date: string;
-  notes: string; risk_rating: string; created_at: string;
-}
 export const kycApi = {
-  list: (params?: { status?: string; limit?: number }) => {
+  records: (params?: { status?: string; risk_level?: string; q?: string; limit?: number; offset?: number }) => {
     const p = new URLSearchParams();
     if (params?.status) p.set('status', params.status);
-    if (params?.limit)  p.set('limit',  String(params.limit));
-    return request<{ records: KycRecord[]; total: number }>(`/kyc/records?${p}`);
+    if (params?.risk_level) p.set('risk_level', params.risk_level);
+    if (params?.q) p.set('q', params.q);
+    if (params?.limit) p.set('limit', String(params.limit));
+    if (params?.offset) p.set('offset', String(params.offset));
+    return request<{ records: KYCRecord[]; total: number; counts: Record<string, number> }>(`/kyc/records?${p}`);
   },
-  records: (params?: { status?: string; limit?: number }) => {
-    const p = new URLSearchParams();
-    if (params?.status) p.set('status', params.status ?? '');
-    if (params?.limit)  p.set('limit',  String(params.limit ?? 100));
-    return request<{ records: KycRecord[]; total: number }>(`/kyc/records?${p}`);
-  },
-  stats: () => request<{ total: number; verified: number; pending: number; rejected: number; expired: number }>('/kyc/stats/summary'),
-  get: (customerId: string) => request<KycRecord>(`/kyc/records/${customerId}`),
-  update: (customerId: string, data: Partial<KycRecord>) =>
-    request<{ message: string }>(`/kyc/records/${customerId}`, { method: 'PATCH', body: JSON.stringify(data) }),
-};
-
-// ── Risk ──────────────────────────────────────────────────────────────────────
-export interface RiskAssessment {
-  id: number; customer_id: string; risk_score: number; risk_band: string;
-  credit_risk: number; fraud_risk: number; aml_risk: number; notes: string;
-  created_at: string; updated_at: string;
-}
-export const riskApi = {
-  customer: (customerId: string) => request<RiskAssessment>(`/risk/customer/${customerId}`),
-  portfolio: () => request<{ total: number; by_band: Record<string, number>; avg_score: number }>('/risk/portfolio'),
-  segment: (band: string) => request<{ customers: RiskAssessment[]; total: number }>(`/risk/segment/${band}`),
+  record: (customerId: string) => request<KYCRecord>(`/kyc/records/${customerId}`),
+  summary: () => request<Record<string, unknown>>('/kyc/stats/summary'),
 };
 
 // ── Fraud ─────────────────────────────────────────────────────────────────────
-export interface FraudAlert {
-  id: number; customer_id: string; transaction_id: string; fraud_type: string;
-  status: string; severity: string; fraud_score: number; investigation_notes: string;
-  amount_at_risk_cents: number; detection_method: string; resolution: string; created_at: string;
-}
-export interface FraudSummary { total: number; open: number; resolved: number; false_positive: number; critical?: number; high?: number; }
 export const fraudApi = {
-  list: (params?: { status?: string; severity?: string; risk_level?: string; limit?: number }) => {
+  list: (params?: { status?: string; limit?: number }) => {
     const p = new URLSearchParams();
-    if (params?.status)     p.set('status',     params.status);
-    if (params?.severity)   p.set('severity',   params.severity);
-    if (params?.risk_level) p.set('risk_level', params.risk_level);
-    if (params?.limit)      p.set('limit',      String(params.limit ?? 100));
-    return request<{ alerts: any[]; summary?: any; total?: number }>(`/fraud/alerts?${p}`);
+    if (params?.status) p.set('status', params.status);
+    p.set('limit', String(params?.limit ?? 300));
+    return request<{
+      alerts: {
+        id: string; customer_id: string; transaction_id: string | null;
+        fraud_type: string; status: string; severity: string;
+        fraud_score: number; investigation_notes: string;
+        amount_at_risk_cents?: number | null;
+        location?: string | null; merchant?: string | null;
+        category?: string | null; detection_method?: string;
+        resolution?: string | null; created_at: string;
+      }[];
+      summary: {
+        total: number; open: number; resolved: number; false_positive: number;
+        under_review?: number; critical?: number; high?: number;
+      };
+    }>(`/fraud/alerts?${p}`);
   },
-  alerts: (params?: { risk_level?: string; limit?: number }) => {
+  alerts: (params?: { status?: string; severity?: string; customer_id?: string; limit?: number }) => {
     const p = new URLSearchParams();
-    if (params?.risk_level) p.set('risk_level', params.risk_level ?? '');
-    if (params?.limit)      p.set('limit',      String(params.limit ?? 100));
-    return request<{ alerts: any[]; total?: number }>(`/fraud/alerts?${p}`);
+    if (params?.status) p.set('status', params.status);
+    if (params?.severity) p.set('severity', params.severity);
+    if (params?.customer_id) p.set('customer_id', params.customer_id);
+    if (params?.limit) p.set('limit', String(params.limit));
+    return request<{ alerts: FraudAlert[]; total: number; summary: Record<string, number> }>(`/fraud/alerts?${p}`);
   },
-  summary: () => request<{ total_alerts: number; flagged_today: number; fraud_rate: number; by_risk: Record<string, number> }>('/fraud/summary'),
-  dismiss: (id: string | number) =>
-    request<{ message: string }>(`/fraud/alerts/${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'dismissed' }) }),
-  update: (id: number, data: Partial<FraudAlert>) =>
-    request<{ message: string }>(`/fraud/alerts/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  alert: (id: string) => request<FraudAlert>(`/fraud/alerts/${id}`),
+  check: (customerId: string) => request<{ customer_id: string; alert_count: number; max_fraud_score: number; overall_risk: string; alerts: FraudAlert[] }>(`/fraud/check/${customerId}`),
+};
+
+// ── Risk ──────────────────────────────────────────────────────────────────────
+export const riskApi = {
+  customer: (customerId: string) => request<RiskProfile>(`/risk/customer/${customerId}`),
+  portfolio: () => request<Record<string, unknown>>('/risk/portfolio'),
+  segment: (band: string, limit = 50, offset = 0) =>
+    request<{ customers: Record<string, unknown>[]; total: number; band: string }>(
+      `/risk/segment/${band}?limit=${limit}&offset=${offset}`
+    ),
+};
+
+// ── AI Feedback ───────────────────────────────────────────────────────────────
+export const feedbackApi = {
+  submitResponse: (data: {
+    response_id: string;
+    feedback_type: 'approve' | 'reject' | 'edit';
+    prompt: string;
+    response_text: string;
+    correction_text?: string;
+    trust_score?: number;
+    session_id?: string;
+  }) => request<{ status: string; message?: string }>('/feedback', { method: 'POST', body: JSON.stringify({
+    session_id: data.session_id || 'chat',
+    response_id: data.response_id,
+    feedback_type: data.feedback_type,
+    prompt: data.prompt,
+    response_text: data.response_text,
+    correction_text: data.correction_text || '',
+    trust_score: data.trust_score || 0,
+  }) }),
 };
 
 // ── Treasury ──────────────────────────────────────────────────────────────────
 export const treasuryApi = {
-  dashboard: () => request<Record<string, number>>('/treasury/summary'),
-  wireLimits: () => request<Record<string, number>>('/treasury/liquidity'),
-  summary: () => request<{ total_portfolio_value: number; active_positions: number; avg_yield: number; by_type: Record<string, number> }>('/treasury/summary'),
-  positions: (position_type?: string) => request<{ positions: any[]; total: number }>(`/treasury/positions${position_type ? `?position_type=${position_type}` : ''}`),
-  liquidity: () => request<{ metrics: any[] }>('/treasury/liquidity'),
+  dashboard: () => request<Record<string, unknown>>('/treasury/dashboard'),
+  wireLimits: () => request<Record<string, unknown>>('/treasury/wire-limits'),
+  summary: () => request<Record<string, unknown>>('/treasury/summary'),
+  positions: (type?: string) => request<Record<string, unknown>>(`/treasury/positions${type ? `?position_type=${type}` : ''}`),
+  liquidity: () => request<Record<string, unknown>>('/treasury/liquidity'),
 };
 
-// ── KPI ───────────────────────────────────────────────────────────────────────
-export interface KpiStats {
-  total_customers: number; fraud_open: number; fraud_total: number; fraud_critical: number;
-  loan_count: number; loan_pending: number; kyc_pending: number; aml_open: number;
-  high_risk_customers: number; avg_credit_score: number; trust_score_avg: number;
-  docs_indexed: number; ai_queries_today: number;
+// ── Documents ─────────────────────────────────────────────────────────────────
+export interface PolicyDoc {
+  filename: string;
+  title: string;
+  icon: string;
+  category: string;
+  size_kb: number;
+  lines: number;
+  sections: number;
 }
-export const kpiApi = {
-  stats: () => request<KpiStats>('/kpi'),
-  get: () => request<any>('/kpi'),
-  aiTrustRecent: () => request<{ records: unknown[] }>('/kpi/ai-trust/recent'),
+
+export const documentsApi = {
+  list: () => request<{ documents: PolicyDoc[]; total: number }>('/documents/list'),
+  content: (filename: string) =>
+    request<{ filename: string; title: string; icon: string; category: string; content: string }>(
+      `/documents/content/${encodeURIComponent(filename)}`
+    ),
+  upload: (formData: FormData) => {
+    const token = Auth.getToken();
+    return fetch('/documents/upload', {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    }).then(r => { if (!r.ok) throw new APIError(`Upload failed`, r.status); return r.json(); });
+  },
+};
+
+// ── Trust Scoring ─────────────────────────────────────────────────────────────
+export const trustApi = {
+  customerScore: (customerId: string) =>
+    request<{
+      status: string;
+      customer_id: string;
+      score: number;
+      tier: string;
+      components: Record<string, number>;
+      weights: Record<string, number>;
+      fraud_incidents: number;
+      total_interactions: number;
+      error?: string;
+    }>(`/trust/score/${customerId}`),
+  aiHistory: (limit = 20) =>
+    request<{ status: string; history: { final_score: number; components: Record<string, number>; model_used: string; timestamp: string }[] }>(
+      `/trust/ai-history?limit=${limit}`
+    ),
 };
 
 // ── Access Requests ───────────────────────────────────────────────────────────
-export interface AccessRequest {
-  id: number; username: string; section_id: string; reason: string;
-  status: string; reviewed_by: string; expires_at: string; created_at: string;
+export interface TempGrant {
+  section: string;
+  expires_at: string;
+  remaining_seconds: number;
 }
+
 export const accessRequestsApi = {
-  list: (params?: { status?: string }) => {
+  submit: (section: string, reason?: string) =>
+    request<{ status: string; message: string }>('/access-requests', {
+      method: 'POST',
+      body: JSON.stringify({ section, reason }),
+    }),
+  myGrants: () =>
+    request<{ grants: TempGrant[] }>('/access-requests/my-grants'),
+  list: () =>
+    request<{ requests: { id: number; username: string; role: string; section: string; reason?: string; status: string; reviewed_by?: string; expires_at?: string; created_at: string }[]; total: number }>('/access-requests'),
+  review: (id: number, status: 'approved' | 'denied', duration_minutes?: number) =>
+    request<{ status: string; reviewed_by: string; expires_at?: string }>(`/access-requests/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status, duration_minutes }),
+    }),
+};
+
+// ── Bank-wide Accounts (Operations module) ────────────────────────────────────
+// Completely separate from customersApi.accounts(id) which is customer-specific.
+// These endpoints return data across ALL accounts in the institution.
+
+export interface BankAccount {
+  id: string;
+  customer_id: string;
+  customer_name: string;
+  account_number: string;
+  account_type: string;          // canonical: personal | student | business | savings | checking | credit_card | dormant
+  account_type_raw: string;      // original DB value
+  status: 'active' | 'dormant';
+  balance_cents: number;
+  currency: string;
+  opened_date: string | null;
+  account_age_days: number;
+  credit_score: number | null;
+  income_cents: number;
+  risk_level: string;
+}
+
+export interface AccountStats {
+  total_accounts: number;
+  active_accounts: number;
+  dormant_accounts: number;
+  new_this_month: number;
+  total_balance_cents: number;
+  avg_balance_cents: number;
+  by_type: Record<string, { count: number; avg_balance_cents: number; total_balance_cents: number }>;
+}
+
+export const accountsApi = {
+  /**
+   * Fetch bank-wide KPI stats (totals, by-type breakdown).
+   * Used to populate KPI cards and the type distribution chart.
+   */
+  stats: () => request<AccountStats>('/accounts/stats'),
+
+  /**
+   * Paginated list of all bank accounts with optional filters.
+   * @param account_type  Tab filter: personal | student | business | savings | checking | credit_card | dormant
+   * @param search        Search by customer name or email
+   */
+  list: (params?: {
+    account_type?: string;
+    status?: string;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
     const p = new URLSearchParams();
-    if (params?.status) p.set('status', params.status);
-    return request<{ requests: AccessRequest[]; total: number }>(`/access-requests?${p}`);
+    if (params?.account_type) p.set('account_type', params.account_type);
+    if (params?.status)       p.set('status', params.status);
+    if (params?.search)       p.set('search', params.search);
+    if (params?.limit  != null) p.set('limit',  String(params.limit));
+    if (params?.offset != null) p.set('offset', String(params.offset));
+    return request<{ accounts: BankAccount[]; total: number }>(`/accounts?${p}`);
   },
-  submit: (section_id: string, reason: string) =>
-    request<{ id: number; message: string }>('/access-requests', { method: 'POST', body: JSON.stringify({ section_id, reason }) }),
-  review: (id: number, data: { status: string; review_notes?: string } | string, expires_minutes = 60) => {
-    const body = typeof data === 'string' ? { status: data, expires_minutes } : data;
-    return request<{ message: string }>(`/access-requests/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+};
+
+// ── Bank-wide Transactions (Operations module) ────────────────────────────────
+// Separate from customersApi.transactions(id) which is customer-specific.
+// These endpoints aggregate ALL transactions across the institution.
+
+export interface TransactionStats {
+  period: string;
+  total_transactions: number;
+  total_volume_cents: number;
+  avg_amount_cents: number;
+  fraud_count: number;
+  failed_count: number;
+  all_time_total: number;
+  by_category: Record<string, { count: number; volume_cents: number }>;
+  trend: { day: string; count: number; volume_cents: number }[];
+}
+
+export interface BankTransaction {
+  id: string;
+  customer_id: string;
+  transaction_type: 'credit' | 'debit';
+  amount_cents: number;
+  description: string;
+  merchant_name: string;
+  merchant_category: string;
+  location: string;
+  channel: string;
+  status: string;
+  is_flagged: boolean;
+  is_fraud: boolean;
+  merchant_risk: string;
+  created_at: string;
+}
+
+export const bankTransactionsApi = {
+  /**
+   * Fetch KPI metrics + trend data for a period.
+   * @param period  daily | weekly | monthly | quarterly | half_yearly | annual
+   */
+  stats: (period: string) =>
+    request<TransactionStats>(`/transactions/stats?period=${period}`),
+
+  /**
+   * Paginated list of bank-wide transactions.
+   * Supports period filter (time range), category, fraud flag, and search.
+   */
+  list: (params?: {
+    period?: string;
+    category?: string;
+    is_fraud?: boolean;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const p = new URLSearchParams();
+    if (params?.period)   p.set('period', params.period);
+    if (params?.category) p.set('category', params.category);
+    if (params?.is_fraud != null) p.set('is_fraud', String(params.is_fraud));
+    if (params?.search)   p.set('search', params.search);
+    if (params?.limit  != null) p.set('limit',  String(params.limit));
+    if (params?.offset != null) p.set('offset', String(params.offset));
+    return request<{ transactions: BankTransaction[]; total: number }>(`/transactions?${p}`);
   },
-  myGrants: () => request<{ grants: { section: string; expires_at: string }[] }>('/access-requests/my-grants'),
+};
+
+// ── Health ────────────────────────────────────────────────────────────────────
+export const healthApi = {
+  check: () => request<{ status: string; version: string }>('/health'),
 };
 
 // ── Notifications ─────────────────────────────────────────────────────────────
 export interface AppNotification {
-  id: number; type: string; title: string; body: string;
-  is_read: boolean; reference_id: string; created_at: string;
+  id: number;
+  username: string;
+  type: string;
+  title: string;
+  body: string;
+  reference_id: string;
+  is_read: number;
+  created_at: string;
 }
+
 export const notificationsApi = {
   list: (unread_only = false, limit = 50) =>
-    request<{ notifications: AppNotification[]; unread_count: number; total: number }>(`/notifications?unread_only=${unread_only}&limit=${limit}`),
+    request<{ notifications: AppNotification[]; unread_count: number; total: number }>(
+      `/notifications?unread_only=${unread_only}&limit=${limit}`
+    ),
   markRead: (ids?: number[]) =>
-    request<{ message: string }>('/notifications/mark-read', { method: 'POST', body: JSON.stringify({ ids: ids ?? null }) }),
-  markAllRead: () =>
-    request<{ message: string }>('/notifications/mark-all-read', { method: 'PATCH' }),
+    request<{ status: string }>('/notifications/mark-read', {
+      method: 'POST',
+      body: JSON.stringify({ ids: ids ?? null }),
+    }),
 };
 
 // ── Announcements ─────────────────────────────────────────────────────────────
 export interface Announcement {
-  id: number; title: string; body: string; priority: string;
-  created_by: string; is_active: boolean; created_at: string;
+  id: number;
+  title: string;
+  body: string;
+  priority: string;
+  created_by: string;
+  created_at: string;
+  is_active: number;
 }
+
 export const announcementsApi = {
-  list: (active_only: boolean | number = true) =>
-    request<{ announcements: Announcement[]; total: number }>(`/announcements?active_only=${active_only}`),
-  create: (data: { title: string; body: string; priority?: string; category?: string }) =>
-    request<{ id: number; message: string }>('/announcements', { method: 'POST', body: JSON.stringify(data) }),
-  deactivate: (id: number) => request<{ message: string }>(`/announcements/${id}/deactivate`, { method: 'PATCH' }),
-  delete: (id: number) => request<{ message: string }>(`/announcements/${id}`, { method: 'DELETE' }),
+  list: (limit = 50) =>
+    request<{ announcements: Announcement[]; total: number }>(`/announcements?limit=${limit}`),
+  create: (data: { title: string; body: string; priority?: string }) =>
+    request<{ status: string; id: number; message: string }>('/announcements', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  delete: (id: number) =>
+    request<{ status: string }>(`/announcements/${id}`, { method: 'DELETE' }),
 };
 
 // ── Bug Reports ───────────────────────────────────────────────────────────────
 export interface BugReport {
-  id: number; username: string; type: string; title: string; description: string;
-  priority: string; status: string; admin_notes: string; created_at: string; updated_at: string;
+  id: number;
+  submitted_by: string;
+  type: string;
+  title: string;
+  description: string;
+  status: string;
+  priority: string;
+  admin_notes: string;
+  reviewed_by: string;
+  updated_at: string;
+  created_at: string;
 }
+
 export const bugReportsApi = {
-  list: (params?: { status?: string; limit?: number }) => {
+  list: (params?: { status?: string; type?: string; limit?: number }) => {
     const p = new URLSearchParams();
     if (params?.status) p.set('status', params.status);
-    if (params?.limit)  p.set('limit',  String(params.limit));
+    if (params?.type)   p.set('type', params.type);
+    if (params?.limit)  p.set('limit', String(params.limit));
     return request<{ reports: BugReport[]; total: number }>(`/bug-reports?${p}`);
   },
   create: (data: { type: string; title: string; description: string; priority?: string }) =>
-    request<{ id: number; message: string }>('/bug-reports', { method: 'POST', body: JSON.stringify(data) }),
-  update: (id: number, data: { status?: string; admin_notes?: string }) =>
-    request<{ message: string }>(`/bug-reports/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    request<{ status: string; id: number; message: string }>('/bug-reports', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  update: (id: number, data: { status?: string; admin_notes?: string; priority?: string }) =>
+    request<{ status: string; id: number }>(`/bug-reports/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
 };
 
-// ── Admin Users ───────────────────────────────────────────────────────────────
+// ── Admin User Management ─────────────────────────────────────────────────────
 export interface AdminUser {
-  id: number; username: string; full_name: string; role: string;
-  email: string; is_active: boolean; last_login: string; created_at: string;
+  username: string;
+  full_name: string;
+  role: string;
+  is_active: number;
+  created_at: string;
 }
-export const adminUsersApi = {
-  list: () => request<{ users: AdminUser[]; total: number }>('/admin/users'),
-  create: (data: { username: string; password: string; role: string; full_name: string; email?: string }) =>
-    request<{ message: string }>('/admin/users', { method: 'POST', body: JSON.stringify(data) }),
-  update: (username: string, data: { role?: string; password?: string; is_active?: boolean; full_name?: string }) =>
-    request<{ message: string }>(`/admin/users/${username}`, { method: 'PATCH', body: JSON.stringify(data) }),
-  deactivate: (username: string) =>
-    request<{ message: string }>(`/admin/users/${username}`, { method: 'DELETE' }),
-};
 
 // ── Appointments ──────────────────────────────────────────────────────────────
 export interface Appointment {
-  id: number; creator_username: string; employee_username: string; title: string;
-  scheduled_at: string; duration_minutes: number; location_type: string;
-  notes: string; status: string; created_at: string;
+  id: number;
+  created_by: string;
+  employee_username: string;
+  employee_name: string;
+  employee_role: string;
+  title: string;
+  description: string;
+  scheduled_date: string;
+  scheduled_time: string;
+  duration_mins: number;
+  location_type: string;
+  location_detail: string;
+  status: string;
+  notes: string;
+  created_at: string;
+  updated_at: string;
 }
-export interface Employee { username: string; full_name: string; role: string; role_label: string; }
+
+export interface Employee {
+  username: string;
+  full_name: string;
+  role: string;
+  role_label: string;
+}
+
 export const appointmentsApi = {
-  list: (params?: { status?: string; limit?: number }) => {
+  list: (status?: string, limit = 100) => {
     const p = new URLSearchParams();
-    if (params?.status) p.set('status', params.status);
-    if (params?.limit)  p.set('limit',  String(params.limit));
-    return request<{ appointments: any[]; total: number }>(`/appointments?${p}`);
+    if (status) p.set('status', status);
+    p.set('limit', String(limit));
+    return request<{ appointments: Appointment[]; total: number }>(`/appointments?${p}`);
   },
-  employees: () => request<{ employees: Employee[] }>('/appointments/employees'),
+  employees: () =>
+    request<{ employees: Employee[] }>('/appointments/employees'),
   create: (data: {
-    customer_id?: string; customer_name?: string; employee_username?: string;
-    appointment_type?: string; title: string; scheduled_at: string;
-    duration_minutes?: number; location?: string; location_type?: string; notes?: string;
-  }) => request<{ id: number; message: string }>('/appointments', { method: 'POST', body: JSON.stringify(data) }),
-  update: (id: number, data: { status?: string; notes?: string; scheduled_at?: string; assigned_to?: string }) =>
-    request<{ message: string }>(`/appointments/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
-  cancel: (id: number) => request<{ message: string }>(`/appointments/${id}`, { method: 'DELETE' }),
+    employee_username: string; title: string; description?: string;
+    scheduled_date: string; scheduled_time: string; duration_mins?: number;
+    location_type?: string; location_detail?: string;
+  }) => request<{ status: string; id: number; message: string }>('/appointments', {
+    method: 'POST', body: JSON.stringify(data),
+  }),
+  update: (id: number, data: {
+    status?: string; scheduled_date?: string; scheduled_time?: string;
+    notes?: string; location_detail?: string;
+  }) => request<{ status: string; id: number }>(`/appointments/${id}`, {
+    method: 'PATCH', body: JSON.stringify(data),
+  }),
+  cancel: (id: number) =>
+    request<{ status: string; id: number }>(`/appointments/${id}`, { method: 'DELETE' }),
 };
 
-// ── Credit Cards ──────────────────────────────────────────────────────────────
+// ── Credit Card Applications ──────────────────────────────────────────────────
 export interface CreditCardApplication {
-  id: number; application_number: string; customer_id: string; customer_name: string;
-  banker_username: string; banker_name: string; card_type: string;
-  requested_limit_cents: number; annual_income_cents: number; employment_status: string;
-  employer_name: string; monthly_expenses_cents: number; existing_debt_cents: number;
-  residential_status: string; address: string; phone: string; purpose: string;
-  banker_notes: string; status: string; approved_limit_cents: number | null;
-  rejection_reason: string; reviewed_by: string; reviewed_at: string;
-  review_notes: string; created_at: string; updated_at: string;
+  id: number;
+  application_number: string;
+  customer_id: string;
+  customer_name: string;
+  banker_username: string;
+  banker_name: string;
+  card_type: string;
+  requested_limit_cents: number;
+  annual_income_cents: number;
+  employment_status: string;
+  employer_name: string;
+  monthly_expenses_cents: number;
+  existing_debt_cents: number;
+  residential_status: string;
+  address: string;
+  phone: string;
+  purpose: string;
+  banker_notes: string;
+  status: string;
+  approved_limit_cents: number | null;
+  rejection_reason: string;
+  reviewed_by: string;
+  reviewed_at: string;
+  review_notes: string;
+  created_at: string;
+  updated_at: string;
 }
+
 export interface CreditCardStats {
   total: number; submitted: number; under_review: number;
   approved: number; rejected: number; withdrawn: number;
 }
+
 export const creditCardsApi = {
-  list: (params?: { status?: string; limit?: number; offset?: number }) => {
+  list: (params?: { status?: string; card_type?: string; customer_id?: string; limit?: number; offset?: number }) => {
     const p = new URLSearchParams();
-    if (params?.status) p.set('status', params.status);
-    if (params?.limit)  p.set('limit',  String(params.limit));
-    return request<{ applications: any[]; total: number }>(`/credit-cards?${p}`);
+    if (params?.status)      p.set('status', params.status);
+    if (params?.card_type)   p.set('card_type', params.card_type);
+    if (params?.customer_id) p.set('customer_id', params.customer_id);
+    if (params?.limit  != null) p.set('limit', String(params.limit));
+    if (params?.offset != null) p.set('offset', String(params.offset));
+    return request<{ applications: CreditCardApplication[]; total: number }>(`/credit-cards/applications?${p}`);
   },
-  get: (id: number) => request<any>(`/credit-cards/${id}`),
+  get: (id: number) =>
+    request<CreditCardApplication>(`/credit-cards/applications/${id}`),
   create: (data: {
     customer_id: string; customer_name?: string; card_type: string;
-    requested_limit_cents?: number; annual_income_cents?: number;
-    employment_status?: string; credit_score?: number; [key: string]: any;
-  }) => request<{ status?: string; id?: number; application_number?: string; message: string }>(
-    '/credit-cards', { method: 'POST', body: JSON.stringify(data) }),
-  review: (id: number, data: { status: string; approved_limit_cents?: number; rejection_reason?: string; review_notes?: string }) =>
-    request<{ message: string }>(`/credit-cards/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
-  stats: () => request<any>('/credit-cards/stats'),
+    requested_limit_cents: number; annual_income_cents: number;
+    employment_status: string; employer_name?: string;
+    monthly_expenses_cents?: number; existing_debt_cents?: number;
+    residential_status?: string; address?: string; phone?: string;
+    purpose?: string; banker_notes?: string;
+  }) => request<{ status: string; id: number; application_number: string; message: string }>(
+    '/credit-cards/applications', { method: 'POST', body: JSON.stringify(data) }
+  ),
+  review: (id: number, data: {
+    status: string; approved_limit_cents?: number;
+    rejection_reason?: string; review_notes?: string;
+  }) => request<{ status: string; id: number; application_number: string }>(
+    `/credit-cards/applications/${id}`, { method: 'PATCH', body: JSON.stringify(data) }
+  ),
+  stats: () =>
+    request<CreditCardStats>('/credit-cards/stats'),
 };
 
-// ── Documents ─────────────────────────────────────────────────────────────────
-export const documentsApi = {
-  list: () => request<{ documents: { filename: string; size: number; indexed: boolean }[] }>('/documents/index'),
+export const adminUsersApi = {
+  list: () =>
+    request<{ users: AdminUser[]; total: number }>('/admin/users'),
+  create: (data: { username: string; password: string; role: string; full_name: string }) =>
+    request<{ status: string; username: string; role: string; full_name: string }>('/admin/users', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  update: (username: string, data: {
+    role?: string; full_name?: string; is_active?: boolean; new_password?: string;
+  }) =>
+    request<{ status: string; username: string }>(`/admin/users/${username}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+  deactivate: (username: string) =>
+    request<{ status: string; username: string }>(`/admin/users/${username}`, { method: 'DELETE' }),
 };
 
-// ── Trust ─────────────────────────────────────────────────────────────────────
-export const trustApi = {
-  score: (customerId: string) => request<{ score: number; grade: string; factors: Record<string, number> }>(`/trust/score/${customerId}`),
-  history: (customerId: string) => request<{ records: unknown[] }>(`/trust/history/${customerId}`),
-  aiHistory: () => request<{ records: unknown[] }>('/trust/ai-history'),
-};
+

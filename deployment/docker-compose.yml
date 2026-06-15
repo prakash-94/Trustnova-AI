@@ -1,82 +1,89 @@
 # =============================================================
-#  Banking AI Copilot — Docker Compose
-#  Full-stack: backend · frontend · ML service · ChromaDB
-#  Monitoring: Prometheus · Grafana
+#  TrustNova AI — Docker Compose (full stack)
+#  Docker Hub: chotu94/trusnova-{backend,frontend,ml}
+#
+#  Quick start (pull from Docker Hub — no source needed):
+#    docker-compose pull && docker-compose up -d
+#
+#  Build from source and push:
+#    docker-compose build
+#    docker-compose push
+#
+#  Development (build + start):
+#    docker-compose up --build
 # =============================================================
-# Usage:
-#   docker-compose up --build          # start all services
-#   docker-compose up -d               # start in background
-#   docker-compose down                # stop all services
-#   docker-compose logs -f backend     # tail backend logs
 
 services:
-  # ── FastAPI Backend ───────────────────────────────────────────
+
+  # ── FastAPI Backend ──────────────────────────────────────────
   backend:
+    image: chotu94/trusnova-backend:latest
     build:
       context: ..
       dockerfile: deployment/Dockerfile.backend
-    container_name: copilot-backend
+    container_name: trusnova-backend
     ports:
       - "8001:8001"
     env_file:
       - ../.env
     environment:
-      - DATABASE_URL=sqlite:///./banking.db
+      - DATABASE_URL=sqlite:////app/data/banking.db
       - CHROMA_PERSIST_DIR=data/chroma_db
+      - CHROMA_COLLECTION=banking_docs
+      - CHROMA_HOST=trusnova-chromadb
+      - CHROMA_PORT=8000
       - VECTOR_DB=chroma
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - PINECONE_API_KEY=${PINECONE_API_KEY}
-      - LLM_MODEL=${LLM_MODEL:-gpt-4}
-      - EMBEDDING_BACKEND=${EMBEDDING_BACKEND:-sentence_transformers}
+      - LLM_PROVIDER=groq
+      - LLM_MODEL=llama-3.3-70b-versatile
+      - EMBEDDING_BACKEND=sentence_transformers
     volumes:
       - backend-data:/app/data
-      - ../banking.db:/app/banking.db
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 15s
       timeout: 5s
       retries: 5
-      start_period: 20s
+      start_period: 30s
     depends_on:
       chromadb:
         condition: service_started
     networks:
-      - copilot-net
+      - trusnova-net
     restart: unless-stopped
 
-  # ── Frontend (Nginx) ───────────────────────────────────────
+  # ── React Frontend (Nginx) ───────────────────────────────────
   frontend:
+    image: chotu94/trusnova-frontend:latest
     build:
       context: ..
       dockerfile: deployment/Dockerfile.frontend
-    container_name: copilot-frontend
+    container_name: trusnova-frontend
     ports:
       - "80:80"
     depends_on:
       backend:
         condition: service_healthy
     networks:
-      - copilot-net
+      - trusnova-net
     restart: unless-stopped
 
-  # ── ML Inference Service ────────────────────────────────
+  # ── ML Inference Service ─────────────────────────────────────
   ml-service:
+    image: chotu94/trusnova-ml:latest
     build:
       context: ..
       dockerfile: deployment/Dockerfile.ml
-    container_name: copilot-ml
+    container_name: trusnova-ml
     ports:
       - "8003:8001"
-    volumes:
-      - ../models:/app/models:ro
     networks:
-      - copilot-net
+      - trusnova-net
     restart: unless-stopped
 
-  # ── ChromaDB Vector Store ───────────────────────────────
+  # ── ChromaDB Vector Store ────────────────────────────────────
   chromadb:
     image: chromadb/chroma:latest
-    container_name: copilot-chromadb
+    container_name: trusnova-chromadb
     ports:
       - "8002:8000"
     volumes:
@@ -85,13 +92,13 @@ services:
       - IS_PERSISTENT=TRUE
       - ANONYMIZED_TELEMETRY=FALSE
     networks:
-      - copilot-net
+      - trusnova-net
     restart: unless-stopped
 
-  # ── Prometheus (Metrics) ────────────────────────────────
+  # ── Prometheus (Metrics) ─────────────────────────────────────
   prometheus:
     image: prom/prometheus:v2.51.0
-    container_name: copilot-prometheus
+    container_name: trusnova-prometheus
     ports:
       - "9090:9090"
     volumes:
@@ -102,18 +109,18 @@ services:
       - "--storage.tsdb.retention.time=30d"
       - "--web.enable-lifecycle"
     networks:
-      - copilot-net
+      - trusnova-net
     restart: unless-stopped
 
-  # ── Grafana (Dashboards) ────────────────────────────────
+  # ── Grafana (Dashboards) ─────────────────────────────────────
   grafana:
     image: grafana/grafana:10.4.0
-    container_name: copilot-grafana
+    container_name: trusnova-grafana
     ports:
       - "3000:3000"
     environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=copilot2026
+      - GF_SECURITY_ADMIN_USER=${GF_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GF_ADMIN_PASSWORD:-changeme}
       - GF_USERS_ALLOW_SIGN_UP=false
       - GF_SERVER_ROOT_URL=http://localhost:3000
     volumes:
@@ -123,10 +130,10 @@ services:
     depends_on:
       - prometheus
     networks:
-      - copilot-net
+      - trusnova-net
     restart: unless-stopped
 
-# ── Named Volumes ──────────────────────────────────────────
+# ── Named Volumes ─────────────────────────────────────────────
 volumes:
   backend-data:
     driver: local
@@ -137,8 +144,8 @@ volumes:
   grafana-data:
     driver: local
 
-# ── Network ────────────────────────────────────────────────
+# ── Network ───────────────────────────────────────────────────
 networks:
-  copilot-net:
+  trusnova-net:
     driver: bridge
-    name: copilot-network
+    name: trusnova-network

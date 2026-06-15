@@ -77,7 +77,7 @@ class TrustScoreCalculator:
 
     def _get_customer_data(self, customer_id: str) -> Optional[Dict]:
         """Fetch customer data from SQLite."""
-        query = text("SELECT * FROM customers WHERE customer_id = :cid")
+        query = text("SELECT * FROM customers WHERE id = :cid")
         df = pd.read_sql(query, self.engine, params={"cid": customer_id})
         if df.empty:
             return None
@@ -86,8 +86,8 @@ class TrustScoreCalculator:
     def _get_fraud_count(self, customer_id: str) -> int:
         """Count fraud incidents for a customer."""
         query = text("""
-            SELECT COUNT(*) as fraud_count 
-            FROM transactions 
+            SELECT COUNT(*) as fraud_count
+            FROM enriched_transactions
             WHERE customer_id = :cid AND is_fraud = 1
         """)
         result = pd.read_sql(query, self.engine, params={"cid": customer_id})
@@ -162,10 +162,22 @@ class TrustScoreCalculator:
         fraud_count = self._get_fraud_count(customer_id)
         interaction_stats = self._get_interaction_stats(customer_id)
 
+        # Compute account age from created_at if account_age_days not available
+        age_days = customer.get("account_age_days") or 0
+        if not age_days and customer.get("created_at"):
+            try:
+                from datetime import datetime
+                created = datetime.fromisoformat(str(customer["created_at"])[:19])
+                age_days = (datetime.now() - created).days
+            except Exception:
+                age_days = 0
+
+        credit = int(customer.get("credit_score") or 650)
+
         # Calculate components (normalized to 0-100)
         components = {
-            "account_age": self._normalize_account_age(int(customer["account_age_days"])),
-            "credit_score": self._normalize_credit_score(int(customer["credit_score"])),
+            "account_age": self._normalize_account_age(int(age_days)),
+            "credit_score": self._normalize_credit_score(credit),
             "fraud_history": self._normalize_fraud_history(fraud_count),
             "sentiment_avg": self._normalize_sentiment(interaction_stats["avg_sentiment"]),
             "interaction_count": self._normalize_interaction_count(interaction_stats["interaction_count"]),
@@ -261,10 +273,10 @@ class TrustScoreCalculator:
         Calculate trust scores for all customers (or a limited batch).
         Returns a DataFrame with scores.
         """
-        query = "SELECT customer_id FROM customers"
+        query = "SELECT id AS customer_id FROM customers"
         if limit:
             query += f" LIMIT {limit}"
-        
+
         customers = pd.read_sql(query, self.engine)
         
         results = []

@@ -1,69 +1,169 @@
-﻿import os
-from datetime import datetime
-from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+"""
+Notification system — per-user inbox for all platform events.
+
+Types pushed by other modules:
+  announcement    → admin broadcasts to all users
+  access_approved → admin approved a user's access request
+  access_denied   → admin denied a user's access request
+  bug_report      → new bug/feedback submitted (pushed to admins)
+  bug_update      → admin updated a report (pushed to submitter)
+  account_created → new user account created
+"""
+from datetime import datetime, timezone
 from typing import Optional, List
-from sqlalchemy import create_engine, text
-from src.api.auth import CurrentUser, require_permission
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel
+from sqlalchemy import text
+
+from src.api.auth import CurrentUser, get_current_user
 
 router = APIRouter()
-_engine = create_engine(os.getenv("DATABASE_URL","sqlite:///./banking.db"), connect_args={"check_same_thread":False})
 
-def _ensure():
-    with _engine.connect() as c:
-        c.execute(text("""CREATE TABLE IF NOT EXISTS notifications (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, title TEXT,
-            message TEXT, category TEXT DEFAULT 'info', is_read INTEGER DEFAULT 0,
-            link TEXT, created_at TEXT)"""))
-        c.commit()
-_ensure()
+_TABLE_CREATED = False
 
-def push_notification(user_id: str, title: str, message: str, category: str="info", link: str=None):
-    with _engine.connect() as c:
-        c.execute(text("INSERT INTO notifications (user_id,title,message,category,link,created_at) VALUES (:uid,:t,:m,:cat,:link,:now)"),
-                  {"uid":user_id,"t":title,"m":message,"cat":category,"link":link,"now":datetime.now().isoformat()})
-        c.commit()
 
-def push_to_all_users(title: str, message: str, category: str="info", engine=None):
-    eng = engine or _engine
-    with eng.connect() as c:
-        users = c.execute(text("SELECT username FROM users")).fetchall() if _table_exists(c,"users") else []
-        for u in users:
-            c.execute(text("INSERT INTO notifications (user_id,title,message,category,created_at) VALUES (:uid,:t,:m,:cat,:now)"),
-                      {"uid":u[0],"t":title,"m":message,"cat":category,"now":datetime.now().isoformat()})
-        c.commit()
+def _engine():
+    from src.models.database import engine
+    return engine
 
-def push_to_admins(title: str, message: str, category: str="alert", engine=None):
-    eng = engine or _engine
-    with eng.connect() as c:
-        admins = c.execute(text("SELECT username FROM users WHERE role IN ('admin','branch_manager')")).fetchall() if _table_exists(c,"users") else []
-        for a in admins:
-            c.execute(text("INSERT INTO notifications (user_id,title,message,category,created_at) VALUES (:uid,:t,:m,:cat,:now)"),
-                      {"uid":a[0],"t":title,"m":message,"cat":category,"now":datetime.now().isoformat()})
-        c.commit()
 
-def _table_exists(conn,name):
-    return conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name=:n"),{"n":name}).fetchone() is not None
+def _utcnow() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S") + "Z"
 
-@router.get("/")
-def get_notifications(unread_only: bool=False, cu: CurrentUser=Depends()):
-    filters,params = ["user_id=:uid"],{"uid":cu.username}
-    if unread_only: filters.append("is_read=0")
-    with _engine.connect() as c:
-        rows  = c.execute(text(f"SELECT * FROM notifications WHERE {' AND '.join(filters)} ORDER BY created_at DESC LIMIT 50"),params).fetchall()
-        count = c.execute(text("SELECT COUNT(*) FROM notifications WHERE user_id=:uid AND is_read=0"),{"uid":cu.username}).fetchone()[0]
-    return {"notifications":[dict(r._mapping) for r in rows],"unread_count":count}
 
-@router.patch("/{notification_id}/read")
-def mark_read(notification_id: int, cu: CurrentUser=Depends()):
-    with _engine.connect() as c:
-        c.execute(text("UPDATE notifications SET is_read=1 WHERE id=:id AND user_id=:uid"),{"id":notification_id,"uid":cu.username})
-        c.commit()
-    return {"message":"Marked as read"}
+def ensure_table():
+    global _TABLE_CREATED
+    if _TABLE_CREATED:
+        return
+    try:
+        with _engine().connect() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS notifications (
+                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username     TEXT NOT NULL,
+                    type         TEXT NOT NULL,
+                    title        TEXT NOT NULL,
+                    body         TEXT DEFAULT '',
+                    reference_id TEXT DEFAULT '',
+                    is_read      INTEGER DEFAULT 0,
+                    created_at   TEXT NOT NULL
+                )
+            """))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS idx_notif_user ON notifications (username, is_read)"
+            ))
+            conn.commit()
+        _TABLE_CREATED = True
+    except Exception as e:
+        print(f"[Notifications] table init error: {e}")
 
-@router.patch("/mark-all-read")
-def mark_all_read(cu: CurrentUser=Depends()):
-    with _engine.connect() as c:
-        c.execute(text("UPDATE notifications SET is_read=1 WHERE user_id=:uid"),{"uid":cu.username})
-        c.commit()
-    return {"message":"All notifications marked as read"}
+
+# ── Internal push helpers (imported by other route modules) ───────────────────
+
+def push_notification(username: str, type: str, title: str,
+                      body: str = "", reference_id: str = "") -> None:
+    """Push a single notification to one user."""
+    ensure_table()
+    try:
+        with _engine().connect() as conn:
+            conn.execute(text("""
+                INSERT INTO notifications (username, type, title, body, reference_id, is_read, created_at)
+                VALUES (:u, :t, :title, :body, :ref, 0, :now)
+            """), {"u": username, "t": type, "title": title,
+                   "body": body, "ref": reference_id, "now": _utcnow()})
+            conn.commit()
+    except Exception as e:
+        print(f"[Notifications] push error: {e}")
+
+
+def push_to_all_users(type: str, title: str,
+                      body: str = "", reference_id: str = "") -> None:
+    """Fan-out a notification to every active user in the system."""
+    ensure_table()
+    try:
+        with _engine().connect() as conn:
+            rows = conn.execute(text(
+                "SELECT username FROM users WHERE is_active = 1"
+            )).fetchall()
+            now = _utcnow()
+            for row in rows:
+                conn.execute(text("""
+                    INSERT INTO notifications (username, type, title, body, reference_id, is_read, created_at)
+                    VALUES (:u, :t, :title, :body, :ref, 0, :now)
+                """), {"u": row[0], "t": type, "title": title,
+                       "body": body, "ref": reference_id, "now": now})
+            conn.commit()
+    except Exception as e:
+        print(f"[Notifications] push_all error: {e}")
+
+
+def push_to_admins(type: str, title: str,
+                   body: str = "", reference_id: str = "") -> None:
+    """Push a notification to every active admin."""
+    ensure_table()
+    try:
+        with _engine().connect() as conn:
+            rows = conn.execute(text(
+                "SELECT username FROM users WHERE role = 'admin' AND is_active = 1"
+            )).fetchall()
+            now = _utcnow()
+            for row in rows:
+                conn.execute(text("""
+                    INSERT INTO notifications (username, type, title, body, reference_id, is_read, created_at)
+                    VALUES (:u, :t, :title, :body, :ref, 0, :now)
+                """), {"u": row[0], "t": type, "title": title,
+                       "body": body, "ref": reference_id, "now": now})
+            conn.commit()
+    except Exception as e:
+        print(f"[Notifications] push_admins error: {e}")
+
+
+# ── GET /notifications ─────────────────────────────────────────────────────────
+
+@router.get("")
+async def get_notifications(
+    unread_only: bool = False,
+    limit: int = 50,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    ensure_table()
+    try:
+        where = "WHERE username = :u" + (" AND is_read = 0" if unread_only else "")
+        with _engine().connect() as conn:
+            rows = conn.execute(text(
+                f"SELECT * FROM notifications {where} ORDER BY created_at DESC LIMIT :limit"
+            ), {"u": current_user.username, "limit": limit}).fetchall()
+        items = [dict(r._mapping) for r in rows]
+        unread_count = sum(1 for n in items if not n["is_read"])
+        return {"notifications": items, "unread_count": unread_count, "total": len(items)}
+    except Exception:
+        return {"notifications": [], "unread_count": 0, "total": 0}
+
+
+# ── POST /notifications/mark-read ─────────────────────────────────────────────
+
+class MarkReadBody(BaseModel):
+    ids: Optional[List[int]] = None   # None = mark ALL as read
+
+
+@router.post("/mark-read")
+async def mark_read(
+    body: MarkReadBody = MarkReadBody(),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    ensure_table()
+    try:
+        with _engine().connect() as conn:
+            if body.ids:
+                for nid in body.ids:
+                    conn.execute(text(
+                        "UPDATE notifications SET is_read = 1 WHERE id = :id AND username = :u"
+                    ), {"id": nid, "u": current_user.username})
+            else:
+                conn.execute(text(
+                    "UPDATE notifications SET is_read = 1 WHERE username = :u"
+                ), {"u": current_user.username})
+            conn.commit()
+    except Exception as e:
+        pass
+    return {"status": "ok"}

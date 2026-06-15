@@ -13,7 +13,7 @@ scrape_configs:
   - job_name: "copilot-backend"
     metrics_path: /metrics
     static_configs:
-      - targets: ["backend:8000"]
+      - targets: ["backend:8001"]
         labels:
           service: "backend"
           environment: "local"

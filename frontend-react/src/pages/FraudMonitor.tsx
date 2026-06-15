@@ -1,103 +1,138 @@
-import { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
+import { useState, useEffect } from 'react';
 import { fraudApi } from '@/lib/api';
 import GlassCard from '@/components/ui/GlassCard';
+import type { CustomerSummary } from '@/types';
 
-const riskColor: Record<string, string> = { low: '#10b981', medium: '#f59e0b', high: '#ef4444', critical: '#dc2626' };
-const fmt = (cents: number) => `$${(cents / 100).toLocaleString()}`;
+interface Alert {
+  id: string; customer_id: string; fraud_type: string; status: string;
+  severity: string; fraud_score: number; investigation_notes: string;
+  amount_at_risk_cents?: number | null; created_at: string;
+}
+interface Summary { total: number; open: number; resolved: number; false_positive: number; under_review?: number; critical?: number; high?: number; }
 
-export default function FraudMonitor() {
-  const [alerts, setAlerts] = useState<any[]>([]);
-  const [summary, setSummary] = useState<any>(null);
+const STATUS_STYLES: Record<string, string> = {
+  open:           'bg-red-500/10 text-red-400 border-red-500/20',
+  resolved:       'bg-green-500/10 text-green-400 border-green-500/20',
+  false_positive: 'bg-slate-500/10 text-slate-400 border-slate-500/20',
+  under_review:   'bg-amber-500/10 text-amber-400 border-amber-500/20',
+};
+const SEV_STYLES: Record<string, string> = {
+  critical: 'bg-red-500/15 text-red-300', high: 'bg-orange-500/15 text-orange-300',
+  medium: 'bg-amber-500/15 text-amber-300', low: 'bg-blue-500/15 text-blue-300',
+};
+
+type FilterKey = 'all' | 'open' | 'resolved' | 'false_positive' | 'under_review';
+
+interface Props { customer?: CustomerSummary | null; }
+
+export default function FraudMonitor({ customer }: Props) {
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [summary, setSummary] = useState<Summary>({ total: 0, open: 0, resolved: 0, false_positive: 0 });
   const [loading, setLoading] = useState(true);
-  const [riskFilter, setRiskFilter] = useState('');
+  const [filter, setFilter] = useState<FilterKey>('all');
+  const [search, setSearch] = useState('');
 
-  const load = async () => {
+  useEffect(() => {
     setLoading(true);
-    const [a, s] = await Promise.all([
-      fraudApi.alerts({ risk_level: riskFilter || undefined }),
-      fraudApi.summary(),
-    ]);
-    setAlerts(a.alerts ?? []);
-    setSummary(s);
-    setLoading(false);
-  };
+    fraudApi.list({ limit: 300 }).then(r => {
+      let list = r.alerts as unknown as Alert[];
+      if (customer?.customer_id) {
+        list = list.filter(a => a.customer_id === customer.customer_id);
+        // Recompute summary from the filtered list so pill counts match the table
+        const s: Summary = {
+          total:          list.length,
+          open:           list.filter(a => a.status === 'open').length,
+          resolved:       list.filter(a => a.status === 'resolved').length,
+          false_positive: list.filter(a => a.status === 'false_positive').length,
+          under_review:   list.filter(a => a.status === 'under_review').length,
+          critical:       list.filter(a => a.severity === 'critical').length,
+          high:           list.filter(a => a.severity === 'high').length,
+        };
+        setSummary(s);
+      } else {
+        // Bank-wide view — use global summary from the API
+        setSummary(r.summary as unknown as Summary ?? { total: list.length, open: 0, resolved: 0, false_positive: 0 });
+      }
+      setAlerts(list);
+    }).catch(() => {}).finally(() => setLoading(false));
+  }, [customer]);
 
-  useEffect(() => { load(); }, [riskFilter]);
+  const visible = alerts.filter(a => {
+    const matchesFilter = filter === 'all' || a.status === filter;
+    const q = search.toLowerCase();
+    return matchesFilter && (!q || a.customer_id?.toLowerCase().includes(q) || a.fraud_type?.toLowerCase().includes(q) || a.investigation_notes?.toLowerCase().includes(q));
+  });
 
-  const dismiss = async (id: string) => {
-    await fraudApi.dismiss(id);
-    load();
-  };
+  const pills: { label: string; count: number; key: FilterKey }[] = [
+    { label: 'All', count: summary.total, key: 'all' },
+    { label: 'Open', count: summary.open, key: 'open' },
+    { label: 'Under Review', count: summary.under_review ?? 0, key: 'under_review' },
+    { label: 'Resolved', count: summary.resolved, key: 'resolved' },
+    { label: 'False Positive', count: summary.false_positive, key: 'false_positive' },
+  ];
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-3">
+    <div className="space-y-4">
+      <GlassCard animate={false} className="px-5 py-4 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold gradient-text">Fraud Monitor</h1>
-          <p className="text-white/40 text-sm">Real-time fraud detection and alert management</p>
+          <h2 className="text-sm font-semibold text-t1">🛡 Fraud Center</h2>
+          <p className="text-xs text-t3">{customer ? `Fraud alerts for ${customer.name}` : 'All fraud alerts across the institution'}</p>
         </div>
-        <select value={riskFilter} onChange={e => setRiskFilter(e.target.value)} className="text-sm px-3 py-2">
-          <option value="">All Risk Levels</option>
-          <option value="critical">Critical</option>
-          <option value="high">High</option>
-          <option value="medium">Medium</option>
-          <option value="low">Low</option>
-        </select>
-      </div>
+        <input value={search} onChange={e => setSearch(e.target.value)}
+          placeholder="Search…"
+          className="bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-1.5 text-xs text-t1 placeholder-t3 focus:outline-none focus:border-purple-500/40 w-48" />
+      </GlassCard>
 
-      {summary && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[
-            { label: 'Total Alerts', value: summary.total_alerts ?? 0, color: '#7c3aed' },
-            { label: 'High Risk', value: (summary.by_risk?.high ?? 0) + (summary.by_risk?.critical ?? 0), color: '#ef4444' },
-            { label: 'Flagged Today', value: summary.flagged_today ?? 0, color: '#f59e0b' },
-            { label: 'Fraud Rate', value: `${((summary.fraud_rate ?? 0) * 100).toFixed(2)}%`, color: '#3b82f6' },
-          ].map(s => (
-            <GlassCard key={s.label} className="text-center">
-              <div className="text-2xl font-bold" style={{ color: s.color }}>{s.value}</div>
-              <div className="text-xs text-white/40 mt-1">{s.label}</div>
-            </GlassCard>
+      <GlassCard animate={false} className="p-0 overflow-hidden">
+        <div className="px-5 py-3 border-b border-white/[0.06] flex gap-2 flex-wrap">
+          {pills.map(p => (
+            <button key={p.key} onClick={() => setFilter(p.key)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                filter === p.key ? 'border-purple-500/40 bg-purple-500/10 text-purple-300' : 'border-white/[0.08] text-t3 hover:text-t2'
+              }`}>
+              {p.label} <span className="font-bold">{p.count}</span>
+            </button>
           ))}
         </div>
-      )}
 
-      <div className="space-y-2">
-        {loading ? (
-          <div className="text-white/30 text-sm py-8 text-center">Loading alerts…</div>
-        ) : alerts.map((a, i) => (
-          <motion.div key={a.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.02 }}>
-            <GlassCard className="flex items-start gap-4">
-              <div className="w-2 h-2 rounded-full mt-2 flex-shrink-0"
-                style={{ background: riskColor[a.risk_level ?? 'low'] }} />
-              <div className="flex-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-xs px-2 py-0.5 rounded-full font-medium"
-                    style={{ background: `${riskColor[a.risk_level ?? 'low']}22`, color: riskColor[a.risk_level ?? 'low'] }}>
-                    {a.risk_level}
-                  </span>
-                  <span className="text-xs text-white/30">{a.alert_type}</span>
-                  <span className="text-xs text-white/20">{a.created_at?.slice(0,16)?.replace('T',' ')}</span>
-                </div>
-                <div className="text-sm text-white/80 mt-1">{a.flag_reason || a.description}</div>
-                <div className="text-xs text-white/40 mt-0.5">
-                  {a.merchant && `${a.merchant} · `}{a.amount_cents ? fmt(a.amount_cents) : ''}{a.location ? ` · ${a.location}` : ''}
-                </div>
-              </div>
-              <button onClick={() => dismiss(a.id)}
-                className="text-xs px-3 py-1.5 rounded-lg bg-white/5 text-white/40 hover:text-white/70 hover:bg-white/10 transition-all flex-shrink-0">
-                Dismiss
-              </button>
-            </GlassCard>
-          </motion.div>
-        ))}
-        {!loading && alerts.length === 0 && (
-          <div className="text-white/30 text-sm py-12 text-center">
-            <div className="text-4xl mb-3">✓</div>
-            No fraud alerts for selected filter
-          </div>
-        )}
-      </div>
+        <div className="overflow-x-auto">
+          {loading ? (
+            <div className="flex items-center justify-center py-16 text-t3 text-sm">Loading alerts…</div>
+          ) : visible.length === 0 ? (
+            <div className="text-center py-16 text-t3 text-xs">No alerts match the current filter.</div>
+          ) : (
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-t3 uppercase tracking-wider border-b border-white/[0.06] text-[9px]">
+                  {['Alert ID','Customer','Type','Notes','Severity','Score','Status','Date'].map(h => (
+                    <th key={h} className="text-left px-4 py-2.5 font-medium">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map(a => (
+                  <tr key={a.id} className="border-b border-white/[0.03] hover:bg-white/[0.02] transition-colors">
+                    <td className="px-4 py-2.5 font-mono text-purple-400/70">{(a.id ?? '').slice(0, 12)}</td>
+                    <td className="px-4 py-2.5 text-t2 font-mono">{a.customer_id}</td>
+                    <td className="px-4 py-2.5 text-t2 capitalize">{(a.fraud_type ?? '').replace(/_/g, ' ')}</td>
+                    <td className="px-4 py-2.5 text-t2 max-w-[200px] truncate">{a.investigation_notes}</td>
+                    <td className="px-4 py-2.5">
+                      <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium capitalize ${SEV_STYLES[a.severity] ?? SEV_STYLES.low}`}>{a.severity}</span>
+                    </td>
+                    <td className="px-4 py-2.5 tabular-nums">{(a.fraud_score * 100).toFixed(0)}%</td>
+                    <td className="px-4 py-2.5">
+                      <span className={`px-1.5 py-0.5 rounded border text-[9px] font-medium ${STATUS_STYLES[a.status] ?? 'bg-white/5 text-t3 border-white/10'}`}>
+                        {a.status.replace(/_/g, ' ')}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 text-t3">{(a.created_at ?? '').slice(0, 10)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </GlassCard>
     </div>
   );
 }

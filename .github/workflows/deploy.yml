@@ -43,7 +43,7 @@ jobs:
           echo "VECTOR_DB=chroma"                        >> .env
           echo "CHROMA_PERSIST_DIR=data/chroma_db"       >> .env
           echo "CHROMA_COLLECTION=banking_docs"          >> .env
-          echo "LLM_MODEL=gpt-4"                         >> .env
+          echo "LLM_MODEL=llama-3.3-70b-versatile"         >> .env
           echo "LLM_PROVIDER=groq"                       >> .env
           echo "OPENAI_API_KEY=${OPENAI_API_KEY}"        >> .env
           echo "PINECONE_API_KEY=${PINECONE_API_KEY}"    >> .env

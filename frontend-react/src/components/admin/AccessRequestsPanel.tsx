@@ -1,173 +1,215 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { accessRequestsApi, announcementsApi, bugReportsApi, adminUsersApi } from '@/lib/api';
+import { clsx } from 'clsx';
+import { accessRequestsApi } from '@/lib/api';
+import { Auth } from '@/lib/auth';
 import GlassCard from '@/components/ui/GlassCard';
+import Badge from '@/components/ui/Badge';
 
-const statusColor: Record<string, string> = { pending: '#f59e0b', approved: '#10b981', rejected: '#ef4444' };
-const sevColor: Record<string, string> = { critical: '#dc2626', high: '#ef4444', medium: '#f59e0b', low: '#94a3b8' };
+interface AccessRequest {
+  id: number;
+  username: string;
+  role: string;
+  section: string;
+  reason?: string;
+  status: string;
+  reviewed_by?: string;
+  expires_at?: string;
+  created_at: string;
+}
+
+const statusColor = (s: string): 'amber' | 'green' | 'red' | 'gray' =>
+  ({ pending: 'amber', approved: 'green', denied: 'red' } as Record<string, 'amber' | 'green' | 'red' | 'gray'>)[s] ?? 'gray';
+
+// Duration options admin can pick when approving
+const DURATION_OPTIONS = [
+  { label: '5 min',  value: 5  },
+  { label: '10 min', value: 10 },
+  { label: '15 min', value: 15 },
+  { label: '30 min', value: 30 },
+];
 
 export default function AccessRequestsPanel() {
-  const [tab, setTab] = useState<'access' | 'bugs' | 'users' | 'announcements'>('access');
-  const [requests, setRequests] = useState<any[]>([]);
-  const [bugs, setBugs] = useState<any[]>([]);
-  const [users, setUsers] = useState<any[]>([]);
-  const [announcements, setAnnouncements] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [newAnn, setNewAnn] = useState({ title: '', body: '', category: 'general' });
+  const [requests, setRequests] = useState<AccessRequest[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [acting, setActing] = useState<number | null>(null);
+  // Per-request duration selection (defaults to 10 min)
+  const [durations, setDurations] = useState<Record<number, number>>({});
 
-  useEffect(() => { loadTab(); }, [tab]);
+  const user = Auth.getUser();
+  const isAdmin = user?.role === 'admin';
 
-  const loadTab = async () => {
+  const load = () => {
     setLoading(true);
+    accessRequestsApi.list()
+      .then(res => setRequests(res.requests))
+      .catch(e => setError(e.message))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const review = async (id: number, status: 'approved' | 'denied') => {
+    setActing(id);
     try {
-      if (tab === 'access')        setRequests((await accessRequestsApi.list()).requests ?? []);
-      if (tab === 'bugs')          setBugs((await bugReportsApi.list()).reports ?? []);
-      if (tab === 'users')         setUsers((await adminUsersApi.list()).users ?? []);
-      if (tab === 'announcements') setAnnouncements((await announcementsApi.list()).announcements ?? []);
-    } finally { setLoading(false); }
+      const duration = durations[id] ?? 10;
+      const res = await accessRequestsApi.review(id, status, status === 'approved' ? duration : undefined);
+      setRequests(prev => prev.map(r =>
+        r.id === id
+          ? { ...r, status, reviewed_by: user?.username, expires_at: res.expires_at }
+          : r
+      ));
+    } catch {
+      /* ignore */
+    } finally {
+      setActing(null);
+    }
   };
 
-  const reviewRequest = async (id: number, status: string) => {
-    await accessRequestsApi.review(id, { status });
-    loadTab();
-  };
+  const pending = requests.filter(r => r.status === 'pending');
+  const resolved = requests.filter(r => r.status !== 'pending');
 
-  const postAnnouncement = async () => {
-    if (!newAnn.title.trim()) return;
-    await announcementsApi.create(newAnn);
-    setNewAnn({ title: '', body: '', category: 'general' });
-    loadTab();
+  const formatExpiry = (exp?: string) => {
+    if (!exp) return '';
+    const dt = new Date(exp);
+    const remaining = Math.round((dt.getTime() - Date.now()) / 60000);
+    if (remaining > 0) return `expires in ~${remaining}m`;
+    return `expired`;
   };
-
-  const TABS = [
-    { id: 'access', label: 'Access Requests' },
-    { id: 'bugs', label: 'Bug Reports' },
-    { id: 'users', label: 'Users' },
-    { id: 'announcements', label: 'Announcements' },
-  ] as const;
 
   return (
-    <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-xl font-bold gradient-text">Admin Center</h1>
-        <p className="text-white/40 text-sm">User management, access control, announcements</p>
-      </div>
-
-      <div className="flex gap-1">
-        {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            className={`text-sm px-4 py-2 rounded-xl transition-all ${tab === t.id ? 'bg-purple-600/30 text-purple-300' : 'text-white/40 hover:text-white/60'}`}>
-            {t.label}
+    <div className="space-y-4">
+      <GlassCard animate={false} className="px-5 py-4 flex items-center justify-between">
+        <div>
+          <h2 className="text-sm font-semibold text-t1">Access Request Queue</h2>
+          <p className="text-xs text-t3">
+            {isAdmin
+              ? 'Approve requests to grant time-limited access. Access expires automatically.'
+              : 'Your submitted access requests and their approval status.'}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          {pending.length > 0 && (
+            <span className="px-2.5 py-1 rounded-full bg-amber-500/15 border border-amber-500/20 text-xs text-amber-300 font-semibold">
+              {pending.length} pending
+            </span>
+          )}
+          <button onClick={load} className="text-xs text-t3 hover:text-t1 transition-colors px-2 py-1 rounded-lg hover:bg-white/[0.04] border border-white/[0.06]">
+            Refresh
           </button>
-        ))}
-      </div>
+        </div>
+      </GlassCard>
 
-      {loading && <div className="text-white/30 text-sm py-4">Loading…</div>}
-
-      {tab === 'access' && !loading && (
-        <div className="space-y-2">
-          {requests.map((r, i) => (
-            <motion.div key={r.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.02 }}>
-              <GlassCard className="flex gap-4 items-start">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs px-2 py-0.5 rounded-full"
-                      style={{ background: `${statusColor[r.status]}22`, color: statusColor[r.status] }}>
-                      {r.status}
-                    </span>
-                    <span className="text-xs text-white/30">{r.requested_by}</span>
-                  </div>
-                  <div className="text-sm text-white/80 mt-1">Role: {r.role} · Resource: {r.resource}</div>
-                  <div className="text-xs text-white/40">{r.reason}</div>
-                </div>
-                {r.status === 'pending' && (
-                  <div className="flex gap-2">
-                    <button onClick={() => reviewRequest(r.id, 'approved')}
-                      className="text-xs px-3 py-1.5 rounded-lg bg-green-500/20 text-green-400 hover:bg-green-500/30 transition-all">Approve</button>
-                    <button onClick={() => reviewRequest(r.id, 'rejected')}
-                      className="text-xs px-3 py-1.5 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-all">Reject</button>
-                  </div>
-                )}
-              </GlassCard>
-            </motion.div>
-          ))}
-          {requests.length === 0 && <div className="text-white/30 text-sm py-4 text-center">No access requests</div>}
+      {loading && (
+        <div className="flex justify-center py-16">
+          <div className="w-6 h-6 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
         </div>
       )}
+      {error && <div className="px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-sm text-red-300">{error}</div>}
 
-      {tab === 'bugs' && !loading && (
-        <div className="space-y-2">
-          {bugs.map((b, i) => (
-            <motion.div key={b.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.02 }}>
-              <GlassCard>
-                <div className="flex items-start gap-3">
-                  <span className="text-xs px-2 py-0.5 rounded-full mt-0.5"
-                    style={{ background: `${sevColor[b.severity]}22`, color: sevColor[b.severity] }}>
-                    {b.severity}
-                  </span>
-                  <div>
-                    <div className="text-sm font-medium text-white/80">{b.title}</div>
-                    <div className="text-xs text-white/40">{b.description}</div>
-                    <div className="text-xs text-white/30 mt-1">{b.submitted_by} · {b.status} · {b.created_at?.slice(0,10)}</div>
-                  </div>
-                </div>
-              </GlassCard>
-            </motion.div>
-          ))}
-          {bugs.length === 0 && <div className="text-white/30 text-sm py-4 text-center">No bug reports</div>}
-        </div>
+      {!loading && requests.length === 0 && (
+        <GlassCard animate={false} className="py-16 text-center">
+          <div className="text-3xl mb-3">📭</div>
+          <p className="text-sm text-t3">No access requests yet.</p>
+        </GlassCard>
       )}
 
-      {tab === 'users' && !loading && (
-        <div className="space-y-2">
-          {users.map((u, i) => (
-            <motion.div key={u.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.02 }}>
-              <GlassCard className="flex items-center gap-4">
-                <div className="w-9 h-9 rounded-full flex items-center justify-center font-semibold text-sm flex-shrink-0"
-                  style={{ background: 'linear-gradient(135deg, #7c3aed33, #3b82f633)' }}>
-                  {u.full_name?.[0]}
-                </div>
-                <div className="flex-1">
-                  <div className="text-sm font-medium text-white/80">{u.full_name}</div>
-                  <div className="text-xs text-white/40">{u.username} · {u.role}</div>
-                </div>
-                <span className={`text-xs px-2 py-0.5 rounded-full ${u.is_active ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
-                  {u.is_active ? 'Active' : 'Inactive'}
-                </span>
-              </GlassCard>
-            </motion.div>
-          ))}
-          {users.length === 0 && <div className="text-white/30 text-sm py-4 text-center">No users</div>}
-        </div>
-      )}
-
-      {tab === 'announcements' && !loading && (
-        <div className="space-y-4">
-          <GlassCard>
-            <div className="text-sm font-medium text-white/70 mb-3">Post New Announcement</div>
-            <div className="space-y-2">
-              <input value={newAnn.title} onChange={e => setNewAnn(a => ({ ...a, title: e.target.value }))}
-                placeholder="Title" className="w-full px-3 py-2 text-sm" />
-              <textarea value={newAnn.body} onChange={e => setNewAnn(a => ({ ...a, body: e.target.value }))}
-                placeholder="Body" rows={3} className="w-full px-3 py-2 text-sm resize-none" />
-              <button onClick={postAnnouncement}
-                className="px-4 py-2 rounded-xl text-sm font-medium text-white"
-                style={{ background: 'linear-gradient(135deg, #7c3aed, #3b82f6)' }}>
-                Post
-              </button>
-            </div>
-          </GlassCard>
-          <div className="space-y-2">
-            {announcements.map(a => (
-              <GlassCard key={a.id}>
-                <div className="text-sm font-medium text-white/80">{a.title}</div>
-                <div className="text-xs text-white/40 mt-1">{a.body}</div>
-                <div className="text-xs text-white/30 mt-2">{a.created_by} · {a.created_at?.slice(0,10)}</div>
-              </GlassCard>
-            ))}
-            {announcements.length === 0 && <div className="text-white/30 text-sm py-4 text-center">No announcements</div>}
+      {/* Pending */}
+      {pending.length > 0 && (
+        <GlassCard animate={false} className="overflow-hidden">
+          <div className="px-5 py-3 border-b border-white/[0.06] flex items-center gap-2">
+            <span className="text-sm font-semibold text-t1">Pending Requests</span>
+            <Badge label={String(pending.length)} color="amber" dot />
           </div>
-        </div>
+          <div className="divide-y divide-white/[0.04]">
+            {pending.map((req, i) => (
+              <motion.div key={req.id}
+                initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05 }}
+                className="px-5 py-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-sm font-medium text-t1">{req.username}</span>
+                      <Badge label={req.role.replace(/_/g, ' ')} color="gray" />
+                    </div>
+                    <div className="text-xs text-t3 mb-1">
+                      Requesting: <span className="text-purple-400 font-medium">{req.section.replace(/_/g, ' ')}</span>
+                    </div>
+                    {req.reason && (
+                      <div className="text-xs text-t2 italic">{req.reason}</div>
+                    )}
+                    <div className="text-[10px] text-t3 mt-1">{new Date(req.created_at).toLocaleString()}</div>
+                  </div>
+
+                  {isAdmin && (
+                    <div className="flex flex-col gap-2 flex-shrink-0 items-end">
+                      {/* Duration selector */}
+                      <div className="flex items-center gap-1">
+                        <span className="text-[9px] text-t3">Duration:</span>
+                        {DURATION_OPTIONS.map(opt => (
+                          <button
+                            key={opt.value}
+                            onClick={() => setDurations(prev => ({ ...prev, [req.id]: opt.value }))}
+                            className={clsx(
+                              'text-[9px] px-1.5 py-0.5 rounded border transition-all',
+                              (durations[req.id] ?? 10) === opt.value
+                                ? 'border-purple-500/50 text-purple-300 bg-purple-500/15'
+                                : 'border-white/10 text-t3 hover:border-white/20',
+                            )}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                      {/* Approve / Deny */}
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => review(req.id, 'approved')}
+                          disabled={acting === req.id}
+                          className="px-3 py-1.5 rounded-lg bg-green-500/10 border border-green-500/20 hover:bg-green-500/20 text-xs text-green-300 transition-all disabled:opacity-40"
+                        >
+                          {acting === req.id ? '…' : `Approve (${durations[req.id] ?? 10}m)`}
+                        </button>
+                        <button
+                          onClick={() => review(req.id, 'denied')}
+                          disabled={acting === req.id}
+                          className="px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 text-xs text-red-300 transition-all disabled:opacity-40"
+                        >
+                          Deny
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </GlassCard>
+      )}
+
+      {/* Resolved */}
+      {resolved.length > 0 && (
+        <GlassCard animate={false} className="overflow-hidden">
+          <div className="px-5 py-3 border-b border-white/[0.06]">
+            <span className="text-sm font-semibold text-t1">Resolved Requests</span>
+          </div>
+          <div className="divide-y divide-white/[0.04]">
+            {resolved.map(req => (
+              <div key={req.id} className="px-5 py-3 flex items-center justify-between text-xs">
+                <div>
+                  <span className="text-t1 font-medium">{req.username}</span>
+                  <span className="text-t3 ml-2">— {req.section.replace(/_/g, ' ')}</span>
+                  {req.reviewed_by && <span className="text-t3 ml-2">· by {req.reviewed_by}</span>}
+                  {req.expires_at && req.status === 'approved' && (
+                    <span className="text-t3 ml-2 tabular-nums">· {formatExpiry(req.expires_at)}</span>
+                  )}
+                </div>
+                <Badge label={req.status} color={statusColor(req.status)} />
+              </div>
+            ))}
+          </div>
+        </GlassCard>
       )}
     </div>
   );

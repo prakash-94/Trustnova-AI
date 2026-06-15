@@ -1,0 +1,82 @@
+# ═══════════════════════════════════════════════════════════════════
+#  TrustNova AI — .dockerignore
+#  Keeps large, secret, and generated files OUT of the build context.
+#  Faster builds · smaller images · no secrets leaked into layers.
+# ═══════════════════════════════════════════════════════════════════
+
+# ── Version control ─────────────────────────────────────────────────
+.git
+.gitignore
+.gitattributes
+
+# ── Secrets — never bake into an image ──────────────────────────────
+.env
+.env.*
+*.key
+*.pem
+*.secret
+
+# ── Python runtime (rebuilt inside image) ───────────────────────────
+venv/
+.venv/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+coverage.xml
+pip-log.txt
+
+# ── ML artefacts (generated, not stored in repo) ────────────────────
+# models/ is copied selectively in Dockerfile.ml only
+mlruns/
+
+# ── Vector store & processed data (generated at runtime) ────────────
+data/chroma_db/
+data/processed/
+data/embeddings/
+
+# ── Node / Frontend build artefacts ─────────────────────────────────
+frontend-react/node_modules/
+frontend-react/dist/
+frontend-react/.vite/
+frontend-react/.env
+frontend-react/.env.*
+frontend-react/*.log
+
+# ── Legacy prototype frontend ────────────────────────────────────────
+frontend/
+
+# ── Local dev / one-off scripts ─────────────────────────────────────
+scripts/
+
+# ── Docker runtime volumes ───────────────────────────────────────────
+deployment/grafana-data/
+deployment/prometheus-data/
+
+# ── Logs ────────────────────────────────────────────────────────────
+*.log
+*.log.*
+logs/
+
+# ── Generated reports & binary documents ────────────────────────────
+reports/
+*.docx
+*.xlsx
+*.pptx
+*.pdf
+
+# ── OS artefacts ────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Editor configs ──────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
