@@ -16,6 +16,7 @@ env:
   PYTHON_VERSION: "3.11"
   DOCKER_REGISTRY: ghcr.io
   IMAGE_PREFIX: ${{ github.repository_owner }}/trustnova
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   # ── Step 1: Run Tests ──────────────────────────────────
