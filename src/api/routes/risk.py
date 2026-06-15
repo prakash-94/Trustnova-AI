@@ -140,9 +140,12 @@ async def get_customer_risk(
         fraud_count = conn.execute(text(
             "SELECT COUNT(*) FROM fraud_alerts WHERE customer_id = :cid"
         ), {"cid": customer_id}).scalar() or 0
-        ts = conn.execute(text(
-            "SELECT score FROM trust_scores WHERE customer_id = :cid ORDER BY timestamp DESC LIMIT 1"
-        ), {"cid": customer_id}).fetchone()
+        try:
+            ts = conn.execute(text(
+                "SELECT score FROM trust_scores WHERE customer_id = :cid ORDER BY timestamp DESC LIMIT 1"
+            ), {"cid": customer_id}).fetchone()
+        except Exception:
+            ts = None
 
     credit  = int(d.get("credit_score") or 650)
     risk_l  = (d.get("aml_risk_rating") or "low").lower()

@@ -18,6 +18,10 @@ import pandas as pd
 import numpy as np
 from sqlalchemy import create_engine
 import os
+import uuid
+import random
+import hashlib
+import datetime
 
 
 def load_raw_data():
@@ -180,10 +184,132 @@ def run_etl():
 
     # Step 6: Write all tables to SQLite
     print("\n[6/6] Writing to SQLite database...")
-    engine = create_engine("sqlite:///banking.db")
+    db_url = os.getenv("DATABASE_URL", "sqlite:///banking.db")
+    engine = create_engine(db_url)
+
+    # -- Transform customers to match API schema ---------------------------
+    def _seeded_rng(val, suffix):
+        seed = int(hashlib.md5((str(val) + suffix).encode()).hexdigest(), 16) % (2**32)
+        return random.Random(seed)
+
+    customers_for_db = customers.copy()
+    # Split "John Smith" → first_name + last_name
+    def _split_name(n):
+        parts = str(n).strip().split(' ', 1)
+        return parts[0], (parts[1] if len(parts) > 1 else '')
+    split = customers_for_db['name'].apply(_split_name)
+    customers_for_db['first_name'] = split.apply(lambda x: x[0])
+    customers_for_db['last_name'] = split.apply(lambda x: x[1])
+    customers_for_db = customers_for_db.drop(columns=['name'])
+    customers_for_db = customers_for_db.rename(columns={
+        'customer_id': 'id',
+        'risk_level': 'aml_risk_rating',
+        'income': 'annual_income',
+    })
+    customers_for_db['kyc_status'] = 'pending'
+    customers_for_db['segment'] = 'retail'
+    customers_for_db['customer_type'] = 'individual'
+    customers_for_db['is_pep'] = 0
+    customers_for_db['is_sanctioned'] = 0
+    customers_for_db['is_active'] = 1
+
+    # -- Generate accounts (one per customer) ------------------------------
+    accounts_rows = []
+    for _, row in customers.iterrows():
+        cid = row['customer_id']
+        rng = _seeded_rng(cid, '_account')
+        acct_num = 'AC' + ''.join(str(rng.randint(0, 9)) for _ in range(10))
+        acct_id = str(rng.randint(10**18, 10**19 - 1))
+        balance_cents = int(float(row['balance']) * 100)
+        status = 'inactive' if rng.random() < 0.05 else 'active'
+        accounts_rows.append({
+            'id': acct_id,
+            'customer_id': cid,
+            'account_number': acct_num,
+            'account_type': row['account_type'],
+            'status': status,
+            'balance_cents': balance_cents,
+            'currency': 'USD',
+            'opened_date': row['account_opened'],
+        })
+    accounts_df = pd.DataFrame(accounts_rows)
+    print(f"  Generated accounts: {len(accounts_df):,} rows")
+
+    # -- Generate loans (~40% of customers) --------------------------------
+    _loan_types = ['home', 'auto', 'personal', 'education', 'business']
+    _statuses = ['active', 'active', 'active', 'pending', 'closed']
+    _purposes = {
+        'home': 'Home purchase', 'auto': 'Vehicle purchase',
+        'personal': 'Personal expenses', 'education': 'Education expenses',
+        'business': 'Business expansion',
+    }
+    _collateral = {
+        'home': 'real_estate', 'auto': 'vehicle',
+        'business': 'business_assets', 'personal': None, 'education': None,
+    }
+    _interest_range = {
+        'home': (3.5, 7.5), 'auto': (4.0, 12.0), 'personal': (6.0, 18.0),
+        'education': (3.5, 8.0), 'business': (5.0, 15.0),
+    }
+    _terms = {
+        'home': [180, 240, 360], 'auto': [36, 48, 60, 72],
+        'personal': [12, 24, 36, 60], 'education': [120, 180, 240],
+        'business': [60, 84, 120],
+    }
+    _amounts = {
+        'home': (100000, 500000), 'auto': (15000, 60000),
+        'personal': (5000, 50000), 'education': (10000, 80000),
+        'business': (50000, 500000),
+    }
+    loans_rows = []
+    for _, row in customers.iterrows():
+        cid = row['customer_id']
+        rng = _seeded_rng(cid, '_loan')
+        if rng.random() > 0.40:
+            continue
+        lt = rng.choice(_loan_types)
+        status = rng.choice(_statuses)
+        lo, hi = _amounts[lt]
+        principal = rng.randint(lo, hi)
+        term_months = rng.choice(_terms[lt])
+        lo_r, hi_r = _interest_range[lt]
+        interest_rate = round(rng.uniform(lo_r, hi_r), 2)
+        r_m = (interest_rate / 100) / 12
+        if r_m > 0:
+            mp = principal * r_m * (1 + r_m) ** term_months / ((1 + r_m) ** term_months - 1)
+        else:
+            mp = principal / term_months
+        outstanding_pct = (
+            0.0 if status == 'closed' else
+            1.0 if status == 'pending' else
+            rng.uniform(0.1, 0.95)
+        )
+        days_ago = rng.randint(30, 3650)
+        orig_dt = datetime.date.today() - datetime.timedelta(days=days_ago)
+        mat_dt = orig_dt + datetime.timedelta(days=int(term_months * 30.44))
+        loan_id = uuid.UUID(int=rng.getrandbits(128)).hex[:8]
+        loans_rows.append({
+            'id': loan_id,
+            'customer_id': cid,
+            'loan_type': lt,
+            'status': status,
+            'purpose': _purposes[lt],
+            'notes': '',
+            'amount_cents': principal * 100,
+            'outstanding_balance_cents': int(principal * 100 * outstanding_pct),
+            'interest_rate': interest_rate,
+            'term_months': term_months,
+            'monthly_payment_cents': int(mp * 100),
+            'collateral': _collateral[lt],
+            'origination_date': str(orig_dt),
+            'maturity_date': str(mat_dt),
+            'created_at': str(orig_dt) + 'T00:00:00',
+        })
+    loans_df = pd.DataFrame(loans_rows) if loans_rows else pd.DataFrame()
+    print(f"  Generated loans: {len(loans_df):,} rows")
 
     tables = {
-        "customers": customers,
+        "customers": customers_for_db,
         "transactions": transactions,
         "interactions": interactions,
         "support_tickets": support_tickets,
@@ -191,16 +317,18 @@ def run_etl():
         "chat_transcripts": chat_transcripts,
         "complaints": complaints,
         "enriched_transactions": df,
+        "accounts": accounts_df,
+        "loans": loans_df,
     }
 
     for table_name, table_df in tables.items():
-        if table_df is not None:
+        if table_df is not None and not table_df.empty:
             table_df.to_sql(table_name, engine, if_exists="replace", index=False)
             print(f"  {table_name}: {len(table_df):,} rows")
 
     print("\n" + "=" * 60)
     print("ETL complete!")
-    print(f"  Tables written: {sum(1 for v in tables.values() if v is not None)}")
+    print(f"  Tables written: {sum(1 for v in tables.values() if v is not None and not v.empty)}")
     print(f"  Database: banking.db")
     print("=" * 60)
     return df

@@ -154,9 +154,12 @@ async def get_loan_detail(
                 "sentiment_avg":  None,
             }
 
-        ts_row = conn.execute(text(
-            "SELECT * FROM trust_scores WHERE customer_id = :cid ORDER BY timestamp DESC LIMIT 1"
-        ), {"cid": cid}).fetchone()
+        try:
+            ts_row = conn.execute(text(
+                "SELECT * FROM trust_scores WHERE customer_id = :cid ORDER BY timestamp DESC LIMIT 1"
+            ), {"cid": cid}).fetchone()
+        except Exception:
+            ts_row = None
         trust_score = {}
         if ts_row:
             ts = dict(ts_row._mapping)

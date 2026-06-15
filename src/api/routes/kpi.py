@@ -14,9 +14,12 @@ async def kpi_stats(current_user: CurrentUser = Depends(require_permission("chat
     """Comprehensive KPI stats for role-based KPI bar and dashboard."""
     with engine.connect() as conn:
         total_customers = conn.execute(text("SELECT COUNT(*) FROM customers")).scalar() or 0
-        ai_queries_today = conn.execute(text(
-            "SELECT COUNT(*) FROM llm_usage WHERE DATE(timestamp) = DATE('now')"
-        )).scalar() or 0
+        try:
+            ai_queries_today = conn.execute(text(
+                "SELECT COUNT(*) FROM llm_usage WHERE DATE(timestamp) = DATE('now')"
+            )).scalar() or 0
+        except Exception:
+            ai_queries_today = 0
 
         fraud_open = conn.execute(text(
             "SELECT COUNT(*) FROM fraud_alerts WHERE status='open'"
@@ -36,15 +39,18 @@ async def kpi_stats(current_user: CurrentUser = Depends(require_permission("chat
             loan_pending = 0
 
         kyc_pending = conn.execute(text(
-            "SELECT COUNT(*) FROM customers WHERE aml_risk_rating IN ('medium', 'high')"
+            "SELECT COUNT(*) FROM customers WHERE LOWER(aml_risk_rating) IN ('medium', 'high')"
         )).scalar() or 0
 
-        trust_avg = conn.execute(text(
-            "SELECT AVG(final_score) FROM ai_trust_scores"
-        )).scalar() or 87.4
+        try:
+            trust_avg = conn.execute(text(
+                "SELECT AVG(final_score) FROM ai_trust_scores"
+            )).scalar() or 87.4
+        except Exception:
+            trust_avg = 87.4
 
         high_risk = conn.execute(text(
-            "SELECT COUNT(*) FROM customers WHERE aml_risk_rating = 'high'"
+            "SELECT COUNT(*) FROM customers WHERE LOWER(aml_risk_rating) = 'high'"
         )).scalar() or 0
 
         avg_credit = conn.execute(text(

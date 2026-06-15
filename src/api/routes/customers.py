@@ -198,9 +198,12 @@ async def get_customer_stats(
 ):
     with engine.connect() as conn:
         total = conn.execute(text("SELECT COUNT(*) FROM customers")).scalar() or 0
-        ai_queries = conn.execute(text(
-            "SELECT COUNT(*) FROM llm_usage WHERE DATE(timestamp) = DATE('now')"
-        )).scalar() or 0
+        try:
+            ai_queries = conn.execute(text(
+                "SELECT COUNT(*) FROM llm_usage WHERE DATE(timestamp) = DATE('now')"
+            )).scalar() or 0
+        except Exception:
+            ai_queries = 0
     return {"total_customers": total, "ai_queries_today": ai_queries}
 
 
