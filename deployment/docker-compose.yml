@@ -1,23 +1,23 @@
 # =============================================================
 #  TrustNova AI — Docker Compose (full stack)
-#  Docker Hub: chotu94/trusnova-{backend,frontend,ml}
 #
-#  Quick start (pull from Docker Hub — no source needed):
-#    docker-compose pull && docker-compose up -d
+#  Images are built and pushed to GHCR by the CI pipeline.
+#  Pull the latest CI-built images:
+#    docker-compose pull
+#    docker-compose up -d
 #
-#  Build from source and push:
-#    docker-compose build
-#    docker-compose push
-#
-#  Development (build + start):
+#  Build from source and run locally:
 #    docker-compose up --build
+#
+#  Individual service:
+#    docker-compose up backend chromadb
 # =============================================================
 
 services:
 
   # ── FastAPI Backend ──────────────────────────────────────────
   backend:
-    image: chotu94/trusnova-backend:latest
+    image: ghcr.io/prakash-94/trustnova-backend:latest
     build:
       context: ..
       dockerfile: deployment/Dockerfile.backend
@@ -40,10 +40,10 @@ services:
       - backend-data:/app/data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
+      interval: 20s
+      timeout: 10s
+      retries: 8
+      start_period: 120s    # entrypoint seeds DB on first start (~90s)
     depends_on:
       chromadb:
         condition: service_started
@@ -53,7 +53,7 @@ services:
 
   # ── React Frontend (Nginx) ───────────────────────────────────
   frontend:
-    image: chotu94/trusnova-frontend:latest
+    image: ghcr.io/prakash-94/trustnova-frontend:latest
     build:
       context: ..
       dockerfile: deployment/Dockerfile.frontend
@@ -68,14 +68,26 @@ services:
     restart: unless-stopped
 
   # ── ML Inference Service ─────────────────────────────────────
+  # Models are not in git — volume-mount pre-trained pkl files:
+  #   docker run -v /path/to/models:/app/models ...
+  # Or train locally: python -m src.models.model_zoo
+  # then: docker cp models/. trusnova-ml:/app/models/
   ml-service:
-    image: chotu94/trusnova-ml:latest
+    image: ghcr.io/prakash-94/trustnova-ml-service:latest
     build:
       context: ..
       dockerfile: deployment/Dockerfile.ml
     container_name: trusnova-ml
     ports:
-      - "8003:8001"
+      - "8003:8001"     # host:8003 → container:8001
+    volumes:
+      - models-data:/app/models   # mount pre-trained pkl files here
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     networks:
       - trusnova-net
     restart: unless-stopped
@@ -91,6 +103,12 @@ services:
     environment:
       - IS_PERSISTENT=TRUE
       - ANONYMIZED_TELEMETRY=FALSE
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     networks:
       - trusnova-net
     restart: unless-stopped
@@ -108,6 +126,12 @@ services:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.retention.time=30d"
       - "--web.enable-lifecycle"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     networks:
       - trusnova-net
     restart: unless-stopped
@@ -128,7 +152,14 @@ services:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
-      - prometheus
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     networks:
       - trusnova-net
     restart: unless-stopped
@@ -142,6 +173,8 @@ volumes:
   prometheus-data:
     driver: local
   grafana-data:
+    driver: local
+  models-data:             # mount pre-trained ML pkl files here
     driver: local
 
 # ── Network ───────────────────────────────────────────────────
