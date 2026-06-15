@@ -137,10 +137,12 @@ class TrustScoreCalculator:
 
     def _get_tier(self, score: float) -> str:
         """Map score to tier."""
-        for tier, (low, high) in TIERS.items():
-            if low <= score <= high:
-                return tier
-        return "Unknown"
+        if score <= 40:
+            return "High Risk"
+        elif score <= 70:
+            return "Moderate"
+        else:
+            return "Trusted"
 
     def calculate(self, customer_id: str) -> Dict:
         """
