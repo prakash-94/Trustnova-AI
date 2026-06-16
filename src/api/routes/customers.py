@@ -38,7 +38,7 @@ def _city_state(cid: str) -> tuple[str, str]:
 
 
 def _row_to_customer(row: dict) -> dict:
-    cid = row.get("id", "")
+    cid = row.get("customer_id") or row.get("id", "")
     city = row.get("address_city") or _city_state(cid)[0]
     state = row.get("address_state") or _city_state(cid)[1]
     return {
@@ -94,21 +94,19 @@ async def create_customer(
 
     with engine.begin() as conn:
         existing = conn.execute(
-            text("SELECT id FROM customers WHERE email = :email"), {"email": body.email}
+            text("SELECT customer_id FROM customers WHERE email = :email"), {"email": body.email}
         ).fetchone()
         if existing:
             raise HTTPException(status_code=409, detail="A customer with this email already exists.")
 
         conn.execute(text("""
             INSERT INTO customers
-                (id, first_name, last_name, email, phone, segment, customer_type,
+                (customer_id, first_name, last_name, email, phone, segment, customer_type,
                  kyc_status, aml_risk_rating, credit_score, annual_income,
-                 address_city, address_state,
                  is_pep, is_sanctioned, is_active, created_at)
             VALUES
                 (:id, :fn, :ln, :email, :phone, :segment, :ctype,
                  'pending', :risk, :credit, :income,
-                 :city, :state,
                  0, 0, 1, :now)
         """), {
             "id": cid,
@@ -149,7 +147,7 @@ async def create_customer(
               ip=request.client.host if request.client else "")
 
     with engine.connect() as conn:
-        row = conn.execute(text("SELECT * FROM customers WHERE id = :id"), {"id": cid}).fetchone()
+        row = conn.execute(text("SELECT * FROM customers WHERE customer_id = :id"), {"id": cid}).fetchone()
     return {"customer": _row_to_customer(dict(row._mapping)), "message": "Customer created successfully."}
 
 
@@ -167,6 +165,7 @@ async def search_customers(
                OR LOWER(last_name) LIKE :q
                OR LOWER(first_name || ' ' || last_name) LIKE :q
                OR LOWER(last_name || ' ' || first_name) LIKE :q
+               OR LOWER(COALESCE(name, '')) LIKE :q
             ORDER BY first_name, last_name
             LIMIT :limit
         """), {"q": f"%{q_stripped}%", "limit": limit}).fetchall()
@@ -277,7 +276,7 @@ async def get_customer_summary(
 ):
     with engine.connect() as conn:
         cust_row = conn.execute(text(
-            "SELECT * FROM customers WHERE id = :cid"
+            "SELECT * FROM customers WHERE customer_id = :cid"
         ), {"cid": customer_id}).fetchone()
         if not cust_row:
             raise HTTPException(status_code=404, detail="Customer not found")
@@ -365,7 +364,7 @@ async def get_customer(
 ):
     with engine.connect() as conn:
         row = conn.execute(text(
-            "SELECT * FROM customers WHERE id = :cid"
+            "SELECT * FROM customers WHERE customer_id = :cid"
         ), {"cid": customer_id}).fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Customer not found")

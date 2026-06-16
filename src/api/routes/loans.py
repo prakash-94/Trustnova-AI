@@ -132,7 +132,7 @@ async def get_loan_detail(
         cid = loan["customer_id"]
 
         cust_row = conn.execute(text(
-            "SELECT * FROM customers WHERE id = :cid"
+            "SELECT * FROM customers WHERE customer_id = :cid"
         ), {"cid": cid}).fetchone()
         customer = {}
         if cust_row:

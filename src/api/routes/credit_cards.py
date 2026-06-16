@@ -236,7 +236,7 @@ async def create_application(
         try:
             with _engine().connect() as conn:
                 cust = conn.execute(text(
-                    "SELECT first_name, last_name FROM customers WHERE id = :id"
+                    "SELECT first_name, last_name FROM customers WHERE customer_id = :id"
                 ), {"id": body.customer_id}).fetchone()
                 if cust:
                     customer_name = f"{cust[0]} {cust[1]}"

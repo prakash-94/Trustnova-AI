@@ -130,9 +130,8 @@ async def get_customer_risk(
     current_user: CurrentUser = Depends(require_permission("risk:read")),
 ):
     with engine.connect() as conn:
-        # customers PK is 'id'
         row = conn.execute(text(
-            "SELECT * FROM customers WHERE id = :cid"
+            "SELECT * FROM customers WHERE customer_id = :cid"
         ), {"cid": customer_id}).fetchone()
         if not row:
             return {"customer_id": customer_id, "composite_score": 50.0, "risk_band": "medium", "factors": {}}
