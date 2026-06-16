@@ -8,17 +8,37 @@ export interface Conversation {
   messages: ChatMessage[];
 }
 
-const STORE_KEY = 'trusnova_conversations';
+const BASE_KEY = 'trusnova_conversations';
 const MAX_CONVERSATIONS = 60;
 
-export function loadConversations(): Conversation[] {
+function storeKey(username?: string): string {
+  return username ? `${BASE_KEY}_${username}` : BASE_KEY;
+}
+
+export function loadConversations(username?: string): Conversation[] {
+  const key = storeKey(username);
   try {
-    const raw = localStorage.getItem(STORE_KEY);
+    const raw = localStorage.getItem(key);
     if (raw) {
       const parsed = JSON.parse(raw) as Conversation[];
       if (Array.isArray(parsed) && parsed.length > 0) return parsed;
     }
   } catch {}
+
+  // For named users: migrate any existing shared history on first load, then clear shared
+  if (username) {
+    try {
+      const shared = localStorage.getItem(BASE_KEY);
+      if (shared) {
+        const parsed = JSON.parse(shared) as Conversation[];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          saveConversations(parsed, username);
+          localStorage.removeItem(BASE_KEY);
+          return parsed;
+        }
+      }
+    } catch {}
+  }
 
   // Migrate from old flat format
   try {
@@ -28,7 +48,7 @@ export function loadConversations(): Conversation[] {
       const completed = oldMessages.filter(m => m.role === 'user' || m.content.length > 0);
       if (completed.length > 0) {
         const migrated = makeConversation(completed);
-        saveConversations([migrated]);
+        saveConversations([migrated], username);
         localStorage.removeItem('trusnova_chat_history');
         return [migrated];
       }
@@ -38,10 +58,10 @@ export function loadConversations(): Conversation[] {
   return [];
 }
 
-export function saveConversations(convs: Conversation[]): void {
+export function saveConversations(convs: Conversation[], username?: string): void {
   try {
     const sorted = [...convs].sort((a, b) => b.updatedAt - a.updatedAt);
-    localStorage.setItem(STORE_KEY, JSON.stringify(sorted.slice(0, MAX_CONVERSATIONS)));
+    localStorage.setItem(storeKey(username), JSON.stringify(sorted.slice(0, MAX_CONVERSATIONS)));
   } catch {}
 }
 

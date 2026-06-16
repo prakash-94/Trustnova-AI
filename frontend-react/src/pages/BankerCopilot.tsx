@@ -113,15 +113,16 @@ export default function BankerCopilot({ user, onLogout }: BankerCopilotProps) {
   const [kpiRefreshKey, setKpiRefreshKey] = useState(0);
   const [showFeedback, setShowFeedback] = useState(false);
 
-  // ── Conversation history ──────────────────────────────────────────────────
+  // ── Conversation history (keyed per user so each account has its own history) ──
+  const uname = user.username;
   const initConvState = useMemo(() => {
-    const loaded = loadConversations();
+    const loaded = loadConversations(uname);
     if (loaded.length > 0) {
       const sorted = [...loaded].sort((a, b) => b.updatedAt - a.updatedAt);
       return { convs: sorted, activeId: sorted[0].id };
     }
     const first = makeConversation([]);
-    saveConversations([first]);
+    saveConversations([first], uname);
     return { convs: [first], activeId: first.id };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -135,20 +136,20 @@ export default function BankerCopilot({ user, onLogout }: BankerCopilotProps) {
         const title = getTitleFromMessages(messages);
         return { ...c, messages, title: title || c.title, updatedAt: Date.now() };
       });
-      saveConversations(updated);
+      saveConversations(updated, uname);
       return updated;
     });
-  }, [activeConvId]);
+  }, [activeConvId, uname]);
 
   const handleNewConv = useCallback(() => {
     const newConv = makeConversation([]);
     setConversations(prev => {
       const updated = [newConv, ...prev];
-      saveConversations(updated);
+      saveConversations(updated, uname);
       return updated;
     });
     setActiveConvId(newConv.id);
-  }, []);
+  }, [uname]);
 
   const handleSelectConv = useCallback((id: string) => {
     setActiveConvId(id);
@@ -159,17 +160,17 @@ export default function BankerCopilot({ user, onLogout }: BankerCopilotProps) {
       const updated = prev.filter(c => c.id !== id);
       if (updated.length === 0) {
         const fresh = makeConversation([]);
-        saveConversations([fresh]);
+        saveConversations([fresh], uname);
         setActiveConvId(fresh.id);
         return [fresh];
       }
-      saveConversations(updated);
+      saveConversations(updated, uname);
       if (id === activeConvId) {
         setActiveConvId(updated[0].id);
       }
       return updated;
     });
-  }, [activeConvId]);
+  }, [activeConvId, uname]);
 
   // Load customers when modal opens
   useEffect(() => {
