@@ -439,22 +439,7 @@ export default function BankerCopilot({ user, onLogout }: BankerCopilotProps) {
         );
 
       case 'home':
-        return (
-          <motion.div key="home" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }} className="h-full">
-            <RoleDashboard
-              role={user.role}
-              roleLabel={user.role_label ?? user.role.replace(/_/g, ' ')}
-              onNavigate={setActiveTab}
-              onAddCustomer={() => setShowAddCustomer(true)}
-              onOpenFraud={() => setShowFraudModal(true)}
-              onOpenCustomers={() => setShowCustomersModal(true)}
-              onOpenDocs={() => setShowDocsModal(true)}
-              onOpenAITrust={() => setShowAITrustInfo(true)}
-              refreshKey={kpiRefreshKey}
-            />
-          </motion.div>
-        );
+        return null;
 
       case 'access_requests':
         return (
@@ -532,9 +517,28 @@ export default function BankerCopilot({ user, onLogout }: BankerCopilotProps) {
 
         <main className={`flex-1 flex flex-col overflow-hidden min-h-0 ${activeTab === 'ai_copilot' ? 'p-1.5 gap-1.5' : 'p-5 gap-4'}`}>
           <div className="flex-1 min-h-0 overflow-y-auto">
-            <AnimatePresence mode="wait">
-              {renderSection()}
-            </AnimatePresence>
+            {/* Dashboard is always visible on the home and customer tabs */}
+            {(activeTab === 'home' || activeTab === 'customer_search' || activeTab === 'customer360') && (
+              <RoleDashboard
+                role={user.role}
+                roleLabel={user.role_label ?? user.role.replace(/_/g, ' ')}
+                onNavigate={setActiveTab}
+                onAddCustomer={() => setShowAddCustomer(true)}
+                onOpenFraud={() => setShowFraudModal(true)}
+                onOpenCustomers={() => setShowCustomersModal(true)}
+                onOpenDocs={() => setShowDocsModal(true)}
+                onOpenAITrust={() => setShowAITrustInfo(true)}
+                refreshKey={kpiRefreshKey}
+              />
+            )}
+            {/* Section-specific content appears below the dashboard */}
+            {activeTab !== 'home' && (
+              <div className={activeTab === 'customer_search' || activeTab === 'customer360' ? 'mt-4' : ''}>
+                <AnimatePresence mode="wait">
+                  {renderSection()}
+                </AnimatePresence>
+              </div>
+            )}
           </div>
         </main>
       </div>
