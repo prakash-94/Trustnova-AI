@@ -424,8 +424,8 @@ class RiskProfiler:
     def _get_customer_features(self, customer_id: str) -> Optional[Dict]:
         """Get feature vector for a single customer."""
         customer = pd.read_sql(
-            text("SELECT credit_score, balance, sentiment_avg FROM customers "
-                 "WHERE customer_id = :cid"),
+            text("SELECT credit_score, balance, sentiment_avg "
+                 "FROM customers WHERE customer_id = :cid"),
             self.engine, params={"cid": customer_id},
         )
         if customer.empty:

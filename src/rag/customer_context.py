@@ -39,20 +39,25 @@ def get_customer_profile(customer_id: str) -> Optional[Dict]:
         return None
 
     row = df.iloc[0]
+    # Support both raw-CSV column names and ETL-renamed column names
+    name = row.get("name") or f"{row.get('first_name', '')} {row.get('last_name', '')}".strip()
+    income = float(row.get("annual_income") or row.get("income") or 0.0)
+    risk_level = str(row.get("risk_level") or row.get("aml_risk_rating") or "Unknown")
+    sentiment_avg = float(row.get("avg_sentiment") or row.get("sentiment_avg") or 0.0)
     return {
         "customer_id": row["customer_id"],
-        "name": row["name"],
-        "email": row["email"],
+        "name": name,
+        "email": row.get("email", ""),
         "age": int(row.get("age", 0)),
-        "income": float(row.get("income", 0)),
-        "credit_score": int(row["credit_score"]),
-        "risk_level": str(row.get("risk_level", "Unknown")),
+        "income": income,
+        "credit_score": int(row.get("credit_score", 300)),
+        "risk_level": risk_level,
         "account_type": str(row.get("account_type", "checking")),
-        "balance": float(row["balance"]),
+        "balance": float(row.get("balance", 0.0)),
         "account_opened": str(row.get("account_opened", "")),
-        "account_age_days": int(row["account_age_days"]),
-        "sentiment_avg": float(row["sentiment_avg"]),
-        "created_at": str(row["created_at"]),
+        "account_age_days": int(row.get("account_age_days", 0)),
+        "sentiment_avg": sentiment_avg,
+        "created_at": str(row.get("created_at", "")),
     }
 
 

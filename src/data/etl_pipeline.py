@@ -200,9 +200,7 @@ def run_etl():
     split = customers_for_db['name'].apply(_split_name)
     customers_for_db['first_name'] = split.apply(lambda x: x[0])
     customers_for_db['last_name'] = split.apply(lambda x: x[1])
-    customers_for_db = customers_for_db.drop(columns=['name'])
     customers_for_db = customers_for_db.rename(columns={
-        'customer_id': 'id',
         'risk_level': 'aml_risk_rating',
         'income': 'annual_income',
     })
