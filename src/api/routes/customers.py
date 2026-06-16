@@ -101,30 +101,45 @@ async def create_customer(
         if existing:
             raise HTTPException(status_code=409, detail="A customer with this email already exists.")
 
-        conn.execute(text(f"""
-            INSERT INTO customers
-                ({pk}, first_name, last_name, email, phone, segment, customer_type,
-                 kyc_status, aml_risk_rating, credit_score, annual_income,
-                 is_pep, is_sanctioned, is_active, created_at)
-            VALUES
-                (:id, :fn, :ln, :email, :phone, :segment, :ctype,
-                 'pending', :risk, :credit, :income,
-                 0, 0, 1, :now)
-        """), {
-            "id": cid,
-            "fn": body.first_name.strip(),
-            "ln": body.last_name.strip(),
-            "email": body.email.strip(),
-            "phone": body.phone,
+        # Detect which optional columns actually exist in this DB schema
+        existing_cols = {r[1] for r in conn.execute(text("PRAGMA table_info(customers)")).fetchall()}
+
+        # Always-present columns
+        col_names = [pk, "first_name", "last_name", "email", "segment", "customer_type",
+                     "kyc_status", "aml_risk_rating", "credit_score", "annual_income",
+                     "is_pep", "is_sanctioned", "is_active", "created_at"]
+        params = {
+            "id":      cid,
+            "fn":      body.first_name.strip(),
+            "ln":      body.last_name.strip(),
+            "email":   body.email.strip(),
             "segment": body.segment or "retail",
-            "ctype": body.customer_type or "individual",
-            "risk": risk,
-            "credit": body.credit_score or 650,
-            "income": body.annual_income or 0,
-            "city": body.address_city,
-            "state": body.address_state,
-            "now": now,
-        })
+            "ctype":   body.customer_type or "individual",
+            "risk":    risk,
+            "credit":  body.credit_score or 650,
+            "income":  body.annual_income or 0,
+            "now":     now,
+        }
+        col_params = [":id", ":fn", ":ln", ":email", ":segment", ":ctype",
+                      "'pending'", ":risk", ":credit", ":income",
+                      "0", "0", "1", ":now"]
+
+        # Optional columns — only include if the column exists
+        optional = [
+            ("phone",         body.phone,                     ":phone"),
+            ("address_city",  body.address_city,              ":city"),
+            ("address_state", body.address_state,             ":state"),
+        ]
+        for col, val, placeholder in optional:
+            if col in existing_cols:
+                col_names.append(col)
+                col_params.append(placeholder)
+                params[placeholder.lstrip(":")] = val
+
+        conn.execute(
+            text(f"INSERT INTO customers ({', '.join(col_names)}) VALUES ({', '.join(col_params)})"),
+            params,
+        )
 
         # Generate IDs matching existing DB format
         import random as _rng
