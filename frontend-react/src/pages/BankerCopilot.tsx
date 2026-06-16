@@ -208,6 +208,16 @@ export default function BankerCopilot({ user, onLogout }: BankerCopilotProps) {
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [fetchGrants]);
 
+  // Listen for navigation events dispatched by NotificationBell popup
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const section = (e as CustomEvent<{ section: NavSection }>).detail?.section;
+      if (section) setActiveTab(section);
+    };
+    window.addEventListener('tn:navigate', handler);
+    return () => window.removeEventListener('tn:navigate', handler);
+  }, []);
+
   const handleLogout = async () => {
     try { await authApi.logout(); } catch { /* ignore */ }
     Auth.clear();

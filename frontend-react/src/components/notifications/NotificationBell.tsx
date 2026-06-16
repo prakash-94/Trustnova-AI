@@ -33,13 +33,14 @@ export default function NotificationBell() {
       setItems(r.notifications);
       setUnread(r.unread_count);
 
-      // Show popup for the first unread announcement we haven't shown yet
-      const newAnn = r.notifications.find(
-        n => n.type === 'announcement' && !n.is_read && !shownIds.current.has(n.id)
+      // Show popup for unread announcements AND access requests we haven't shown yet
+      const POPUP_TYPES = new Set(['announcement', 'access_request']);
+      const newPopup = r.notifications.find(
+        n => POPUP_TYPES.has(n.type) && !n.is_read && !shownIds.current.has(n.id)
       );
-      if (newAnn && !open) {
-        setPopup(newAnn);
-        shownIds.current.add(newAnn.id);
+      if (newPopup && !open) {
+        setPopup(newPopup);
+        shownIds.current.add(newPopup.id);
       }
       // Track all read ids so we don't re-show them
       r.notifications.forEach(n => { if (n.is_read) shownIds.current.add(n.id); });
@@ -90,7 +91,7 @@ export default function NotificationBell() {
 
   return (
     <>
-      {/* ── Announcement popup banner ─────────────────────────────────────── */}
+      {/* ── Notification popup banner ─────────────────────────────────────── */}
       <AnimatePresence>
         {popup && (
           <motion.div
@@ -100,9 +101,15 @@ export default function NotificationBell() {
             transition={{ duration: 0.25 }}
             className="fixed top-16 left-1/2 -translate-x-1/2 z-[60] w-full max-w-md px-4"
           >
-            <div className={`glass-card border ${PRIORITY_BORDER[getPriority(popup)]} px-5 py-4 shadow-xl`}>
+            <div className={`glass-card border ${
+              popup.type === 'access_request'
+                ? 'border-amber-500/40'
+                : PRIORITY_BORDER[getPriority(popup)]
+            } px-5 py-4 shadow-xl`}>
               <div className="flex items-start gap-3">
-                <div className="text-xl flex-shrink-0 mt-0.5">📢</div>
+                <div className="text-xl flex-shrink-0 mt-0.5">
+                  {TYPE_ICON[popup.type] ?? '📋'}
+                </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-semibold text-t1 leading-snug">{popup.title}</p>
                   <p className="text-[11px] text-t3 mt-1 leading-relaxed line-clamp-4">{popup.body}</p>
@@ -113,6 +120,17 @@ export default function NotificationBell() {
                 >✕</button>
               </div>
               <div className="mt-2.5 flex gap-2 justify-end">
+                {popup.type === 'access_request' && (
+                  <button
+                    onClick={() => {
+                      dismissPopup();
+                      window.dispatchEvent(new CustomEvent('tn:navigate', { detail: { section: 'access_requests' } }));
+                    }}
+                    className="text-[10px] px-3 py-1 rounded-lg bg-amber-500/15 border border-amber-500/25 text-amber-300 hover:bg-amber-500/25 transition-all"
+                  >
+                    View Requests
+                  </button>
+                )}
                 <button
                   onClick={dismissPopup}
                   className="text-[10px] px-3 py-1 rounded-lg bg-purple-500/15 border border-purple-500/25 text-purple-300 hover:bg-purple-500/25 transition-all"
