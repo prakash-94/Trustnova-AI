@@ -98,6 +98,7 @@ export default function BankerCopilot({ user, onLogout }: BankerCopilotProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [tempGrants, setTempGrants] = useState<TempGrants>(new Map());
   const [grantToast, setGrantToast] = useState<string | null>(null);
+  const [pendingAccessRequests, setPendingAccessRequests] = useState(0);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [showCustomersModal, setShowCustomersModal] = useState(false);
   const [showDocsModal, setShowDocsModal] = useState(false);
@@ -182,6 +183,8 @@ export default function BankerCopilot({ user, onLogout }: BankerCopilotProps) {
 
   // Poll for temporary access grants every 30 seconds.
   // When admin approves a request the section unlocks automatically in the sidebar.
+  // For admin users, also refreshes the pending access-request count for the sidebar badge.
+  const isAdminUser = user?.role === 'admin';
   const fetchGrants = useCallback(() => {
     accessRequestsApi.myGrants().then(res => {
       const next = new Map<string, Date>();
@@ -200,7 +203,16 @@ export default function BankerCopilot({ user, onLogout }: BankerCopilotProps) {
         return next;
       });
     }).catch(() => { /* ignore — user may not have any grants */ });
-  }, []);
+
+    // Admin-only: keep sidebar pending badge up to date
+    if (isAdminUser) {
+      accessRequestsApi.list()
+        .then(r => setPendingAccessRequests(
+          (r.requests ?? []).filter(req => req.status === 'pending').length
+        ))
+        .catch(() => {});
+    }
+  }, [isAdminUser]);
 
   useEffect(() => {
     fetchGrants();
@@ -493,6 +505,7 @@ export default function BankerCopilot({ user, onLogout }: BankerCopilotProps) {
         collapsed={collapsed}
         hasCustomer={!!selectedCustomer}
         tempGrants={tempGrants}
+        pendingAccessRequests={pendingAccessRequests}
       />
 
       {/* Grant notification toast */}

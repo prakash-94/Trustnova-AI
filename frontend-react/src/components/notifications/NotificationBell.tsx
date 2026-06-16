@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { notificationsApi } from '@/lib/api';
+import { notificationsApi, accessRequestsApi } from '@/lib/api';
 import type { AppNotification } from '@/lib/api';
+import { Auth } from '@/lib/auth';
 
 const TYPE_ICON: Record<string, string> = {
   announcement:    '📢',
@@ -19,19 +20,36 @@ const PRIORITY_BORDER: Record<string, string> = {
   normal:    'border-purple-500/20',
 };
 
+// Synthetic notification ID range for pending access requests (won't collide with real DB IDs)
+const SYNTH_PENDING_ID = -1;
+
 export default function NotificationBell() {
   const [items, setItems]         = useState<AppNotification[]>([]);
   const [unread, setUnread]       = useState(0);
   const [open, setOpen]           = useState(false);
   const [popup, setPopup]         = useState<AppNotification | null>(null);
+  const [pendingCount, setPendingCount] = useState(0);
   const dropRef                   = useRef<HTMLDivElement>(null);
   const shownIds                  = useRef<Set<number>>(new Set());
+  const isAdmin                   = Auth.getUser()?.role === 'admin';
 
   const fetchAll = useCallback(async () => {
     try {
       const r = await notificationsApi.list(false, 40);
+
+      // For admins: also check live pending access requests count
+      let pending = 0;
+      if (isAdmin) {
+        try {
+          const ar = await accessRequestsApi.list();
+          pending = (ar.requests ?? []).filter((req: { status: string }) => req.status === 'pending').length;
+        } catch { /* ignore */ }
+      }
+      setPendingCount(pending);
+
       setItems(r.notifications);
-      setUnread(r.unread_count);
+      // Total unread = real unread notifications + pending access requests not yet seen
+      setUnread(r.unread_count + (open ? 0 : pending));
 
       // Show popup for unread announcements AND access requests we haven't shown yet
       const POPUP_TYPES = new Set(['announcement', 'access_request']);
@@ -42,10 +60,27 @@ export default function NotificationBell() {
         setPopup(newPopup);
         shownIds.current.add(newPopup.id);
       }
+      // Also show popup when new pending requests arrive (admin only)
+      if (isAdmin && pending > 0 && !open && !shownIds.current.has(SYNTH_PENDING_ID)) {
+        shownIds.current.add(SYNTH_PENDING_ID);
+        setPopup({
+          id: SYNTH_PENDING_ID,
+          username: '',
+          type: 'access_request',
+          title: `🔐 ${pending} Pending Access Request${pending > 1 ? 's' : ''}`,
+          body: 'Users are waiting for your approval. Click "View Requests" to review.',
+          reference_id: '',
+          is_read: 0,
+          created_at: new Date().toISOString(),
+        });
+      }
+      // Reset synth popup trigger when pending drops to 0
+      if (pending === 0) shownIds.current.delete(SYNTH_PENDING_ID);
+
       // Track all read ids so we don't re-show them
       r.notifications.forEach(n => { if (n.is_read) shownIds.current.add(n.id); });
     } catch { /* ignore — user may not be logged in yet */ }
-  }, [open]);
+  }, [open, isAdmin]);
 
   useEffect(() => {
     fetchAll();

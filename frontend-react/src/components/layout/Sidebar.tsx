@@ -95,6 +95,7 @@ interface SidebarProps {
   collapsed?: boolean;
   hasCustomer?: boolean;
   tempGrants?: Map<string, Date>;   // section id → expiry Date
+  pendingAccessRequests?: number;   // live pending count shown on Access Requests item
 }
 
 // Countdown badge: shows "9m" or "45s" remaining for a temp grant
@@ -124,7 +125,7 @@ function GrantCountdown({ expiresAt }: { expiresAt: Date }) {
   );
 }
 
-export default function Sidebar({ active, onChange, onLogout, collapsed, hasCustomer, tempGrants }: SidebarProps) {
+export default function Sidebar({ active, onChange, onLogout, collapsed, hasCustomer, tempGrants, pendingAccessRequests = 0 }: SidebarProps) {
   const user = Auth.getUser();
   const isAdmin = user?.role === 'admin';
   const [requesting, setRequesting] = useState<string | null>(null);
@@ -306,7 +307,13 @@ export default function Sidebar({ active, onChange, onLogout, collapsed, hasCust
               >
                 <span className="text-sm w-4 text-center flex-shrink-0">{item.icon}</span>
                 {!collapsed && <span className="font-medium">{item.label}</span>}
-                {!collapsed && active === item.id && (
+                {/* Pending badge — always visible while there are pending requests */}
+                {!collapsed && item.id === 'access_requests' && pendingAccessRequests > 0 && (
+                  <span className="ml-auto px-1.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/30 text-amber-300 text-[9px] font-bold leading-none">
+                    {pendingAccessRequests}
+                  </span>
+                )}
+                {!collapsed && item.id !== 'access_requests' && active === item.id && (
                   <motion.span layoutId="adminDot" className="ml-auto w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" />
                 )}
               </motion.button>
