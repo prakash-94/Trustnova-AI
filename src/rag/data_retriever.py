@@ -653,16 +653,77 @@ def retrieve_structured_data(
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
+_NAME_STOP_WORDS = {
+    # articles / pronouns
+    "the", "a", "an", "his", "her", "their", "my", "your", "its",
+    "me", "us", "him", "it", "we", "they", "i",
+    # action verbs
+    "show", "get", "pull", "find", "display", "give", "fetch", "tell",
+    # banking nouns that aren't names
+    "customer", "client",
+    # profile-type keywords that can trail a name
+    "profile", "history", "detail", "summary", "overview", "transaction",
+}
+
+
+def _trim_name(candidate: str) -> Optional[str]:
+    """Strip leading/trailing stop words; return None if fewer than 2 words remain."""
+    words = candidate.split()
+    while words and words[0].lower() in _NAME_STOP_WORDS:
+        words.pop(0)
+    while words and words[-1].lower() in _NAME_STOP_WORDS:
+        words.pop()
+    return " ".join(words) if len(words) >= 2 else None
+
+
 def _extract_name_from_query(query: str) -> Optional[str]:
-    """Extract a person name from a query like 'show customer history for John Doe'."""
+    """
+    Extract a person's name from a query string.
+
+    Handles:
+      - Name-first:  "Raj J profile history"  → "Raj J"
+      - Prefixed:    "show history for John Doe" → "John Doe"
+      - Single-char surname: "raj J" (initial as last name)
+    """
     import re
-    patterns = [
-        r"for\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)",
-        r"about\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)",
-        r"customer\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)",
-    ]
-    for pat in patterns:
-        m = re.search(pat, query)
-        if m:
-            return m.group(1)
+
+    _W = r"[A-Za-z][a-zA-Z]*"  # one name word (allows "J", "Raj", "Johnson")
+
+    # Priority 1: 1–3 words immediately before a profile/history keyword
+    # No ^ anchor so it finds the name anywhere: "show me Natalie Gordon profile" → "Natalie Gordon"
+    # _trim_name strips leading/trailing stop words like "show", "me", "profile"
+    m = re.search(
+        rf"({_W}(?:\s+{_W}){{1,2}})\s+(?:profile|history|detail|360|summary|overview)",
+        query,
+        re.IGNORECASE,
+    )
+    if m:
+        name = _trim_name(m.group(1))
+        if name:
+            return name
+
+    # Priority 2: name after "for / about / of"
+    # "show history for John Doe" → "John Doe"
+    m = re.search(
+        rf"(?:for|about|of)\s+({_W}(?:\s+{_W}){{0,2}})",
+        query,
+        re.IGNORECASE,
+    )
+    if m:
+        name = _trim_name(m.group(1))
+        if name:
+            return name
+
+    # Priority 3: name after "customer / client"
+    # "customer Maria Garcia" → "Maria Garcia"
+    m = re.search(
+        rf"(?:customer|client)\s+({_W}(?:\s+{_W}){{0,2}})",
+        query,
+        re.IGNORECASE,
+    )
+    if m:
+        name = _trim_name(m.group(1))
+        if name:
+            return name
+
     return None

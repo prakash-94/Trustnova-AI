@@ -29,6 +29,11 @@ _PATTERNS: dict[str, list[str]] = {
         r"who.?is.{0,40}(customer|client)",
         r"tell.?me.?about.{0,30}(customer|client)",
         r"show.{0,20}(history|profile).{0,20}for",
+        # Name-first queries: "Raj J profile history", "John Doe profile"
+        r"\bprofile.{0,10}history\b",
+        r"\bprofile\b",
+        r"\b360\b",
+        r"(history|detail|overview)\s+(of|for)\s+\w",
     ],
     "transaction": [
         r"transaction.?history", r"recent.?transaction",
