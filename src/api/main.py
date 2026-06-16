@@ -58,6 +58,10 @@ async def lifespan(app: FastAPI):
     print(f"  Pinecone: {'configured' if os.getenv('PINECONE_API_KEY') else 'NOT SET'}")
     print(f"  Auth:     JWT ({'DEMO key — change JWT_SECRET_KEY in prod!' if os.getenv('JWT_SECRET_KEY','CHANGE-ME') == 'CHANGE-ME-IN-PRODUCTION-use-256-bit-random-key' else 'custom key set'})")
 
+    # Apply DB schema migrations (add missing columns to old volumes)
+    from src.models.database import run_migrations
+    run_migrations()
+
     # Seed auth tables and demo users
     auth_module.ensure_users_table()
 
