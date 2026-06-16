@@ -107,6 +107,21 @@ async def create_request(
             conn.commit()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Could not save request: {e}")
+    # Notify all admins so the bell icon lights up immediately
+    try:
+        from src.api.routes.notifications import push_to_admins
+        role_label = current_user.role.replace("_", " ").title()
+        section_label = body.section.replace("_", " ").title()
+        push_to_admins(
+            type="access_request",
+            title=f"🔐 Access Request: {section_label}",
+            body=f"{current_user.username} ({role_label}) is requesting access to '{section_label}'."
+                 + (f" Reason: {body.reason}" if body.reason else ""),
+            reference_id="",
+        )
+    except Exception:
+        pass
+
     return {
         "status": "submitted",
         "message": f"Access request for '{body.section}' submitted for admin review.",

@@ -5,6 +5,7 @@ import type { AppNotification } from '@/lib/api';
 
 const TYPE_ICON: Record<string, string> = {
   announcement:    '📢',
+  access_request:  '🔐',
   access_approved: '✅',
   access_denied:   '❌',
   bug_report:      '🐛',
