@@ -84,9 +84,10 @@ class TestRetrievalConfidence:
         assert score == 0.0
 
     def test_single_score(self, scorer):
-        """Single score is returned as-is."""
+        """Score near the top of the model range normalizes to ~1.0."""
+        # all-MiniLM-L6-v2 range is ~[0.10, 0.70]; 0.75 normalises to (0.75-0.10)/0.60 = 1.083 → clamped 1.0
         score = scorer.compute_retrieval_confidence([0.75])
-        assert abs(score - 0.75) < 0.001
+        assert abs(score - 1.0) < 0.001
 
     def test_clamped_to_range(self, scorer):
         """Scores are clamped to [0, 1]."""
@@ -94,9 +95,9 @@ class TestRetrievalConfidence:
         assert 0.0 <= score <= 1.0
 
     def test_mixed_scores(self, scorer):
-        """Average of mixed scores."""
+        """Mixed scores are normalised: avg 0.6 → (0.6-0.10)/0.60 ≈ 0.833."""
         score = scorer.compute_retrieval_confidence([0.9, 0.6, 0.3])
-        assert abs(score - 0.6) < 0.01
+        assert abs(score - 0.8333) < 0.01
 
 
 # ==================================================================
