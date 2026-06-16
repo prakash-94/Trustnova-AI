@@ -1,9 +1,9 @@
 """
-Unit tests for the AI Trust Scoring System (Phase 6, Layer 2).
+Unit tests for the AI Trust Scoring System.
 
 Tests each of the 5 component metrics individually:
-  1. Retrieval Confidence — cosine similarity averaging
-  2. Hallucination Probability — heuristic fallback + score validation
+  1. Retrieval Confidence — cosine similarity averaging with normalization
+  2. Hallucination Probability — semantic similarity (all-MiniLM-L6-v2) + heuristic fallback
   3. Model Agreement — Jaccard similarity of token sets
   4. Citation Quality — regex patterns for source references
   5. Prompt Reliability — rolling average from DB history
@@ -104,21 +104,42 @@ class TestRetrievalConfidence:
 # Test Component 2: Hallucination Probability
 # ==================================================================
 class TestHallucinationProbability:
-    """Test hallucination detection (heuristic fallback)."""
+    """
+    Test hallucination detection.
+
+    Primary path: semantic cosine similarity via all-MiniLM-L6-v2.
+    Fallback path: keyword-overlap heuristic (_heuristic_hallucination).
+    Both paths are exercised; the heuristic is always available.
+    """
 
     def test_grounded_answer(self, scorer):
-        """Answer with high word overlap → low hallucination."""
+        """Answer semantically similar to source → low hallucination probability."""
         answer = "The AML policy requires CTR filing for wire transfers over ten thousand dollars"
         sources = ["AML policy Section 4.2: CTR filing required for wire transfers exceeding ten thousand dollars"]
-        score = scorer._heuristic_hallucination(answer, sources)
+        # compute_hallucination_probability tries semantic similarity first; heuristic as fallback
+        score = scorer.compute_hallucination_probability(answer, sources)
         assert score < 0.5  # Well-grounded
 
     def test_fabricated_answer(self, scorer):
-        """Answer with zero overlap → high hallucination."""
+        """Answer semantically unrelated to source → high hallucination probability."""
+        answer = "quantum computing blockchain neural network synergy"
+        sources = ["The bank's loan policy covers residential mortgage rates."]
+        score = scorer.compute_hallucination_probability(answer, sources)
+        assert score > 0.5  # Likely fabricated
+
+    def test_heuristic_grounded(self, scorer):
+        """Heuristic: high word overlap → low hallucination."""
+        answer = "The AML policy requires CTR filing for wire transfers over ten thousand dollars"
+        sources = ["AML policy Section 4.2: CTR filing required for wire transfers exceeding ten thousand dollars"]
+        score = scorer._heuristic_hallucination(answer, sources)
+        assert score < 0.5
+
+    def test_heuristic_fabricated(self, scorer):
+        """Heuristic: zero word overlap → high hallucination."""
         answer = "quantum computing blockchain neural network synergy"
         sources = ["The bank's loan policy covers residential mortgage rates."]
         score = scorer._heuristic_hallucination(answer, sources)
-        assert score > 0.5  # Likely fabricated
+        assert score > 0.5
 
     def test_empty_answer(self, scorer):
         """Empty answer → default moderate risk."""

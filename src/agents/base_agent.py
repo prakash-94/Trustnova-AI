@@ -65,21 +65,31 @@ def get_llm(temperature: float = 0.1, model: Optional[str] = None):
     return ChatOpenAI(model_name=m, temperature=temperature, openai_api_key=OPENAI_API_KEY, max_tokens=4096)
 
 
-def get_rag_context(query: str, top_k: int = 5) -> tuple:
+def get_rag_context(query: str, top_k: int = 5, metadata_filter: Optional[dict] = None) -> tuple:
     """
     Retrieve and re-rank relevant chunks from ChromaDB.
 
+    Args:
+        query: User query string
+        top_k: Number of chunks to retrieve
+        metadata_filter: Optional ChromaDB `where` filter (e.g. doc_type restriction for RBAC).
+                         Built by rbac_filter.get_doc_type_filter(permissions).
+
     Returns:
-        (context_str, sources_list, similarity_scores)
+        (context_str, sources_list, similarity_scores, chunk_texts)
         context_str: formatted text ready to inject into a prompt
         sources_list: list of {"document": name, "page": section, "freshness": float}
         similarity_scores: raw floats for the AI trust scorer
+        chunk_texts: raw chunk content for hallucination detection
     """
     try:
         from src.rag.vector_store import get_vector_store
         store = get_vector_store()  # ChromaDB by default
 
-        docs_with_scores = store.similarity_search_with_relevance_scores(query, k=top_k)
+        search_kwargs: dict = {"k": top_k}
+        if metadata_filter:
+            search_kwargs["filter"] = metadata_filter
+        docs_with_scores = store.similarity_search_with_relevance_scores(query, **search_kwargs)
         if not docs_with_scores:
             return "", [], []
 
@@ -246,11 +256,38 @@ class BaseAgent:
         q = question.lower()
         return any(kw in q for kw in self._POLICY_LIST_KEYWORDS)
 
-    def run(self, question: str, customer_context: str = "", extra_data: dict = None) -> AgentResponse:
+    def _inject_structured_context(self, system_content: str, structured_context: str) -> str:
+        """Prepend live DB data block to the system prompt when structured context is available."""
+        if not structured_context:
+            return system_content
+        block = (
+            "═══════════════ LIVE DATABASE DATA (PRIMARY SOURCE) ═══════════════\n"
+            "The following data was retrieved LIVE from the TrustNova database right now.\n"
+            "RULES:\n"
+            "  • Use this structured data as your PRIMARY and authoritative source.\n"
+            "  • Present the actual records, numbers, and names directly in your answer.\n"
+            "  • Do NOT say 'I found the following documents' or list document filenames.\n"
+            "  • Do NOT say the data is unavailable — it is present below.\n"
+            "  • Format your answer in a clear, readable table or bullet-list summary.\n\n"
+            + structured_context.strip()
+            + "\n═══════════════════════════════════════════════════════════════════\n\n"
+        )
+        return block + system_content
+
+    def run(self, question: str, customer_context: str = "", extra_data: dict = None,
+            structured_context: str = "") -> AgentResponse:
         t0 = time.time()
 
-        # 1. Retrieve policy context via ChromaDB with freshness re-ranking
-        rag_context, sources, sim_scores, chunk_texts = get_rag_context(question, top_k=12)
+        # 1. Retrieve policy context via ChromaDB with freshness re-ranking + RBAC doc filter
+        _permissions = (extra_data or {}).get("permissions", [])
+        _doc_filter: Optional[dict] = None
+        if _permissions:
+            try:
+                from src.rag.rbac_filter import get_doc_type_filter
+                _doc_filter = get_doc_type_filter(_permissions)
+            except Exception:
+                pass
+        rag_context, sources, sim_scores, chunk_texts = get_rag_context(question, top_k=12, metadata_filter=_doc_filter)
 
         # 2. For policy-listing queries, inject the full catalog as the first context block
         #    so the LLM cannot miss it — it appears as retrieved data, not just instructions.
@@ -287,6 +324,9 @@ class BaseAgent:
                 + POLICY_CATALOG + "\n\nRETRIEVED CONTEXT:\n" + full_context
             )
 
+        # Prepend live structured DB data when available
+        system_content = self._inject_structured_context(system_content, structured_context)
+
         # 4. Build messages — for policy listing queries add an explicit directive
         user_message = question
         if self._is_policy_listing_query(question):
@@ -296,6 +336,13 @@ class BaseAgent:
                 "Start your answer with 'TrustNova Bank has **16 policy documents**:' then list ALL 16 "
                 "grouped by category. Do NOT say the number is unclear or consult other resources. "
                 "The answer is 16.]"
+            )
+        elif structured_context:
+            user_message = (
+                question
+                + "\n\n[Use the LIVE DATABASE DATA above as your primary source. "
+                "Present the actual customer/risk/fraud records in your answer. "
+                "Do NOT return document names or say data is unavailable.]"
             )
 
         try:
@@ -311,24 +358,26 @@ class BaseAgent:
 
         latency_ms = int((time.time() - t0) * 1000)
 
-        # 3. Compute base confidence from retrieval quality
+        # Compute base confidence from retrieval quality
         has_customer_ctx = bool((extra_data or {}).get("customer_id")) and bool(customer_context)
-        if sources:
+        has_structured = bool(structured_context)
+        if has_structured:
+            # Live DB data is authoritative — high confidence
+            confidence = 0.96
+        elif sources:
             avg_sim = sum(sim_scores) / len(sim_scores) if sim_scores else 0.6
             avg_freshness = sum(s["freshness"] for s in sources) / len(sources)
             raw_conf = avg_sim * 0.7 + avg_freshness * 0.15 + 0.1 * min(len(sources), 4) / 4
             base = round(min(0.99, max(0.95, raw_conf * 1.40)), 2)
-            # Boost further when real customer data is also in context
             confidence = round(min(0.99, base + (0.02 if has_customer_ctx else 0)), 2)
         elif has_customer_ctx:
-            # Answer is grounded in real verified customer data — high confidence even without policy RAG
             confidence = 0.92
         else:
-            confidence = 0.35  # No retrieval and no customer data → low confidence
+            confidence = 0.35
 
         meta = dict(extra_data or {})
-        meta["_sim_scores"] = sim_scores      # for AI trust scorer
-        meta["_source_texts"] = chunk_texts   # actual text for hallucination check
+        meta["_sim_scores"] = sim_scores
+        meta["_source_texts"] = chunk_texts
         return AgentResponse(
             answer=answer,
             sources=sources,
@@ -338,7 +387,8 @@ class BaseAgent:
             metadata=meta,
         )
 
-    def stream_response(self, question: str, customer_context: str = "", extra_data: dict = None):
+    def stream_response(self, question: str, customer_context: str = "", extra_data: dict = None,
+                        structured_context: str = ""):
         """
         Sync generator for SSE streaming.
         Yields {"type":"token","content":"..."} for each LLM chunk, then
@@ -346,7 +396,16 @@ class BaseAgent:
         """
         t0 = time.time()
 
-        rag_context, sources, sim_scores, chunk_texts = get_rag_context(question, top_k=12)
+        # RBAC doc_type filter (same logic as run())
+        _permissions = (extra_data or {}).get("permissions", [])
+        _doc_filter: Optional[dict] = None
+        if _permissions:
+            try:
+                from src.rag.rbac_filter import get_doc_type_filter
+                _doc_filter = get_doc_type_filter(_permissions)
+            except Exception:
+                pass
+        rag_context, sources, sim_scores, chunk_texts = get_rag_context(question, top_k=12, metadata_filter=_doc_filter)
 
         final_rag_context = rag_context
         if self._is_policy_listing_query(question):
@@ -377,6 +436,9 @@ class BaseAgent:
                 + POLICY_CATALOG + "\n\nRETRIEVED CONTEXT:\n" + full_context
             )
 
+        # Prepend live structured DB data when available
+        system_content = self._inject_structured_context(system_content, structured_context)
+
         user_message = question
         if self._is_policy_listing_query(question):
             user_message = (
@@ -385,6 +447,13 @@ class BaseAgent:
                 "Start your answer with 'TrustNova Bank has **16 policy documents**:' then list ALL 16 "
                 "grouped by category. Do NOT say the number is unclear or consult other resources. "
                 "The answer is 16.]"
+            )
+        elif structured_context:
+            user_message = (
+                question
+                + "\n\n[Use the LIVE DATABASE DATA above as your primary source. "
+                "Present the actual customer/risk/fraud records in your answer. "
+                "Do NOT return document names or say data is unavailable.]"
             )
 
         from langchain_core.messages import HumanMessage, SystemMessage
@@ -404,7 +473,10 @@ class BaseAgent:
 
         latency_ms = int((time.time() - t0) * 1000)
         has_customer_ctx = bool((extra_data or {}).get("customer_id")) and bool(customer_context)
-        if sources:
+        has_structured = bool(structured_context)
+        if has_structured:
+            confidence = 0.96
+        elif sources:
             avg_sim = sum(sim_scores) / len(sim_scores) if sim_scores else 0.6
             avg_freshness = sum(s["freshness"] for s in sources) / len(sources)
             raw_conf = avg_sim * 0.7 + avg_freshness * 0.15 + 0.1 * min(len(sources), 4) / 4

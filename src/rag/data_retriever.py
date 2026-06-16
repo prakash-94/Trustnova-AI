@@ -5,7 +5,7 @@ as LLM-ready context blocks with metadata-rich source citations.
 """
 from __future__ import annotations
 import datetime
-from typing import Optional
+from typing import List, Optional
 from sqlalchemy import text
 from src.models.database import engine, customer_pk
 
@@ -199,14 +199,27 @@ def get_fraud_data(query: str, customer_id: Optional[str] = None, limit: int = 2
 
 # ── Customer 360 ──────────────────────────────────────────────────────────────
 
-def get_customer_360(query: str, customer_id: Optional[str] = None) -> tuple[str, list[dict]]:
-    """Full customer profile including accounts, recent transactions, loans, fraud, trust score."""
+def get_customer_360(
+    query: str,
+    customer_id: Optional[str] = None,
+    permissions: Optional[List[str]] = None,
+) -> tuple[str, list[dict]]:
+    """
+    Full customer graph context including accounts, transactions, loans (if permitted),
+    fraud alerts (if permitted), and trust score.
+
+    Uses GraphContextBuilder for tiered freshness scoring and permission-aware
+    node traversal.
+    """
+    from src.rag.graph_context import build_customer_graph_context
+
     pk = customer_pk()
-    with engine.connect() as conn:
-        # Find customer by name if no ID
-        if not customer_id:
-            name_match = _extract_name_from_query(query)
-            if name_match:
+
+    # Resolve customer ID from name when not provided
+    if not customer_id:
+        name_match = _extract_name_from_query(query)
+        if name_match:
+            with engine.connect() as conn:
                 row = conn.execute(text(f"""
                     SELECT * FROM customers
                     WHERE LOWER(first_name || ' ' || last_name) LIKE :nm
@@ -215,124 +228,15 @@ def get_customer_360(query: str, customer_id: Optional[str] = None) -> tuple[str
                 if row:
                     customer_id = str(dict(row._mapping).get(pk, ""))
 
-        if not customer_id:
-            return "No customer specified. Please provide a customer name or ID.\n", []
+    if not customer_id:
+        return "No customer specified. Please provide a customer name or ID.\n", []
 
-        cust = conn.execute(text(
-            f"SELECT * FROM customers WHERE {pk} = :cid"
-        ), {"cid": customer_id}).fetchone()
-        if not cust:
-            return f"No customer found with ID: {customer_id}\n", []
-
-        c = dict(cust._mapping)
-
-        # Accounts
-        acct_rows = conn.execute(text(
-            "SELECT * FROM accounts WHERE customer_id = :cid ORDER BY opened_date DESC LIMIT 5"
-        ), {"cid": customer_id}).fetchall()
-
-        # Recent transactions
-        txn_rows = conn.execute(text("""
-            SELECT amount, merchant, category, timestamp, is_fraud
-            FROM   enriched_transactions
-            WHERE  customer_id = :cid
-            ORDER  BY timestamp DESC LIMIT 8
-        """), {"cid": customer_id}).fetchall()
-
-        # Loans
-        loan_rows = conn.execute(text(
-            "SELECT loan_type, status, amount_cents, outstanding_balance_cents, origination_date FROM loans WHERE customer_id = :cid LIMIT 5"
-        ), {"cid": customer_id}).fetchall()
-
-        # Fraud alerts
-        fraud_rows = conn.execute(text(
-            "SELECT risk_score, reason, status, timestamp FROM fraud_alerts WHERE customer_id = :cid ORDER BY timestamp DESC LIMIT 5"
-        ), {"cid": customer_id}).fetchall()
-
-        # Trust score
-        ts_row = conn.execute(text("""
-            SELECT score, tier, timestamp FROM trust_scores
-            WHERE customer_id = :cid ORDER BY timestamp DESC LIMIT 1
-        """), {"cid": customer_id}).fetchone()
-
-    name = f"{c.get('first_name', '')} {c.get('last_name', '')}".strip()
-    cid_short = str(customer_id)[:10]
-
-    blocks = [
-        f"=== CUSTOMER 360° VIEW: {name.upper()} ===",
-        f"Customer ID: {cid_short} | As of {_now_iso()}",
-        "",
-        "── PROFILE ──",
-        f"  Email         : {c.get('email', 'N/A')}",
-        f"  Phone         : {c.get('phone', 'N/A')}",
-        f"  Location      : {c.get('address_city', '')}, {c.get('address_state', '')}",
-        f"  Segment       : {c.get('segment', 'N/A')}",
-        f"  Customer Type : {c.get('customer_type', 'N/A')}",
-        f"  KYC Status    : {c.get('kyc_status', 'N/A')}",
-        f"  AML Risk      : {c.get('aml_risk_rating', 'N/A')}",
-        f"  Credit Score  : {c.get('credit_score', 'N/A')}",
-        f"  Annual Income : ${float(c.get('annual_income') or 0):,.0f}",
-        f"  PEP           : {'YES — EDD Required' if c.get('is_pep') else 'No'}",
-        f"  Sanctioned    : {'YES — BLOCKED' if c.get('is_sanctioned') else 'No'}",
-        f"  Member Since  : {str(c.get('created_at', ''))[:10]}",
-    ]
-
-    # Accounts
-    if acct_rows:
-        blocks.append("\n── ACCOUNTS ──")
-        for a in acct_rows:
-            ad = dict(a._mapping)
-            bal = float(ad.get("balance_cents") or 0) / 100
-            blocks.append(
-                f"  {ad.get('account_type', 'account').title()} #{ad.get('account_number', '')}"
-                f" | Status: {ad.get('status', '')} | Balance: ${bal:,.2f}"
-            )
-
-    # Loans
-    if loan_rows:
-        blocks.append("\n── LOANS ──")
-        for l in loan_rows:
-            ld = dict(l._mapping)
-            amt = float(ld.get("amount_cents") or 0) / 100
-            outstanding = float(ld.get("outstanding_balance_cents") or 0) / 100
-            blocks.append(
-                f"  {ld.get('loan_type', '').title()} Loan | Status: {ld.get('status', '')}"
-                f" | Original: ${amt:,.0f} | Outstanding: ${outstanding:,.0f}"
-            )
-
-    # Recent transactions
-    if txn_rows:
-        blocks.append("\n── RECENT TRANSACTIONS (last 8) ──")
-        for t in txn_rows:
-            td = dict(t._mapping)
-            amt = float(td.get("amount") or 0)
-            flag = " ⚠️ FLAGGED" if td.get("is_fraud") else ""
-            blocks.append(
-                f"  {str(td.get('timestamp', ''))[:10]} | {td.get('merchant', 'Unknown'):<25}"
-                f" | ${abs(amt):>8,.2f} | {td.get('category', '')}{flag}"
-            )
-
-    # Fraud alerts
-    if fraud_rows:
-        blocks.append("\n── FRAUD ALERTS ──")
-        for f in fraud_rows:
-            fd = dict(f._mapping)
-            score = float(fd.get("risk_score") or 0)
-            blocks.append(
-                f"  Score: {score*100:.0f}% | Status: {fd.get('status', '')} "
-                f"| {str(fd.get('reason', ''))[:60]} | {str(fd.get('timestamp', ''))[:10]}"
-            )
-
-    # Trust score
-    if ts_row:
-        tsd = dict(ts_row._mapping)
-        blocks.append(
-            f"\n── TRUST SCORE: {float(tsd.get('score', 0)):.0f}/100 ({tsd.get('tier', '')} tier) "
-            f"| Last updated: {str(tsd.get('timestamp', ''))[:10]} ──"
-        )
-
-    blocks.append(f"\nData source: customers, accounts, loans, enriched_transactions, fraud_alerts, trust_scores | As of {_now_iso()}")
-    return "\n".join(blocks), [_db_source(f"Customer 360°: {name}", "multi-table", 1)]
+    ctx, sources, _ = build_customer_graph_context(
+        customer_id=customer_id,
+        query=query,
+        permissions=permissions or [],
+    )
+    return ctx, sources
 
 
 # ── Transactions ──────────────────────────────────────────────────────────────
@@ -602,15 +506,16 @@ def retrieve_structured_data(
     intent: str,
     query: str,
     customer_id: Optional[str] = None,
+    permissions: Optional[List[str]] = None,
 ) -> tuple[str, list[dict]]:
     """
     Dispatch to the right retriever based on intent.
     Returns (context_str, sources_list).
+    `permissions` is forwarded to retrievers that support permission-aware traversal.
     """
     try:
         if intent == "risk":
             q_lower = query.lower()
-            # If general risk dashboard query (no specific level), include portfolio summary
             has_level = any(w in q_lower for w in ("high", "medium", "low", "critical"))
             ctx, srcs = get_risk_profiles(query, limit=30)
             if not has_level or "dashboard" in q_lower or "overview" in q_lower:
@@ -623,8 +528,7 @@ def retrieve_structured_data(
             return get_fraud_data(query, customer_id)
 
         elif intent == "customer":
-            ctx, srcs = get_customer_360(query, customer_id)
-            # If no specific customer was resolved, fall back to portfolio summary
+            ctx, srcs = get_customer_360(query, customer_id, permissions=permissions)
             if ctx.startswith("No customer specified"):
                 return get_portfolio_summary()
             return ctx, srcs

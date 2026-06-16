@@ -14,7 +14,6 @@ Stores score history in the `ai_trust_scores` SQLite table.
 """
 import os
 import re
-import json
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
@@ -104,9 +103,14 @@ class AITrustScorer:
         source_chunks: List[str],
     ) -> float:
         """
-        Estimate hallucination probability by verifying answer against source docs.
+        Estimate hallucination probability via semantic similarity.
 
-        Uses GPT-4 to check: "Does this answer contradict or go beyond the source?"
+        Embeds the answer and each source chunk with the already-loaded
+        all-MiniLM-L6-v2 model, then computes cosine similarity.  High
+        semantic similarity to sources → low hallucination probability.
+
+        Falls back to the keyword-overlap heuristic if the embedding model
+        is unavailable (e.g. first boot before the model is cached).
 
         Args:
             answer: The AI-generated answer
@@ -119,65 +123,40 @@ class AITrustScorer:
             return 0.5  # Unknown — moderate risk
 
         try:
-            from src.api.llm_router import route
+            from src.rag.embeddings import get_embeddings_model
+            embedder = get_embeddings_model()
 
-            source_text = "\n---\n".join(chunk[:500] for chunk in source_chunks[:5])
-            prompt = f"""You are a grounding auditor for a banking AI assistant (TrustNova Bank).
+            # Embed the answer (truncated for speed) and each source chunk
+            answer_emb = embedder.embed_query(answer[:1200])
+            chunk_embs = embedder.embed_documents([c[:600] for c in source_chunks[:5]])
 
-TASK: Evaluate whether the AI answer is well-grounded in the provided source documents.
+            if not chunk_embs or not answer_emb:
+                raise ValueError("empty embeddings")
 
-IMPORTANT GROUNDING INDICATORS (treat these as evidence of good grounding, score < 0.2):
-- Answer cites specific Section numbers (e.g. "Section 4.2")
-- Answer references CFR regulations (e.g. "31 C.F.R. §")
-- Answer uses regulatory acronyms (BSA/AML, KYC, SAR, CTR, OFAC, FinCEN) in context
-- Answer summarises or paraphrases (not quotes) content from the sources
+            # Cosine similarity: answer vs each chunk (vectors already L2-normalised)
+            sims: List[float] = []
+            for cemb in chunk_embs:
+                dot = sum(a * b for a, b in zip(answer_emb, cemb))
+                # all-MiniLM-L6-v2 returns unit-norm vectors when normalize=True,
+                # so dot product IS cosine similarity
+                sims.append(max(0.0, min(1.0, dot)))
 
-The AI is NOT required to quote verbatim — synthesis and paraphrase are expected.
+            if not sims:
+                raise ValueError("no similarities computed")
 
-SOURCE DOCUMENTS:
-{source_text}
+            max_sim = max(sims)
+            avg_sim = sum(sims) / len(sims)
+            # Weighted blend: bias toward the best matching chunk
+            grounding = max_sim * 0.60 + avg_sim * 0.40
 
-AI ANSWER:
-{answer[:1200]}
-
-SCORING GUIDE:
-- 0.0 to 0.15: Fully grounded — all key claims traceable to sources
-- 0.15 to 0.30: Mostly grounded — minor elaboration or synthesis beyond sources
-- 0.30 to 0.50: Partially grounded — some claims lack source support
-- 0.50 to 0.80: Poorly grounded — many claims not in sources
-- 0.80 to 1.00: Fabricated — contradicts or ignores sources entirely
-
-Respond with ONLY a valid JSON object on one line:
-{{"hallucination_score": <float>, "reason": "<one sentence>"}}
-"""
-            result = route("compliance", prompt)
-            response_text = result.get("response", "")
-
-            # Parse JSON — use a broader pattern to handle nested content
-            json_match = re.search(r'\{\s*"hallucination_score"\s*:\s*([\d.]+)', response_text)
-            if json_match:
-                score = float(json_match.group(1))
-                score = max(0.0, min(1.0, score))
-                score = self._apply_citation_cap(score, answer)
-                return score
-
-            # Try full JSON parse as fallback
-            json_full = re.search(r'\{.*?\}', response_text, re.DOTALL)
-            if json_full:
-                try:
-                    parsed = json.loads(json_full.group())
-                    score = float(parsed.get("hallucination_score", 0.2))
-                    score = max(0.0, min(1.0, score))
-                    score = self._apply_citation_cap(score, answer)
-                    return score
-                except Exception:
-                    pass
+            # Map to hallucination probability: high grounding → low probability
+            # grounding ~0.80 → prob ~0.05; grounding ~0.20 → prob ~0.70
+            raw_prob = max(0.0, min(1.0, 1.0 - grounding))
+            return self._apply_citation_cap(raw_prob, answer)
 
         except Exception:
-            pass  # Fallback below
-
-        # Fallback: heuristic with stop-word filtering for accurate overlap
-        return self._heuristic_hallucination(answer, source_chunks)
+            # Fallback: keyword overlap heuristic
+            return self._heuristic_hallucination(answer, source_chunks)
 
     def _apply_citation_cap(self, score: float, answer: str) -> float:
         """Cap hallucination probability when the answer is well-cited."""

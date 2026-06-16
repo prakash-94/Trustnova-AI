@@ -8,7 +8,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
 
-from src.api.auth import CurrentUser, require_permission, log_audit
+from src.api.auth import CurrentUser, require_permission, log_audit, ROLES
 
 router = APIRouter()
 
@@ -48,33 +48,53 @@ async def chat(
     from src.rag.intent_classifier import classify_intent, needs_db_data
     from src.rag.data_retriever import retrieve_structured_data
 
+    from src.rag import rbac_filter
+
     agent = get_agent(req.agent_id) if req.agent_id else get_default_agent_for_role(current_user.role)
+
+    _role_label = ROLES.get(current_user.role, {}).get("label", current_user.role)
 
     customer_ctx = ""
     if req.customer_id:
         customer_ctx = _build_customer_context(req.customer_id)
+        # Field-level redaction: mask AML/KYC fields the user isn't permitted to see
+        customer_ctx = rbac_filter.redact_customer_fields(customer_ctx, current_user.permissions)
 
     extra_ctx = ""
     if req.context:
         for k, v in req.context.items():
             extra_ctx += f"\n{k.replace('_', ' ').title()}: {v}"
 
-    # Hybrid RAG: classify intent and fetch live DB data when appropriate
+    # Hybrid RAG: classify intent, enforce RBAC, then fetch live DB data
     intent = classify_intent(req.question)
     structured_ctx = ""
     structured_sources: list = []
     if needs_db_data(intent):
-        try:
-            structured_ctx, structured_sources = retrieve_structured_data(
-                intent, req.question, req.customer_id
+        if not rbac_filter.can_access_intent(intent, current_user.permissions):
+            # Block retrieval entirely — inject a denied message the LLM will relay
+            structured_ctx = rbac_filter.build_denied_message(
+                intent, current_user.role, _role_label
             )
-        except Exception as e:
-            print(f"[Chat] Structured retrieval failed for intent '{intent}': {e}")
+            structured_sources = [{"document": "[ACCESS RESTRICTED]", "page": "rbac", "freshness": 1.0}]
+        else:
+            try:
+                structured_ctx, structured_sources = retrieve_structured_data(
+                    intent, req.question, req.customer_id,
+                    permissions=current_user.permissions,
+                )
+                # Field-level redaction on the 360 view / graph context
+                structured_ctx = rbac_filter.redact_customer_fields(structured_ctx, current_user.permissions)
+            except Exception as e:
+                print(f"[Chat] Structured retrieval failed for intent '{intent}': {e}")
 
     result = agent.run(
         question=req.question,
         customer_context=customer_ctx + extra_ctx,
-        extra_data={"customer_id": req.customer_id, "role": current_user.role},
+        extra_data={
+            "customer_id": req.customer_id,
+            "role": current_user.role,
+            "permissions": current_user.permissions,
+        },
         structured_context=structured_ctx,
     )
 
@@ -134,30 +154,47 @@ async def chat_stream(
     from src.rag.intent_classifier import classify_intent, needs_db_data
     from src.rag.data_retriever import retrieve_structured_data
 
+    from src.rag import rbac_filter
+
     agent = get_agent(req.agent_id) if req.agent_id else get_default_agent_for_role(current_user.role)
+
+    _role_label = ROLES.get(current_user.role, {}).get("label", current_user.role)
 
     customer_ctx = ""
     if req.customer_id:
         customer_ctx = _build_customer_context(req.customer_id)
+        customer_ctx = rbac_filter.redact_customer_fields(customer_ctx, current_user.permissions)
 
     extra_ctx = ""
     if req.context:
         for k, v in req.context.items():
             extra_ctx += f"\n{k.replace('_', ' ').title()}: {v}"
 
-    extra_data = {"customer_id": req.customer_id, "role": current_user.role}
+    extra_data = {
+        "customer_id": req.customer_id,
+        "role": current_user.role,
+        "permissions": current_user.permissions,
+    }
 
-    # Hybrid RAG: classify intent and fetch live DB data when appropriate
+    # Hybrid RAG: classify intent, enforce RBAC, then fetch live DB data
     intent = classify_intent(req.question)
     structured_ctx = ""
     structured_sources: list = []
     if needs_db_data(intent):
-        try:
-            structured_ctx, structured_sources = retrieve_structured_data(
-                intent, req.question, req.customer_id
+        if not rbac_filter.can_access_intent(intent, current_user.permissions):
+            structured_ctx = rbac_filter.build_denied_message(
+                intent, current_user.role, _role_label
             )
-        except Exception as e:
-            print(f"[Stream] Structured retrieval failed for intent '{intent}': {e}")
+            structured_sources = [{"document": "[ACCESS RESTRICTED]", "page": "rbac", "freshness": 1.0}]
+        else:
+            try:
+                structured_ctx, structured_sources = retrieve_structured_data(
+                    intent, req.question, req.customer_id,
+                    permissions=current_user.permissions,
+                )
+                structured_ctx = rbac_filter.redact_customer_fields(structured_ctx, current_user.permissions)
+            except Exception as e:
+                print(f"[Stream] Structured retrieval failed for intent '{intent}': {e}")
 
     def generate():
         done_payload = None
