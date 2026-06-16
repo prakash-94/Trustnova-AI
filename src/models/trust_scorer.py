@@ -76,12 +76,21 @@ class TrustScoreCalculator:
             conn.commit()
 
     def _get_customer_data(self, customer_id: str) -> Optional[Dict]:
-        """Fetch customer data from SQLite."""
-        query = text("SELECT * FROM customers WHERE customer_id = :cid")
-        df = pd.read_sql(query, self.engine, params={"cid": customer_id})
-        if df.empty:
-            return None
-        return df.iloc[0].to_dict()
+        """Fetch customer data, trying multiple table/column schemas for resilience."""
+        attempts = [
+            "SELECT * FROM customers WHERE customer_id = :cid",
+            "SELECT * FROM customers WHERE id = :cid",
+            "SELECT * FROM customers_new WHERE id = :cid",
+            "SELECT * FROM customers_new WHERE customer_id = :cid",
+        ]
+        for q in attempts:
+            try:
+                df = pd.read_sql(text(q), self.engine, params={"cid": customer_id})
+                if not df.empty:
+                    return df.iloc[0].to_dict()
+            except Exception:
+                continue
+        return None
 
     def _get_fraud_count(self, customer_id: str) -> int:
         """Count fraud incidents for a customer."""
@@ -274,11 +283,16 @@ class TrustScoreCalculator:
         Calculate trust scores for all customers (or a limited batch).
         Returns a DataFrame with scores.
         """
-        query = "SELECT customer_id FROM customers"
-        if limit:
-            query += f" LIMIT {limit}"
-
-        customers = pd.read_sql(query, self.engine)
+        try:
+            query = "SELECT customer_id FROM customers"
+            if limit:
+                query += f" LIMIT {limit}"
+            customers = pd.read_sql(query, self.engine)
+        except Exception:
+            query = "SELECT id AS customer_id FROM customers"
+            if limit:
+                query += f" LIMIT {limit}"
+            customers = pd.read_sql(query, self.engine)
         
         results = []
         for _, row in customers.iterrows():

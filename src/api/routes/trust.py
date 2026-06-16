@@ -73,7 +73,8 @@ async def get_trust_score(
     import os
 
     ip = http_request.client.host if http_request and http_request.client else ""
-    log_audit(current_user.username, "read", "trust_score", customer_id, ip)
+    log_audit(current_user.username, current_user.role, "read", "trust_score",
+              resource_id=customer_id, customer_id=customer_id, ip=ip)
 
     # --- 1. Try cached score from trust_scores table (fast path) ---
     try:
