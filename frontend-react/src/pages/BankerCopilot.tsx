@@ -517,8 +517,9 @@ export default function BankerCopilot({ user, onLogout }: BankerCopilotProps) {
 
         <main className={`flex-1 flex flex-col overflow-hidden min-h-0 ${activeTab === 'ai_copilot' ? 'p-1.5 gap-1.5' : 'p-5 gap-4'}`}>
           <div className="flex-1 min-h-0 overflow-y-auto">
-            {/* Dashboard is always visible on the home and customer tabs */}
-            {(activeTab === 'home' || activeTab === 'customer_search' || activeTab === 'customer360') && (
+            {/* Dashboard: visible on home tab, and on customer tab only when no customer is selected */}
+            {(activeTab === 'home' ||
+              ((activeTab === 'customer_search' || activeTab === 'customer360') && !selectedCustomer)) && (
               <RoleDashboard
                 role={user.role}
                 roleLabel={user.role_label ?? user.role.replace(/_/g, ' ')}
@@ -531,9 +532,9 @@ export default function BankerCopilot({ user, onLogout }: BankerCopilotProps) {
                 refreshKey={kpiRefreshKey}
               />
             )}
-            {/* Section-specific content appears below the dashboard */}
+            {/* Section-specific content — appears below dashboard or fills the view */}
             {activeTab !== 'home' && (
-              <div className={activeTab === 'customer_search' || activeTab === 'customer360' ? 'mt-4' : ''}>
+              <div className={!selectedCustomer && (activeTab === 'customer_search' || activeTab === 'customer360') ? 'mt-4' : ''}>
                 <AnimatePresence mode="wait">
                   {renderSection()}
                 </AnimatePresence>
