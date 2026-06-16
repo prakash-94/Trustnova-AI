@@ -168,7 +168,6 @@ async def search_customers(
                OR LOWER(last_name) LIKE :q
                OR LOWER(first_name || ' ' || last_name) LIKE :q
                OR LOWER(last_name || ' ' || first_name) LIKE :q
-               OR LOWER(COALESCE(name, '')) LIKE :q
             ORDER BY first_name, last_name
             LIMIT :limit
         """), {"q": f"%{q_stripped}%", "limit": limit}).fetchall()
