@@ -131,8 +131,10 @@ async def get_loan_detail(
         loan = _row_to_loan(dict(loan_row._mapping))
         cid = loan["customer_id"]
 
+        from src.models.database import customer_pk
+        c_pk = customer_pk()
         cust_row = conn.execute(text(
-            "SELECT * FROM customers WHERE customer_id = :cid"
+            f"SELECT * FROM customers WHERE {c_pk} = :cid"
         ), {"cid": cid}).fetchone()
         customer = {}
         if cust_row:

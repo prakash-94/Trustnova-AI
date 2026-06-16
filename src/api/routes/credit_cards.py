@@ -31,6 +31,11 @@ def _engine():
     return engine
 
 
+def _customer_pk():
+    from src.models.database import customer_pk
+    return customer_pk()
+
+
 def _utcnow() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S") + "Z"
 
@@ -236,7 +241,7 @@ async def create_application(
         try:
             with _engine().connect() as conn:
                 cust = conn.execute(text(
-                    "SELECT first_name, last_name FROM customers WHERE customer_id = :id"
+                    f"SELECT first_name, last_name FROM customers WHERE {_customer_pk()} = :id"
                 ), {"id": body.customer_id}).fetchone()
                 if cust:
                     customer_name = f"{cust[0]} {cust[1]}"

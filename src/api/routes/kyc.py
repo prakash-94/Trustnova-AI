@@ -162,8 +162,10 @@ async def get_kyc_record(
     current_user: CurrentUser = Depends(require_permission("kyc:read")),
 ):
     with engine.connect() as conn:
+        from src.models.database import customer_pk
+        pk = customer_pk()
         row = conn.execute(text(
-            "SELECT * FROM customers WHERE customer_id = :cid"
+            f"SELECT * FROM customers WHERE {pk} = :cid"
         ), {"cid": customer_id}).fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Customer not found")
