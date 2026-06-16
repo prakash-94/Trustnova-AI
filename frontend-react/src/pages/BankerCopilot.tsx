@@ -109,6 +109,8 @@ export default function BankerCopilot({ user, onLogout }: BankerCopilotProps) {
   const [customersList, setCustomersList] = useState<Customer[]>([]);
   const [customersLoading, setCustomersLoading] = useState(false);
   const [customersSearch, setCustomersSearch] = useState('');
+  const [customersSearchResults, setCustomersSearchResults] = useState<Customer[] | null>(null);
+  const customersSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [kpiRefreshKey, setKpiRefreshKey] = useState(0);
   const [showFeedback, setShowFeedback] = useState(false);
@@ -172,15 +174,40 @@ export default function BankerCopilot({ user, onLogout }: BankerCopilotProps) {
     });
   }, [activeConvId, uname]);
 
-  // Load customers when modal opens
+  // Load customers when modal opens; reset search state on close
   useEffect(() => {
-    if (!showCustomersModal) return;
+    if (!showCustomersModal) {
+      setCustomersSearch('');
+      setCustomersSearchResults(null);
+      return;
+    }
     setCustomersLoading(true);
     customersApi.list({ limit: 200 })
       .then(r => setCustomersList(r.customers ?? []))
       .catch(() => setCustomersList([]))
       .finally(() => setCustomersLoading(false));
   }, [showCustomersModal]);
+
+  // Live API search — debounced 300 ms, falls back to list filter when query < 2 chars
+  const handleCustomersSearch = (q: string) => {
+    setCustomersSearch(q);
+    if (customersSearchTimer.current) clearTimeout(customersSearchTimer.current);
+    if (q.trim().length < 2) {
+      setCustomersSearchResults(null);
+      return;
+    }
+    customersSearchTimer.current = setTimeout(async () => {
+      setCustomersLoading(true);
+      try {
+        const r = await customersApi.search(q.trim(), 100);
+        setCustomersSearchResults((r.results ?? []) as Customer[]);
+      } catch {
+        setCustomersSearchResults([]);
+      } finally {
+        setCustomersLoading(false);
+      }
+    }, 300);
+  };
 
   // Poll for temporary access grants every 30 seconds.
   // When admin approves a request the section unlocks automatically in the sidebar.
@@ -567,7 +594,7 @@ export default function BankerCopilot({ user, onLogout }: BankerCopilotProps) {
                 <input
                   type="text"
                   value={customersSearch}
-                  onChange={e => setCustomersSearch(e.target.value)}
+                  onChange={e => handleCustomersSearch(e.target.value)}
                   placeholder="Search by first name or last name…"
                   className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-t1 placeholder-t3 focus:outline-none focus:border-purple-500/40 transition-colors"
                 />
@@ -575,15 +602,13 @@ export default function BankerCopilot({ user, onLogout }: BankerCopilotProps) {
               {/* List */}
               <div className="flex-1 overflow-y-auto px-6 py-3">
                 {customersLoading ? (
-                  <div className="flex items-center justify-center py-16 text-t3 text-sm">Loading customers…</div>
+                  <div className="flex items-center justify-center py-16 text-t3 text-sm">
+                    {customersSearch.trim().length >= 2 ? 'Searching…' : 'Loading customers…'}
+                  </div>
                 ) : (() => {
-                  const q = customersSearch.toLowerCase().trim();
-                  const filtered = q
-                    ? customersList.filter(c =>
-                        c.first_name.toLowerCase().includes(q) ||
-                        c.last_name.toLowerCase().includes(q) ||
-                        `${c.first_name} ${c.last_name}`.toLowerCase().includes(q)
-                      )
+                  // Use live API results when searching, otherwise show pre-loaded list
+                  const filtered = customersSearchResults !== null
+                    ? customersSearchResults
                     : customersList;
                   if (!filtered.length) return (
                     <div className="text-center py-16 text-t3 text-sm">No customers match "{customersSearch}".</div>
