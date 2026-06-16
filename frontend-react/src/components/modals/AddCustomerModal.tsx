@@ -43,15 +43,33 @@ export default function AddCustomerModal({ onClose, onCreated }: Props) {
 
   const validate = (): boolean => {
     const e: Partial<Record<keyof FormState, string>> = {};
-    if (!form.first_name.trim()) e.first_name = 'Required';
-    if (!form.last_name.trim()) e.last_name = 'Required';
-    if (!form.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email = 'Valid email required';
-    if (form.phone && !/^[\d\s\-\(\)\+]{7,}$/.test(form.phone)) e.phone = 'Invalid phone';
-    if (!form.credit_score || Number(form.credit_score) < 300 || Number(form.credit_score) > 850) e.credit_score = '300–850';
-    if (Number(form.annual_income) < 0) e.annual_income = 'Must be ≥ 0';
-    if (Number(form.opening_balance) < 0) e.opening_balance = 'Must be ≥ 0';
+    if (!form.first_name.trim()) e.first_name = 'First name is required';
+    if (!form.last_name.trim())  e.last_name  = 'Last name is required';
+    if (!form.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email))
+      e.email = 'Valid email address is required';
+    // Phone required — strip non-digits, must be 10 (US) or 11 digits starting with 1
+    const digits = form.phone.replace(/\D/g, '');
+    if (!form.phone.trim()) {
+      e.phone = 'Phone number is required';
+    } else if (!(digits.length === 10 || (digits.length === 11 && digits[0] === '1'))) {
+      e.phone = 'Enter a valid 10-digit US phone number';
+    }
+    if (!form.credit_score || Number(form.credit_score) < 300 || Number(form.credit_score) > 850)
+      e.credit_score = '300–850';
+    if (Number(form.annual_income) < 0)    e.annual_income    = 'Must be ≥ 0';
+    if (Number(form.opening_balance) < 0)  e.opening_balance  = 'Must be ≥ 0';
     setErrors(e);
     return Object.keys(e).length === 0;
+  };
+
+  // Format phone on blur: (XXX) XXX-XXXX
+  const formatPhone = () => {
+    const digits = form.phone.replace(/\D/g, '');
+    if (digits.length === 10) {
+      set('phone', `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`);
+    } else if (digits.length === 11 && digits[0] === '1') {
+      set('phone', `+1 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`);
+    }
   };
 
   const submit = async () => {
@@ -92,9 +110,11 @@ export default function AddCustomerModal({ onClose, onCreated }: Props) {
     />
   );
 
-  const label = (text: string, field: keyof FormState, children: React.ReactNode) => (
+  const label = (text: string, field: keyof FormState, children: React.ReactNode, required = false) => (
     <div>
-      <label className="text-[10px] text-t3 uppercase tracking-wider block mb-1">{text}</label>
+      <label className="text-[10px] text-t3 uppercase tracking-wider block mb-1">
+        {text}{required && <span className="text-red-400 ml-0.5">*</span>}
+      </label>
       {children}
       {errors[field] && <p className="text-[9px] text-red-400 mt-0.5">{errors[field]}</p>}
     </div>
@@ -160,14 +180,24 @@ export default function AddCustomerModal({ onClose, onCreated }: Props) {
 
                 {/* Name */}
                 <div className="grid grid-cols-2 gap-3">
-                  {label('First Name', 'first_name', inp('first_name', { placeholder: 'Jane' }))}
-                  {label('Last Name', 'last_name', inp('last_name', { placeholder: 'Smith' }))}
+                  {label('First Name', 'first_name', inp('first_name', { placeholder: 'Jane' }), true)}
+                  {label('Last Name', 'last_name', inp('last_name', { placeholder: 'Smith' }), true)}
                 </div>
 
                 {/* Email + Phone */}
                 <div className="grid grid-cols-2 gap-3">
-                  {label('Email Address', 'email', inp('email', { type: 'email', placeholder: 'jane@example.com' }))}
-                  {label('Phone Number', 'phone', inp('phone', { type: 'tel', placeholder: '(555) 000-0000' }))}
+                  {label('Email Address', 'email', inp('email', { type: 'email', placeholder: 'jane@example.com' }), true)}
+                  {label('Phone Number', 'phone',
+                    <input
+                      type="tel"
+                      value={form.phone}
+                      onChange={e => set('phone', e.target.value)}
+                      onBlur={formatPhone}
+                      placeholder="(555) 000-0000"
+                      className={`w-full bg-white/[0.04] border rounded-lg px-3 py-2 text-xs text-t1 placeholder-t3
+                        focus:outline-none focus:border-purple-500/50 transition-colors
+                        ${errors.phone ? 'border-red-500/50' : 'border-white/[0.08]'}`}
+                    />, true)}
                 </div>
 
                 {/* Financial */}
@@ -186,10 +216,10 @@ export default function AddCustomerModal({ onClose, onCreated }: Props) {
                     </select>
                   )}
                   {label('Risk Rating', 'aml_risk_rating',
-                    <select value={form.aml_risk_rating} onChange={e => set('aml_risk_rating', e.target.value)}
-                      className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-t1 focus:outline-none focus:border-purple-500/50">
-                      {RISK_LEVELS.map(r => <option key={r.value} value={r.value} className="bg-[#1a1a2e]">{r.label}</option>)}
-                    </select>
+                    <div className="w-full bg-white/[0.02] border border-white/[0.05] rounded-lg px-3 py-2 text-xs text-t3 flex items-center justify-between cursor-not-allowed select-none">
+                      <span className="capitalize">{form.aml_risk_rating}</span>
+                      <span className="text-[9px] text-t3/50 uppercase tracking-wider">Auto-assessed</span>
+                    </div>
                   )}
                 </div>
 
