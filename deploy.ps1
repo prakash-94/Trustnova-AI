@@ -19,7 +19,7 @@ param(
     [switch]$SkipDocker = $false
 )
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
 $StartTime = Get-Date
 
 function Write-Step { param($n, $text) Write-Host "`n[$n] $text" -ForegroundColor Cyan }
@@ -83,19 +83,20 @@ if (-not $SkipGit) {
 
         Write-Host "  Commit message: $Message"
 
-        git add -A
-        if ($LASTEXITCODE -ne 0) { Write-Fail "git add failed" }
+        # Suppress LF/CRLF warnings — they are informational, not errors
+        git add -A 2>&1 | Where-Object { $_ -notmatch "^warning:" } | ForEach-Object { Write-Host "  git: $_" }
+        if ($LASTEXITCODE -ne 0) { Write-Fail "git add failed (exit $LASTEXITCODE)" }
 
         # Write commit message to a temp file to avoid shell quoting issues
         $tmpMsg = [System.IO.Path]::GetTempFileName()
         Set-Content -Path $tmpMsg -Value "$Message`n`nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>" -Encoding utf8
-        git commit -F $tmpMsg
+        git commit -F $tmpMsg 2>&1 | Where-Object { $_ -notmatch "^warning:" } | ForEach-Object { Write-Host "  git: $_" }
         Remove-Item $tmpMsg -Force
-        if ($LASTEXITCODE -ne 0) { Write-Fail "git commit failed" }
+        if ($LASTEXITCODE -ne 0) { Write-Fail "git commit failed (exit $LASTEXITCODE)" }
 
         Write-OK "Committed: $Message"
 
-        git push origin main
+        git push origin main 2>&1 | Where-Object { $_ -notmatch "^warning:" } | ForEach-Object { Write-Host "  git: $_" }
         if ($LASTEXITCODE -ne 0) { Write-Fail "git push failed -- check credentials or branch protection rules" }
 
         Write-OK "Pushed to origin/main -- GitHub Actions CI triggered automatically"
@@ -125,7 +126,7 @@ if (-not $SkipDocker) {
 
     Write-Step "3" "Docker -- rolling restart (docker compose up -d)"
 
-    docker compose -f $composeFile up -d
+    docker compose -f $composeFile up -d --no-deps backend frontend ml-service
     if ($LASTEXITCODE -ne 0) { Write-Fail "docker compose up failed" }
 
     Write-Host "  Waiting 10s for containers to initialise..."
