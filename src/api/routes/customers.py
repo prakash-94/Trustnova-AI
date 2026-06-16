@@ -163,12 +163,13 @@ async def search_customers(
     with engine.connect() as conn:
         rows = conn.execute(text("""
             SELECT * FROM customers
-            WHERE LOWER(first_name || ' ' || last_name) LIKE :q
-               OR LOWER(id) LIKE :qid
-               OR LOWER(email) LIKE :q
+            WHERE LOWER(first_name) LIKE :q
+               OR LOWER(last_name) LIKE :q
+               OR LOWER(first_name || ' ' || last_name) LIKE :q
+               OR LOWER(last_name || ' ' || first_name) LIKE :q
             ORDER BY first_name, last_name
             LIMIT :limit
-        """), {"q": f"%{q_stripped}%", "qid": f"%{q_stripped}%", "limit": limit}).fetchall()
+        """), {"q": f"%{q_stripped}%", "limit": limit}).fetchall()
     return {"results": [_row_to_customer(dict(r._mapping)) for r in rows], "total": len(rows)}
 
 

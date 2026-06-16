@@ -61,7 +61,7 @@ export default function CustomerSearch({ onSelect }: CustomerSearchProps) {
           value={query}
           onChange={e => setQuery(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && search()}
-          placeholder="Search by name, ID, or email…"
+          placeholder="Search by first or last name…"
           className="flex-1 h-10 px-4 text-sm rounded-xl bg-white/[0.04] border border-white/[0.08]
                      text-t1 placeholder-t3 focus:outline-none focus:border-purple-500/50
                      focus:bg-white/[0.06] transition-all"
@@ -101,14 +101,14 @@ export default function CustomerSearch({ onSelect }: CustomerSearchProps) {
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-500/20 to-blue-500/20 flex items-center justify-center text-sm font-bold text-purple-300 border border-purple-500/20 flex-shrink-0">
-                      {(c.first_name?.[0] ?? '?').toUpperCase()}
+                    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-500/20 to-blue-500/20 flex items-center justify-center text-xs font-bold text-purple-300 border border-purple-500/20 flex-shrink-0">
+                      {(c.first_name?.[0] ?? '').toUpperCase()}{(c.last_name?.[0] ?? '').toUpperCase()}
                     </div>
                     <div>
                       <div className="text-sm font-medium text-t1 group-hover:text-purple-300 transition-colors">
                         {c.first_name} {c.last_name}
                       </div>
-                      <div className="text-xs text-t3">{c.id} · {c.email}</div>
+                      <div className="text-xs text-t3">{c.id} · {c.customer_type ?? 'individual'}</div>
                     </div>
                   </div>
                   <span className={`text-xs font-medium ${riskColor(c.aml_risk_rating)} ml-4 flex-shrink-0`}>
