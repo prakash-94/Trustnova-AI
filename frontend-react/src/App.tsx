@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Auth } from '@/lib/auth';
+﻿import { useState, useEffect } from 'react';
+import { Auth } from '@/services/auth';
 import LoginPage from '@/pages/LoginPage';
 import BankerCopilot from '@/pages/BankerCopilot';
 

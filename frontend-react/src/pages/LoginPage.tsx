@@ -1,8 +1,8 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { authApi } from '@/lib/api';
-import { Auth } from '@/lib/auth';
-import AnimatedBackground from '@/components/background/AnimatedBackground';
+import { authApi } from '@/services/api';
+import { Auth } from '@/services/auth';
+import AnimatedBackground from '@/components/common/AnimatedBackground';
 import type { User } from '@/types/banking';
 
 interface LoginPageProps {

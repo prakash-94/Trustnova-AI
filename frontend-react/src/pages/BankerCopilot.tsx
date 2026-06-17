@@ -1,56 +1,56 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+﻿import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { authApi, customersApi, accessRequestsApi } from '@/lib/api';
+import { authApi, customersApi, accessRequestsApi } from '@/services/api';
 import type { Customer } from '@/types/banking';
-import { Auth } from '@/lib/auth';
+import { Auth } from '@/services/auth';
 import type { User } from '@/types/banking';
 import type { NavSection } from '@/components/layout/Sidebar';
-import AnimatedBackground from '@/components/background/AnimatedBackground';
+import AnimatedBackground from '@/components/common/AnimatedBackground';
 import Sidebar from '@/components/layout/Sidebar';
 import TopBar from '@/components/layout/TopBar';
-import GlassCard from '@/components/ui/GlassCard';
+import GlassCard from '@/components/common/GlassCard';
 
 // Section components
-import ChatInterface from '@/components/chat/ChatInterface';
-import CustomerSearch from '@/components/customer/CustomerSearch';
-import Customer360 from '@/components/customer/Customer360';
-import AMLCenter from '@/components/aml/AMLCenter';
-import KYCCenter from '@/components/kyc/KYCCenter';
-import RiskCenter from '@/components/risk/RiskCenter';
-import TreasuryDashboard from '@/components/treasury/TreasuryDashboard';
-import ComplianceDashboard from '@/components/compliance/ComplianceDashboard';
-import FraudMonitor from './FraudMonitor';
-import AccessRequestsPanel from '@/components/admin/AccessRequestsPanel';
-import RoleDashboard from '@/components/dashboard/RoleDashboard';
+import ChatInterface from '@/features/chat/ChatInterface';
+import CustomerSearch from '@/features/customers/CustomerSearch';
+import Customer360 from '@/features/customers/Customer360';
+import AMLCenter from '@/features/aml/AMLCenter';
+import KYCCenter from '@/features/kyc/KYCCenter';
+import RiskCenter from '@/features/risk/RiskCenter';
+import TreasuryDashboard from '@/features/treasury/TreasuryDashboard';
+import ComplianceDashboard from '@/features/compliance/ComplianceDashboard';
+import FraudMonitor from '@/features/fraud/FraudMonitor';
+import AccessRequestsPanel from '@/features/admin/AccessRequestsPanel';
+import RoleDashboard from '@/features/dashboard/RoleDashboard';
 
 // Bank Operations Workspace
-import AccountsCenter from '@/components/accounts/AccountsCenter';
-import TransactionsCenter from '@/components/transactions/TransactionsCenter';
-import BankLoansCenter from '@/components/loans/BankLoansCenter';
+import AccountsCenter from '@/features/accounts/AccountsCenter';
+import TransactionsCenter from '@/features/transactions/TransactionsCenter';
+import BankLoansCenter from '@/features/loans/BankLoansCenter';
 
 // Modals
-import AddCustomerModal from '@/components/modals/AddCustomerModal';
-import FraudAlertsModal from '@/components/modals/FraudAlertsModal';
-import AITrustInfoModal from '@/components/modals/AITrustInfoModal';
-import FeedbackBugModal from '@/components/modals/FeedbackBugModal';
-import DocumentsModal from '@/components/modals/DocumentsModal';
+import AddCustomerModal from '@/features/customers/AddCustomerModal';
+import FraudAlertsModal from '@/features/fraud/FraudAlertsModal';
+import AITrustInfoModal from '@/features/chat/AITrustInfoModal';
+import FeedbackBugModal from '@/components/common/FeedbackBugModal';
+import DocumentsModal from '@/components/common/DocumentsModal';
 
 // Admin
-import AdminCenter from '@/pages/admin/AdminCenter';
+import AdminCenter from '@/features/admin/AdminCenter';
 
 // Executive & Banker features
-import AppointmentsCenter from '@/components/appointments/AppointmentsCenter';
-import CreditCardApplicationsCenter from '@/components/credit_cards/CreditCardApplicationsCenter';
+import AppointmentsCenter from '@/features/appointments/AppointmentsCenter';
+import CreditCardApplicationsCenter from '@/features/credit-cards/CreditCardApplicationsCenter';
 
 import type { CustomerSummary } from '@/types';
-import ChatHistorySidebar from '@/components/chat/ChatHistorySidebar';
+import ChatHistorySidebar from '@/features/chat/ChatHistorySidebar';
 import {
   type Conversation,
   loadConversations,
   saveConversations,
   makeConversation,
   getTitleFromMessages,
-} from '@/lib/conversations';
+} from '@/services/conversations';
 import type { ChatMessage } from '@/types/banking';
 
 /**

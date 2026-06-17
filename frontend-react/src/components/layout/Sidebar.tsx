@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { clsx } from 'clsx';
-import { Auth } from '@/lib/auth';
-import { accessRequestsApi } from '@/lib/api';
+import { Auth } from '@/services/auth';
+import { accessRequestsApi } from '@/services/api';
 
 export type NavSection =
   | 'home' | 'ai_copilot' | 'customer_search' | 'customer360'

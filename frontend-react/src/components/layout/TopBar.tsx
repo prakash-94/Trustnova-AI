@@ -1,6 +1,6 @@
-import { motion } from 'framer-motion';
-import { Auth } from '@/lib/auth';
-import NotificationBell from '@/components/notifications/NotificationBell';
+﻿import { motion } from 'framer-motion';
+import { Auth } from '@/services/auth';
+import NotificationBell from '@/features/notifications/NotificationBell';
 import type { NavSection } from './Sidebar';
 
 const LABELS: Partial<Record<NavSection, string>> & Record<string, string> = {
