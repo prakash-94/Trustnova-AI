@@ -5,6 +5,10 @@ import type {
   FraudAlert, RiskProfile,
 } from '@/types/banking';
 
+// In production (Vercel) set VITE_API_URL to the Render backend URL.
+// In dev, leave unset — Vite proxy handles routing to localhost:8001.
+const BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
+
 export class APIError extends Error {
   status: number;
   constructor(detail: string, status: number) {
@@ -21,7 +25,7 @@ async function request<T>(url: string, options: RequestInit = {}, opts?: { skipA
   };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
-  const res = await fetch(url, { ...options, headers });
+  const res = await fetch(BASE + url, { ...options, headers });
 
   if (res.status === 401) {
     if (!opts?.skipAuthRedirect) {
@@ -86,7 +90,7 @@ export const chatApi = {
 
     (async () => {
       try {
-        const res = await fetch('/chat/stream', {
+        const res = await fetch(BASE + '/chat/stream', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -361,7 +365,7 @@ export const documentsApi = {
     ),
   upload: (formData: FormData) => {
     const token = Auth.getToken();
-    return fetch('/documents/upload', {
+    return fetch(BASE + '/documents/upload', {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: formData,

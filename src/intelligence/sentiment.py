@@ -20,6 +20,7 @@ from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 from sqlalchemy import create_engine, text
+from src.models.database import auto_pk
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -43,9 +44,9 @@ class SentimentAnalyzer:
     def _ensure_tables(self):
         """Create required tables if they don't exist."""
         with self.engine.connect() as conn:
-            conn.execute(text("""
+            conn.execute(text(f"""
                 CREATE TABLE IF NOT EXISTS sentiment_scores (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id {auto_pk},
                     customer_id TEXT NOT NULL,
                     source_type TEXT NOT NULL,
                     source_id TEXT,
@@ -56,9 +57,9 @@ class SentimentAnalyzer:
                     processed_at TEXT NOT NULL
                 )
             """))
-            conn.execute(text("""
+            conn.execute(text(f"""
                 CREATE TABLE IF NOT EXISTS alerts (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id {auto_pk},
                     customer_id TEXT NOT NULL,
                     alert_type TEXT NOT NULL,
                     severity TEXT NOT NULL,

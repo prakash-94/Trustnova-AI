@@ -15,6 +15,7 @@ from typing import Dict, Optional
 import numpy as np
 import pandas as pd
 from sqlalchemy import create_engine, text
+from src.models.database import auto_pk
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import precision_recall_curve, auc
 from imblearn.over_sampling import SMOTE
@@ -49,9 +50,9 @@ class SelfImprovementLoop:
     def _ensure_feedback_table(self):
         """Create the feedback table if it doesn't exist."""
         with self.engine.connect() as conn:
-            conn.execute(text("""
+            conn.execute(text(f"""
                 CREATE TABLE IF NOT EXISTS feedback (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id {auto_pk},
                     txn_id TEXT NOT NULL,
                     predicted_fraud REAL NOT NULL,
                     banker_override INTEGER NOT NULL,

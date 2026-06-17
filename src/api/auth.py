@@ -12,6 +12,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
+from src.models.database import auto_pk
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -238,9 +239,9 @@ def ensure_users_table():
         from src.models.database import engine
         from sqlalchemy import text
         with engine.connect() as conn:
-            conn.execute(text("""
+            conn.execute(text(f"""
                 CREATE TABLE IF NOT EXISTS users (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id {auto_pk},
                     username TEXT UNIQUE NOT NULL,
                     hashed_password TEXT NOT NULL,
                     role TEXT NOT NULL DEFAULT 'personal_banker',
@@ -251,9 +252,9 @@ def ensure_users_table():
                     created_at TEXT NOT NULL
                 )
             """))
-            conn.execute(text("""
+            conn.execute(text(f"""
                 CREATE TABLE IF NOT EXISTS audit_log (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id {auto_pk},
                     username TEXT NOT NULL,
                     role TEXT,
                     action TEXT NOT NULL,

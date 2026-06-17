@@ -18,6 +18,7 @@ from typing import Dict, List, Optional
 
 import pandas as pd
 from sqlalchemy import create_engine, text
+from src.models.database import auto_pk
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -42,9 +43,9 @@ class FeedbackAnalyzer:
     def _ensure_tables(self):
         """Create the alerts table if it doesn't exist."""
         with self.engine.connect() as conn:
-            conn.execute(text("""
+            conn.execute(text(f"""
                 CREATE TABLE IF NOT EXISTS alerts (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id {auto_pk},
                     customer_id TEXT,
                     alert_type TEXT,
                     severity TEXT,

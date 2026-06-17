@@ -69,8 +69,8 @@ async def get_trust_score(
 
     Tiers: High Risk (0-40) · Moderate (41-70) · Trusted (71-100).
     """
-    from sqlalchemy import create_engine, text as sql_text
-    import os
+    from sqlalchemy import text as sql_text
+    from src.models.database import engine as _engine
 
     ip = http_request.client.host if http_request and http_request.client else ""
     log_audit(current_user.username, current_user.role, "read", "trust_score",
@@ -78,10 +78,6 @@ async def get_trust_score(
 
     # --- 1. Try cached score from trust_scores table (fast path) ---
     try:
-        _engine = create_engine(
-            os.getenv("DATABASE_URL", "sqlite:///./banking.db"),
-            connect_args={"check_same_thread": False},
-        )
         with _engine.connect() as conn:
             cached = conn.execute(sql_text("""
                 SELECT score, tier,

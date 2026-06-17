@@ -14,6 +14,7 @@ from typing import Optional, List
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy import text
+from src.models.database import auto_pk
 
 from src.api.auth import CurrentUser, get_current_user
 
@@ -37,9 +38,9 @@ def ensure_table():
         return
     try:
         with _engine().connect() as conn:
-            conn.execute(text("""
+            conn.execute(text(f"""
                 CREATE TABLE IF NOT EXISTS notifications (
-                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id           {auto_pk},
                     username     TEXT NOT NULL,
                     type         TEXT NOT NULL,
                     title        TEXT NOT NULL,

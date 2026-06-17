@@ -22,6 +22,7 @@ from typing import Dict, List, Optional
 
 import pandas as pd
 from sqlalchemy import create_engine, text
+from src.models.database import auto_pk
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -50,9 +51,9 @@ class RetrievalOptimizer:
     def _ensure_tables(self):
         """Create chunk_feedback table if it doesn't exist."""
         with self.engine.connect() as conn:
-            conn.execute(text("""
+            conn.execute(text(f"""
                 CREATE TABLE IF NOT EXISTS chunk_feedback (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id {auto_pk},
                     chunk_hash TEXT UNIQUE NOT NULL,
                     chunk_text TEXT,
                     source TEXT,

@@ -23,6 +23,7 @@ from typing import Dict, List, Optional
 
 import pandas as pd
 from sqlalchemy import create_engine, text
+from src.models.database import auto_pk
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -47,9 +48,9 @@ class PromptOptimizer:
     def _ensure_tables(self):
         """Create prompt_versions table if it doesn't exist."""
         with self.engine.connect() as conn:
-            conn.execute(text("""
+            conn.execute(text(f"""
                 CREATE TABLE IF NOT EXISTS prompt_versions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id {auto_pk},
                     template_name TEXT NOT NULL,
                     version INTEGER NOT NULL,
                     old_prompt_hash TEXT,

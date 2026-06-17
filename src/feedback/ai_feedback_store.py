@@ -18,6 +18,7 @@ from typing import Dict, List, Optional
 
 import pandas as pd
 from sqlalchemy import create_engine, text
+from src.models.database import auto_pk
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -41,9 +42,9 @@ class AIFeedbackStore:
     def _ensure_tables(self):
         """Create ai_feedback table if it doesn't exist."""
         with self.engine.connect() as conn:
-            conn.execute(text("""
+            conn.execute(text(f"""
                 CREATE TABLE IF NOT EXISTS ai_feedback (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id {auto_pk},
                     session_id TEXT NOT NULL,
                     response_id TEXT NOT NULL,
                     feedback_type TEXT NOT NULL,

@@ -13,8 +13,6 @@ from datetime import datetime
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
 from dotenv import load_dotenv
 from prometheus_fastapi_instrumentator import Instrumentator
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -176,45 +174,6 @@ app.include_router(bug_reports_module.router,     prefix="/bug-reports",     tag
 app.include_router(admin_users_module.router,     prefix="/admin",           tags=["Admin"])
 app.include_router(appointments_module.router,    prefix="/appointments",    tags=["Appointments"])
 app.include_router(credit_cards_module.router,    prefix="/credit-cards",    tags=["Credit Cards"])
-
-
-# ── Static Files ───────────────────────────────────────────────
-_file_relative = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "frontend")
-)
-_cwd_relative = os.path.join(os.getcwd(), "frontend")
-frontend_dir = _file_relative if os.path.isdir(_file_relative) else _cwd_relative
-
-if os.path.isdir(frontend_dir):
-    app.mount("/static", StaticFiles(directory=frontend_dir), name="static")
-
-
-# ── Page Routes ────────────────────────────────────────────────
-@app.get("/login", tags=["UI"], include_in_schema=False)
-async def serve_login():
-    """Serve the login page."""
-    path = os.path.join(frontend_dir, "login.html")
-    if os.path.exists(path):
-        return FileResponse(path, media_type="text/html",
-                            headers={"Cache-Control": "no-store"})
-    return JSONResponse({"error": "login.html not found"}, status_code=404)
-
-
-@app.get("/dashboard", tags=["UI"], include_in_schema=False)
-async def serve_dashboard():
-    """Serve the main dashboard SPA (auth enforced client-side and via API)."""
-    path = os.path.join(frontend_dir, "index.html")
-    if os.path.exists(path):
-        return FileResponse(path, media_type="text/html",
-                            headers={"Cache-Control": "no-store"})
-    return JSONResponse({"error": "index.html not found"}, status_code=404)
-
-
-@app.get("/", tags=["UI"], include_in_schema=False)
-async def root():
-    """Redirect root to login."""
-    from fastapi.responses import RedirectResponse
-    return RedirectResponse(url="/login")
 
 
 # ── Health Check (no auth) ─────────────────────────────────────

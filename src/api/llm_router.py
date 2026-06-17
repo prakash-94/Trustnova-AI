@@ -18,6 +18,7 @@ from typing import Dict, Any
 
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
+from src.models.database import auto_pk
 
 load_dotenv()
 
@@ -79,9 +80,9 @@ INITIAL_BACKOFF_SECONDS = INITIAL_BACKOFF_SECS   # alias for tests
 def _ensure_llm_usage_table():
     engine = create_engine(DATABASE_URL)
     with engine.connect() as conn:
-        conn.execute(text("""
+        conn.execute(text(f"""
             CREATE TABLE IF NOT EXISTS llm_usage (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id {auto_pk},
                 task_type TEXT NOT NULL,
                 model TEXT NOT NULL,
                 provider TEXT,

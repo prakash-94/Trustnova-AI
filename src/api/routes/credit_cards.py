@@ -15,6 +15,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import text
+from src.models.database import auto_pk
 
 from src.api.auth import CurrentUser, get_current_user, require_permission
 
@@ -52,9 +53,9 @@ def ensure_table():
         return
     try:
         with _engine().connect() as conn:
-            conn.execute(text("""
+            conn.execute(text(f"""
                 CREATE TABLE IF NOT EXISTS credit_card_applications (
-                    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id                      {auto_pk},
                     application_number      TEXT NOT NULL UNIQUE,
                     customer_id             TEXT NOT NULL,
                     customer_name           TEXT DEFAULT '',

@@ -17,6 +17,7 @@ from typing import Dict, Optional, List
 
 import pandas as pd
 from sqlalchemy import create_engine, text
+from src.models.database import auto_pk
 
 from dotenv import load_dotenv
 
@@ -59,9 +60,9 @@ class TrustScoreCalculator:
     def _ensure_trust_scores_table(self):
         """Create the trust_scores table if it doesn't exist."""
         with self.engine.connect() as conn:
-            conn.execute(text("""
+            conn.execute(text(f"""
                 CREATE TABLE IF NOT EXISTS trust_scores (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id {auto_pk},
                     customer_id TEXT NOT NULL,
                     score REAL NOT NULL,
                     tier TEXT NOT NULL,

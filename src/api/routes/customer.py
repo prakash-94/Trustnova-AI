@@ -45,11 +45,8 @@ async def search_customers(
     """
     try:
         import pandas as pd
-        from sqlalchemy import create_engine, text
-        from dotenv import load_dotenv
-        import os
-        load_dotenv()
-        engine = create_engine(os.getenv("DATABASE_URL", "sqlite:///./banking.db"))
+        from sqlalchemy import text
+        from src.models.database import engine
 
         query = text("""
             SELECT customer_id, name, age, income, credit_score, balance, account_type

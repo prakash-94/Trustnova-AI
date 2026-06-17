@@ -18,6 +18,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 from sqlalchemy import create_engine, text
+from src.models.database import auto_pk
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -49,9 +50,9 @@ class AITrustScorer:
     def _ensure_table(self):
         """Create the ai_trust_scores table if it doesn't exist."""
         with self.engine.connect() as conn:
-            conn.execute(text("""
+            conn.execute(text(f"""
                 CREATE TABLE IF NOT EXISTS ai_trust_scores (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id {auto_pk},
                     session_id TEXT,
                     query TEXT,
                     retrieval_confidence REAL,

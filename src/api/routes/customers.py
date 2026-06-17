@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from typing import Optional
 from sqlalchemy import text
 from src.api.auth import CurrentUser, require_permission, log_audit
-from src.models.database import engine, customer_pk
+from src.models.database import engine, customer_pk, _table_columns
 
 router = APIRouter()
 
@@ -102,7 +102,7 @@ async def create_customer(
             raise HTTPException(status_code=409, detail="A customer with this email already exists.")
 
         # Detect which optional columns actually exist in this DB schema
-        existing_cols = {r[1] for r in conn.execute(text("PRAGMA table_info(customers)")).fetchall()}
+        existing_cols = _table_columns(conn, "customers")
 
         # Always-present columns
         col_names = [pk, "first_name", "last_name", "email", "segment", "customer_type",

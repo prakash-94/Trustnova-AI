@@ -1,25 +1,21 @@
-import os
 from fastapi import APIRouter, Depends
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
+from src.models.database import engine as _engine, auto_pk
 from src.api.auth import CurrentUser, require_permission
 
 router = APIRouter()
-_engine = create_engine(
-    os.getenv("DATABASE_URL", "sqlite:///./banking.db"),
-    connect_args={"check_same_thread": False},
-)
 
 
 def _ensure():
     with _engine.connect() as c:
-        c.execute(text("""CREATE TABLE IF NOT EXISTS treasury_positions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, instrument TEXT, cusip TEXT,
+        c.execute(text(f"""CREATE TABLE IF NOT EXISTS treasury_positions (
+            id {auto_pk}, instrument TEXT, cusip TEXT,
             position_type TEXT, face_value REAL DEFAULT 0, market_value REAL DEFAULT 0,
             yield_rate REAL DEFAULT 0, duration REAL DEFAULT 0, maturity_date TEXT,
             coupon_rate REAL DEFAULT 0, currency TEXT DEFAULT 'USD', status TEXT DEFAULT 'active',
             updated_at TEXT)"""))
-        c.execute(text("""CREATE TABLE IF NOT EXISTS liquidity_metrics (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, metric_name TEXT UNIQUE,
+        c.execute(text(f"""CREATE TABLE IF NOT EXISTS liquidity_metrics (
+            id {auto_pk}, metric_name TEXT UNIQUE,
             value REAL DEFAULT 0, threshold REAL DEFAULT 0, status TEXT, updated_at TEXT)"""))
         c.commit()
 

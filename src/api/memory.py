@@ -15,6 +15,7 @@ from typing import Dict, List, Optional
 from uuid import uuid4
 
 from sqlalchemy import create_engine, text
+from src.models.database import auto_pk
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -42,9 +43,9 @@ class SessionMemory:
     def _ensure_sessions_table(self):
         """Create the sessions table if it doesn't exist."""
         with self.engine.connect() as conn:
-            conn.execute(text("""
+            conn.execute(text(f"""
                 CREATE TABLE IF NOT EXISTS sessions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id {auto_pk},
                     session_id TEXT UNIQUE NOT NULL,
                     banker_id TEXT NOT NULL DEFAULT 'default',
                     customer_id TEXT,
