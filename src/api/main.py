@@ -103,9 +103,9 @@ _cors_origins = (
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
-    allow_credentials=_cors_origins_raw.strip() != "*",
+    allow_credentials=False,  # app uses Bearer JWT, not cookies — credentials mode not needed
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "X-Request-ID"],
+    allow_headers=["*"],
 )
 
 
