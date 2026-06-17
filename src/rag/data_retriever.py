@@ -214,21 +214,29 @@ def get_customer_360(
     from src.rag.graph_context import build_customer_graph_context
 
     pk = customer_pk()
+    searched_name: Optional[str] = None
 
     # Resolve customer ID from name when not provided
     if not customer_id:
-        name_match = _extract_name_from_query(query)
-        if name_match:
+        searched_name = _extract_name_from_query(query)
+        if searched_name:
             with engine.connect() as conn:
                 row = conn.execute(text(f"""
                     SELECT * FROM customers
                     WHERE LOWER(first_name || ' ' || last_name) LIKE :nm
                     LIMIT 1
-                """), {"nm": f"%{name_match.lower()}%"}).fetchone()
+                """), {"nm": f"%{searched_name.lower()}%"}).fetchone()
                 if row:
                     customer_id = str(dict(row._mapping).get(pk, ""))
 
     if not customer_id:
+        if searched_name:
+            return (
+                f"No customer found matching the name '{searched_name}'.\n"
+                f"The name may be misspelled or the customer may not exist in the system. "
+                f"Please verify the spelling or search by Customer ID.\n",
+                [],
+            )
         return "No customer specified. Please provide a customer name or ID.\n", []
 
     ctx, sources, _ = build_customer_graph_context(
@@ -529,6 +537,9 @@ def retrieve_structured_data(
 
         elif intent == "customer":
             ctx, srcs = get_customer_360(query, customer_id, permissions=permissions)
+            # Only fall back to portfolio summary when NO name was mentioned at all
+            # (e.g. "show me customers" with no specific name).
+            # If a name was searched but not found, keep the targeted error message.
             if ctx.startswith("No customer specified"):
                 return get_portfolio_summary()
             return ctx, srcs
@@ -585,6 +596,7 @@ def _extract_name_from_query(query: str) -> Optional[str]:
     Extract a person's name from a query string.
 
     Handles:
+      - Explicit name keyword: "with name raj" / "named John Doe"
       - Name-first:  "Raj J profile history"  → "Raj J"
       - Prefixed:    "show history for John Doe" → "John Doe"
       - Single-char surname: "raj J" (initial as last name)
@@ -592,6 +604,24 @@ def _extract_name_from_query(query: str) -> Optional[str]:
     import re
 
     _W = r"[A-Za-z][a-zA-Z]*"  # one name word (allows "J", "Raj", "Johnson")
+
+    # Priority 0: explicit "name / named / called" keyword
+    # Accepts single-word names (first-name-only searches like "with name raj")
+    # Must be checked BEFORE the general patterns to avoid false positives.
+    m = re.search(
+        rf"(?:named?|called)\s+({_W}(?:\s+{_W}){{0,2}})",
+        query,
+        re.IGNORECASE,
+    )
+    if m:
+        candidate = m.group(1).strip()
+        words = candidate.split()
+        while words and words[0].lower() in _NAME_STOP_WORDS:
+            words.pop(0)
+        while words and words[-1].lower() in _NAME_STOP_WORDS:
+            words.pop()
+        if words:  # single-word first names are valid for explicit name queries
+            return " ".join(words)
 
     # Priority 1: 1–3 words immediately before a profile/history keyword
     # No ^ anchor so it finds the name anywhere: "show me Natalie Gordon profile" → "Natalie Gordon"

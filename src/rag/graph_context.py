@@ -123,8 +123,7 @@ def build_customer_graph_context(
 
         # ── Node 2: Accounts ────────────────────────────────────────────────
         acct_rows = conn.execute(text("""
-            SELECT account_number, account_type, status, balance_cents,
-                   opened_date, updated_at
+            SELECT account_number, account_type, status, balance_cents, opened_date
             FROM accounts WHERE customer_id = :cid
             ORDER BY balance_cents DESC LIMIT 6
         """), {"cid": customer_id}).fetchall()
@@ -169,7 +168,7 @@ def build_customer_graph_context(
     profile_fresh = _freshness(c.get("created_at"), "customer_profile")
 
     acct_fresh_vals = [
-        _freshness(dict(a._mapping).get("updated_at") or dict(a._mapping).get("opened_date"), "accounts")
+        _freshness(dict(a._mapping).get("opened_date"), "accounts")
         for a in acct_rows
     ]
     acct_fresh = sum(acct_fresh_vals) / len(acct_fresh_vals) if acct_fresh_vals else 0.5
@@ -248,7 +247,7 @@ def build_customer_graph_context(
         for a in acct_rows:
             ad = dict(a._mapping)
             bal = float(ad.get("balance_cents") or 0) / 100
-            f_score = _freshness(ad.get("updated_at") or ad.get("opened_date"), "accounts")
+            f_score = _freshness(ad.get("opened_date"), "accounts")
             blocks.append(
                 f"  {ad.get('account_type', '').title()} #{ad.get('account_number', '')[:10]}"
                 f" | {ad.get('status', '')} | Balance: ${bal:,.2f}"
