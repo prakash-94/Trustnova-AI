@@ -218,18 +218,19 @@ async def get_transaction_stats(
         #   annual → monthly bars
         trend_cfg = PERIOD_TREND.get(period, PERIOD_TREND["monthly"])
 
+        from src.models.database import _is_sqlite
         if trend_cfg["unit"] == "hour":
-            group_expr = "strftime('%Y-%m-%d %H', timestamp)"
-            label_expr = "strftime('%Y-%m-%d %H', timestamp)"
+            group_expr = "strftime('%Y-%m-%d %H', timestamp)" if _is_sqlite else "TO_CHAR(timestamp::timestamp, 'YYYY-MM-DD HH24')"
+            label_expr = group_expr
         elif trend_cfg["unit"] == "week":
-            group_expr = "strftime('%Y-%W', timestamp)"
-            label_expr = "strftime('%Y-%W', timestamp)"
+            group_expr = "strftime('%Y-%W', timestamp)" if _is_sqlite else "TO_CHAR(timestamp::timestamp, 'IYYY-IW')"
+            label_expr = group_expr
         elif trend_cfg["unit"] == "month":
-            group_expr = "strftime('%Y-%m', timestamp)"
-            label_expr = "strftime('%Y-%m', timestamp)"
+            group_expr = "strftime('%Y-%m', timestamp)" if _is_sqlite else "TO_CHAR(timestamp::timestamp, 'YYYY-MM')"
+            label_expr = group_expr
         else:  # day
-            group_expr = "DATE(timestamp)"
-            label_expr = "DATE(timestamp)"
+            group_expr = "DATE(timestamp)" if _is_sqlite else "timestamp::date"
+            label_expr = group_expr
 
         trend_rows = conn.execute(text(f"""
             SELECT {label_expr}         AS day,

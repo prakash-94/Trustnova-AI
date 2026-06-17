@@ -5,7 +5,7 @@ import type {
   FraudAlert, RiskProfile,
 } from '@/types/banking';
 
-// In production (Vercel) set VITE_API_URL to the Render backend URL.
+// In production (Vercel) set VITE_API_URL=/api — Vercel proxies /api/* → Render (no CORS).
 // In dev, leave unset — Vite proxy handles routing to localhost:8001.
 const BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 

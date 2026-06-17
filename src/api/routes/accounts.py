@@ -7,7 +7,7 @@ from typing import Optional
 from sqlalchemy import text
 from src.api.auth import CurrentUser, require_permission
 from src.models.database import engine
-from datetime import date as _date
+from datetime import date as _date, timedelta
 
 router = APIRouter()
 
@@ -72,9 +72,10 @@ async def get_accounts_stats(
             "SELECT COUNT(*) FROM accounts WHERE status = 'inactive'"
         )).scalar() or 0
 
+        cutoff = (_date.today() - timedelta(days=31)).isoformat()
         new_this_month = conn.execute(text(
-            "SELECT COUNT(*) FROM accounts WHERE DATE(opened_date) >= DATE('now', '-31 days')"
-        )).scalar() or 0
+            "SELECT COUNT(*) FROM accounts WHERE opened_date >= :cutoff"
+        ), {"cutoff": cutoff}).scalar() or 0
 
         total_balance = conn.execute(text(
             "SELECT COALESCE(SUM(balance_cents), 0) FROM accounts"

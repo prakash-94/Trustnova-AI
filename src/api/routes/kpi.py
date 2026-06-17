@@ -1,6 +1,7 @@
 """
 KPI Stats endpoint — returns all metrics for role-based dashboards.
 """
+from datetime import date
 from fastapi import APIRouter, Depends
 from sqlalchemy import text
 from src.api.auth import CurrentUser, require_permission
@@ -15,10 +16,12 @@ async def kpi_stats(current_user: CurrentUser = Depends(require_permission("chat
     with engine.connect() as conn:
         total_customers = conn.execute(text("SELECT COUNT(*) FROM customers")).scalar() or 0
         try:
+            today = date.today().isoformat()
             ai_queries_today = conn.execute(text(
-                "SELECT COUNT(*) FROM llm_usage WHERE DATE(timestamp) = DATE('now')"
-            )).scalar() or 0
+                "SELECT COUNT(*) FROM llm_usage WHERE timestamp LIKE :today"
+            ), {"today": f"{today}%"}).scalar() or 0
         except Exception:
+            conn.rollback()
             ai_queries_today = 0
 
         fraud_open = conn.execute(text(
@@ -35,6 +38,7 @@ async def kpi_stats(current_user: CurrentUser = Depends(require_permission("chat
                 "SELECT COUNT(*) FROM loans WHERE status = 'pending'"
             )).scalar() or 0
         except Exception:
+            conn.rollback()
             loan_count = 0
             loan_pending = 0
 
@@ -47,6 +51,7 @@ async def kpi_stats(current_user: CurrentUser = Depends(require_permission("chat
                 "SELECT AVG(final_score) FROM ai_trust_scores"
             )).scalar() or 87.4
         except Exception:
+            conn.rollback()
             trust_avg = 87.4
 
         high_risk = conn.execute(text(
@@ -62,6 +67,7 @@ async def kpi_stats(current_user: CurrentUser = Depends(require_permission("chat
                 "SELECT COUNT(*) FROM aml_cases WHERE status IN ('open', 'under_review')"
             )).scalar() or 0
         except Exception:
+            conn.rollback()
             aml_open = 0
 
     return {

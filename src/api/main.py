@@ -55,6 +55,7 @@ async def lifespan(app: FastAPI):
     print(f"  OpenAI:   {'configured' if os.getenv('OPENAI_API_KEY') else 'NOT SET'}")
     print(f"  Pinecone: {'configured' if os.getenv('PINECONE_API_KEY') else 'NOT SET'}")
     print(f"  Auth:     JWT ({'DEMO key — change JWT_SECRET_KEY in prod!' if os.getenv('JWT_SECRET_KEY','CHANGE-ME') == 'CHANGE-ME-IN-PRODUCTION-use-256-bit-random-key' else 'custom key set'})")
+    print(f"  CORS:     {_cors_origins}")
 
     # Apply DB schema migrations (add missing columns to old volumes)
     from src.models.database import run_migrations
@@ -118,18 +119,20 @@ async def add_security_headers(request: Request, call_next):
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
-    # Only add HSTS in production (when TLS is terminated at the load balancer)
     if os.getenv("ENVIRONMENT", "development") == "production":
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-    # Content-Security-Policy: allow self + CDN for Chart.js
-    response.headers["Content-Security-Policy"] = (
-        "default-src 'self'; "
-        "script-src 'self' https://cdn.jsdelivr.net; "
-        "style-src 'self' 'unsafe-inline'; "
-        "img-src 'self' data:; "
-        "font-src 'self'; "
-        "connect-src 'self';"
-    )
+    # CSP only on HTML responses — API JSON responses don't need it and
+    # adding connect-src 'self' here would confuse browsers/DevTools.
+    content_type = response.headers.get("content-type", "")
+    if "text/html" in content_type:
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' https://cdn.jsdelivr.net; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; "
+            "font-src 'self'; "
+            "connect-src *;"
+        )
     return response
 
 

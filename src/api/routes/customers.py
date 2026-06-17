@@ -216,10 +216,13 @@ async def get_customer_stats(
     with engine.connect() as conn:
         total = conn.execute(text("SELECT COUNT(*) FROM customers")).scalar() or 0
         try:
+            from datetime import date as _date
+            today = _date.today().isoformat()
             ai_queries = conn.execute(text(
-                "SELECT COUNT(*) FROM llm_usage WHERE DATE(timestamp) = DATE('now')"
-            )).scalar() or 0
+                "SELECT COUNT(*) FROM llm_usage WHERE timestamp LIKE :today"
+            ), {"today": f"{today}%"}).scalar() or 0
         except Exception:
+            conn.rollback()
             ai_queries = 0
     return {"total_customers": total, "ai_queries_today": ai_queries}
 
@@ -319,6 +322,7 @@ async def get_customer_summary(
                 "SELECT COUNT(*) FROM alerts WHERE customer_id = :cid AND status='open'"
             ), {"cid": customer_id}).scalar() or 0
         except Exception:
+            conn.rollback()
             alert_count = 0
 
     accounts = []
