@@ -1,0 +1,34 @@
+[
+  {
+    "query": "When must the bank file a CTR for a large cash transaction?",
+    "relevant_sources": ["compliance_aml_kyc.txt"]
+  },
+  {
+    "query": "What information is required for a SWIFT international wire transfer?",
+    "relevant_sources": ["wire_transfers.txt"]
+  },
+  {
+    "query": "What credit score and debt-to-income ratio are required for a loan?",
+    "relevant_sources": ["loan_policies.txt"]
+  },
+  {
+    "query": "Explain fixed-rate and adjustable-rate mortgage options and LTV limits.",
+    "relevant_sources": ["mortgage_guide.txt"]
+  },
+  {
+    "query": "What are the mobile deposit limits and MFA requirements?",
+    "relevant_sources": ["digital_banking.txt"]
+  },
+  {
+    "query": "How much does an overdraft or outgoing wire cost?",
+    "relevant_sources": ["fee_schedule.txt", "wire_transfers.txt"]
+  },
+  {
+    "query": "What controls detect transaction fraud and account takeover?",
+    "relevant_sources": ["risk_fraud_security.txt"]
+  },
+  {
+    "query": "What IRA and portfolio management services are available?",
+    "relevant_sources": ["wealth_management.txt"]
+  }
+]

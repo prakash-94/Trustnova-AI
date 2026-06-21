@@ -6,6 +6,7 @@ RecursiveCharacterTextSplitter with section and page metadata.
 
 Config: chunk_size=500, overlap=50 (per TODO spec)
 """
+import hashlib
 import re
 from typing import List, Optional
 
@@ -21,9 +22,13 @@ DEFAULT_CHUNK_OVERLAP = 50
 SECTION_PATTERNS = [
     re.compile(r"^#{1,4}\s+(.+)", re.MULTILINE),               # ## Section Name
     re.compile(r"^([A-Z][A-Z\s&/]{3,})$", re.MULTILINE),       # ALL CAPS HEADING
-    re.compile(r"^(\d+\.\s+[A-Z].+)$", re.MULTILINE),          # 1. Section Name
+    re.compile(r"^(\d+(?:\.\d+)*\.?\s+[A-Z].+)$", re.MULTILINE),  # 1. / 1.1 Section
     re.compile(r"^(Section\s+\d+[\.:].+)$", re.MULTILINE | re.IGNORECASE),  # Section 4.2: ...
 ]
+
+_HEADING_LINE = re.compile(
+    r"^(?:#{1,4}\s+.+|\d+(?:\.\d+)+\s+[A-Z].+|\d+\.\s+[A-Z][A-Z\s&/()—-]{3,}|[A-Z][A-Z\s&/()—-]{3,})$"
+)
 
 
 def detect_section(text: str) -> str:
@@ -34,6 +39,38 @@ def detect_section(text: str) -> str:
             # Return the last match (most recent heading in the chunk)
             return matches[-1].strip().strip("#").strip()
     return ""
+
+
+def _split_into_sections(doc: Document) -> List[Document]:
+    """Split on policy headings before size-based chunking so headings persist."""
+    blocks: List[Document] = []
+    current_lines: list[str] = []
+    current_section = "Preamble"
+    parent_section = ""
+
+    def flush() -> None:
+        if not current_lines:
+            return
+        text = "\n".join(current_lines).strip()
+        if text:
+            metadata = dict(doc.metadata)
+            metadata["section"] = current_section
+            metadata["parent_section"] = parent_section
+            blocks.append(Document(page_content=text, metadata=metadata))
+
+    for line in doc.page_content.splitlines():
+        stripped = line.strip()
+        if stripped and _HEADING_LINE.match(stripped):
+            flush()
+            current_lines = [stripped]
+            current_section = stripped.lstrip("#").strip()
+            numeric = re.match(r"^(\d+(?:\.\d+)*)", current_section)
+            if numeric and "." not in numeric.group(1):
+                parent_section = current_section
+        else:
+            current_lines.append(line)
+    flush()
+    return blocks or [doc]
 
 
 def chunk_documents(
@@ -69,7 +106,10 @@ def chunk_documents(
         source_groups[source].append(doc)
 
     for source, docs in source_groups.items():
-        chunks = splitter.split_documents(docs)
+        section_docs: List[Document] = []
+        for doc in docs:
+            section_docs.extend(_split_into_sections(doc))
+        chunks = splitter.split_documents(section_docs)
 
         for i, chunk in enumerate(chunks):
             # Enrich metadata
@@ -77,15 +117,22 @@ def chunk_documents(
             chunk.metadata["source_file"] = chunk.metadata.get("source", source)
 
             # Section detection
-            section = detect_section(chunk.page_content)
-            if section:
-                chunk.metadata["section"] = section
+            section = chunk.metadata.get("section") or detect_section(chunk.page_content)
+            chunk.metadata["section"] = section or "Preamble"
 
             # Page number: use existing page metadata (from PDF) or derive from chunk index
             if "page" in chunk.metadata:
                 chunk.metadata["page_number"] = chunk.metadata["page"]
             else:
                 chunk.metadata["page_number"] = i // 3  # Approximate 3 chunks per "page"
+
+            content_hash = hashlib.sha256(chunk.page_content.encode("utf-8")).hexdigest()
+            identity = f"{source}:{chunk.metadata['section']}:{i}:{content_hash}"
+            chunk.metadata["content_hash"] = content_hash
+            chunk.metadata["chunk_id"] = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:24]
+            chunk.metadata.setdefault("document_version", "unknown")
+            chunk.metadata.setdefault("effective_date", chunk.metadata.get("date", ""))
+            chunk.metadata.setdefault("access_scope", "internal")
 
             all_chunks.append(chunk)
 

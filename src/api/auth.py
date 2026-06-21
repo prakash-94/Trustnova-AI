@@ -234,7 +234,7 @@ router = APIRouter()
 # ── DB-free user store (SQLite fallback) ──────────────────────────────────────
 
 def ensure_users_table():
-    """Seed demo users into DB on startup."""
+    """Create auth tables and seed users appropriate to the environment."""
     try:
         from src.models.database import engine
         from sqlalchemy import text
@@ -266,13 +266,39 @@ def ensure_users_table():
                 )
             """))
             conn.commit()
-        for u in DEMO_USERS:
-            _create_user_if_missing(u["username"], u["password"], u["role"], u["full_name"])
+        is_production = os.getenv("ENVIRONMENT", "development").lower() == "production"
+        seed_demo = os.getenv("SEED_DEMO_USERS", "false" if is_production else "true").lower() in (
+            "1", "true", "yes", "on"
+        )
+        if seed_demo:
+            sync_passwords = os.getenv("RESET_DEMO_PASSWORDS", "true").lower() in ("1", "true", "yes", "on")
+            for u in DEMO_USERS:
+                _create_user_if_missing(
+                    u["username"], u["password"], u["role"], u["full_name"],
+                    sync_password=sync_passwords,
+                )
+        else:
+            admin_password = os.getenv("ADMIN_PASSWORD", "")
+            if admin_password:
+                _create_user_if_missing(
+                    os.getenv("ADMIN_USERNAME", "admin"), admin_password, "admin",
+                    os.getenv("ADMIN_FULL_NAME", "TrustNova Administrator"),
+                    sync_password=False,
+                )
+            else:
+                print("[Auth] Production admin not seeded: set ADMIN_PASSWORD in Render.")
     except Exception as e:
         print(f"[Auth] Warning: could not seed users: {e}")
 
 
-def _create_user_if_missing(username: str, password: str, role: str, full_name: str):
+def _create_user_if_missing(
+    username: str,
+    password: str,
+    role: str,
+    full_name: str,
+    *,
+    sync_password: bool = False,
+):
     from src.models.database import engine
     from sqlalchemy import text
     hashed = _hash_pw(password)
@@ -284,8 +310,7 @@ def _create_user_if_missing(username: str, password: str, role: str, full_name: 
                 VALUES (:u, :h, :r, :fn, 1, :ts)
             """), {"u": username, "h": hashed, "r": role, "fn": full_name, "ts": datetime.now().isoformat()})
             print(f"  [Auth] Seeded: {username} ({role})")
-        else:
-            # Always sync password + role from config so DEMO_USERS is the source of truth
+        elif sync_password:
             conn.execute(text("""
                 UPDATE users SET hashed_password=:h, role=:r, full_name=:fn WHERE username=:u
             """), {"u": username, "h": hashed, "r": role, "fn": full_name})

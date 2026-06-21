@@ -890,6 +890,20 @@ pytest tests/ -v
 
 ## Configuration
 
+### Free-tier Render + Vercel deployment
+
+The included `render.yaml` uses `requirements-render.txt` and lexical policy
+retrieval so the API does not install or load PyTorch, sentence-transformers,
+or a local Chroma database on a stateless free instance. Set these variables:
+
+- Render: `GROQ_API_KEY`, `JWT_SECRET_KEY`, `ADMIN_PASSWORD`, and
+  `CORS_ORIGINS=https://<your-vercel-project>.vercel.app`
+- Vercel: `VITE_API_URL=https://<your-render-service>.onrender.com`
+
+For semantic retrieval in production, use an external vector service and keep
+the lexical channel as fallback. Do not depend on a local Chroma directory for
+durable production data.
+
 Create a `.env` file in the project root (copy from `deployment/.env.example`):
 
 ```dotenv
@@ -1048,22 +1062,22 @@ The platform defines 13 banking roles, each with precise resource:action permiss
 
 ### Demo Credentials
 
-All demo users follow the pattern `{role_name} / password123`:
+Local development seeds these demo users (production does not):
 
 ```
-admin                 / password123
-personal_banker       / password123
-branch_manager        / password123
-loan_officer          / password123
-underwriter           / password123
-fraud_analyst         / password123
-aml_analyst           / password123
-kyc_analyst           / password123
-commercial_banker     / password123
-credit_risk_analyst   / password123
-operations_specialist / password123
-treasury_analyst      / password123
-executive             / password123
+admin       / Admin@2026
+banker1     / Banker@2026
+manager     / Manager@2026
+loanofficer / Loan@2026
+underwriter / Under@2026
+analyst     / Analyst@2026
+amlanalyst  / Aml@2026
+kyc         / Kyc@2026
+commercial  / Comm@2026
+compliance  / Comply@2026
+ops         / Ops@2026
+treasury    / Treasury@2026
+executive   / Exec@2026
 ```
 
 ---

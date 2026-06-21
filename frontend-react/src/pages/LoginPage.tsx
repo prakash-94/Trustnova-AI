@@ -9,22 +9,6 @@ interface LoginPageProps {
   onLogin: (user: User) => void;
 }
 
-const DEMO_USERS = [
-  { username: 'admin',       password: 'Admin@2026',    role: 'Admin'                },
-  { username: 'banker1',     password: 'Banker@2026',   role: 'Personal Banker'      },
-  { username: 'executive',   password: 'Exec@2026',     role: 'Bank Executive'       },
-  { username: 'manager',     password: 'Manager@2026',  role: 'Branch Manager'       },
-  { username: 'loanofficer', password: 'Loan@2026',     role: 'Loan Officer'         },
-  { username: 'underwriter', password: 'Under@2026',    role: 'Underwriter'          },
-  { username: 'analyst',     password: 'Analyst@2026',  role: 'Fraud Analyst'        },
-  { username: 'amlanalyst',  password: 'Aml@2026',      role: 'AML Analyst'          },
-  { username: 'kyc',         password: 'Kyc@2026',      role: 'KYC Analyst'          },
-  { username: 'commercial',  password: 'Comm@2026',     role: 'Commercial RM'        },
-  { username: 'treasury',    password: 'Treasury@2026', role: 'Treasury Analyst'     },
-  { username: 'compliance',  password: 'Comply@2026',   role: 'Credit Risk Analyst'  },
-  { username: 'ops',         password: 'Ops@2026',      role: 'Operations Specialist'},
-];
-
 export default function LoginPage({ onLogin }: LoginPageProps) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -54,8 +38,6 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
       setLoading(false);
     }
   };
-
-  const fillDemo = (u: string, p: string) => { setUsername(u); setPassword(p); setError(''); };
 
   return (
     <div className="h-full relative flex items-center justify-center p-6 overflow-y-auto">
@@ -111,22 +93,6 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
             </motion.button>
           </div>
 
-          <div className="flex items-center gap-3 my-5">
-            <div className="flex-1 h-px bg-white/[0.06]" />
-            <span className="text-xs text-t3">13 demo accounts</span>
-            <div className="flex-1 h-px bg-white/[0.06]" />
-          </div>
-
-          <div className="grid grid-cols-2 gap-1.5 max-h-64 overflow-y-auto">
-            {DEMO_USERS.map(d => (
-              <button key={d.username} onClick={() => fillDemo(d.username, d.password)}
-                className="py-2 px-3 rounded-xl bg-white/[0.03] border border-white/[0.06]
-                           hover:bg-white/[0.07] hover:border-purple-500/20 transition-all text-left group">
-                <div className="text-xs font-medium text-t1 group-hover:text-purple-300 transition-colors">{d.username}</div>
-                <div className="text-[10px] text-t3 truncate">{d.role}</div>
-              </button>
-            ))}
-          </div>
         </div>
 
         <p className="text-center text-xs text-t3 mt-5">

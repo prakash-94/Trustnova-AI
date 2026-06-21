@@ -32,7 +32,10 @@ def customer_pk() -> str:
         insp = sa_inspect(engine)
         try:
             cols = {c["name"] for c in insp.get_columns("customers")}
-            _CUSTOMER_PK = "customer_id" if "customer_id" in cols else "id"
+            # New production/bootstrap schema uses `id`; the legacy local ETL
+            # database uses `customer_id`. Prefer `id` when both are present so
+            # hard-coded joins in older route modules stay compatible.
+            _CUSTOMER_PK = "id" if "id" in cols else "customer_id"
         except Exception:
             _CUSTOMER_PK = "customer_id"
     return _CUSTOMER_PK

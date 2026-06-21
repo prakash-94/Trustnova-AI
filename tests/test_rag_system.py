@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest
 import pandas as pd
+from langchain_core.documents import Document
 
 from src.rag.vector_store import similarity_search, similarity_search_interactions, get_vector_store
 from src.rag.chunker import chunk_documents, detect_section
@@ -71,6 +72,22 @@ class TestChunker:
         assert len(chunks) >= 2
         assert all("chunk_index" in c.metadata for c in chunks)
         assert all("source_file" in c.metadata for c in chunks)
+
+    def test_section_aware_chunks_preserve_heading_metadata(self):
+        text = "1. PROGRAM GOVERNANCE\nIntro text.\n\n1.1 BSA Officer\nOfficer details."
+        chunks = chunk_documents([Document(page_content=text, metadata={"source": "aml.txt"})])
+        sections = [chunk.metadata["section"] for chunk in chunks]
+        assert "1. PROGRAM GOVERNANCE" in sections
+        assert "1.1 BSA Officer" in sections
+        assert all(chunk.metadata["parent_section"] == "1. PROGRAM GOVERNANCE" for chunk in chunks)
+
+    def test_chunks_have_deterministic_index_metadata(self):
+        doc = Document(page_content="1. POLICY SECTION\nPolicy details.", metadata={"source": "policy.txt"})
+        first = chunk_documents([doc])[0]
+        second = chunk_documents([doc])[0]
+        assert first.metadata["chunk_id"] == second.metadata["chunk_id"]
+        assert len(first.metadata["content_hash"]) == 64
+        assert first.metadata["access_scope"] == "internal"
 
 
 # ============================================================

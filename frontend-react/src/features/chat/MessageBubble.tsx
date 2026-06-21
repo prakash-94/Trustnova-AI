@@ -173,6 +173,14 @@ export default function MessageBubble({ message, index, prompt, isInFlight = fal
         )}>
           {isUser ? (
             <span className="text-xs">{message.content}</span>
+          ) : isInFlight && !message.content ? (
+            <span className="flex gap-1 py-1">
+              {[0, 1, 2].map(i => (
+                <motion.span key={i} className="w-1.5 h-1.5 rounded-full bg-purple-400"
+                  animate={{ y: [-2, 2, -2] }}
+                  transition={{ duration: 0.7, delay: i * 0.15, repeat: Infinity }} />
+              ))}
+            </span>
           ) : (
             <div className="space-y-1">{renderContent(message.content)}</div>
           )}

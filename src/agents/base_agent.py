@@ -3,6 +3,7 @@ Base agent class for all TrustNova AI banking agents.
 Provides Groq LLM, ChromaDB RAG with freshness-based re-ranking, and structured output helpers.
 """
 import os
+import re
 import time
 import datetime
 from typing import Optional, List
@@ -18,6 +19,12 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 # Freshness: policy doc file modification timestamps (seconds since epoch)
 # Used to penalise stale content at retrieval time.
 _DOCS_DIR = os.getenv("DOCS_DIR", "data/raw/banking_docs")
+
+
+def _direct_structured_answer(structured_context: str) -> Optional[str]:
+    """Extract an authoritative answer emitted by a deterministic DB retriever."""
+    match = re.search(r"^ANSWER:\s*(.+)$", structured_context or "", re.MULTILINE)
+    return match.group(1).strip() if match else None
 
 
 def _doc_freshness_score(source_name: str) -> float:
@@ -60,14 +67,28 @@ def get_llm(temperature: float = 0.1, model: Optional[str] = None):
     m = model or LLM_MODEL
     if LLM_PROVIDER == "groq":
         from langchain_groq import ChatGroq
-        return ChatGroq(model=m, temperature=temperature, groq_api_key=GROQ_API_KEY, max_tokens=4096)
+        return ChatGroq(
+            model=m,
+            temperature=temperature,
+            groq_api_key=GROQ_API_KEY,
+            max_tokens=4096,
+            timeout=45,
+            max_retries=1,
+        )
     from langchain_openai import ChatOpenAI
-    return ChatOpenAI(model_name=m, temperature=temperature, openai_api_key=OPENAI_API_KEY, max_tokens=4096)
+    return ChatOpenAI(
+        model_name=m,
+        temperature=temperature,
+        openai_api_key=OPENAI_API_KEY,
+        max_tokens=4096,
+        timeout=45,
+        max_retries=1,
+    )
 
 
 def get_rag_context(query: str, top_k: int = 5, metadata_filter: Optional[dict] = None) -> tuple:
     """
-    Retrieve and re-rank relevant chunks from ChromaDB.
+    Retrieve with hybrid vector/BM25 search, then apply freshness re-ranking.
 
     Args:
         query: User query string
@@ -83,15 +104,15 @@ def get_rag_context(query: str, top_k: int = 5, metadata_filter: Optional[dict] 
         chunk_texts: raw chunk content for hallucination detection
     """
     try:
-        from src.rag.vector_store import get_vector_store
-        store = get_vector_store()  # ChromaDB by default
+        from src.rag.hybrid_retriever import hybrid_search
 
-        search_kwargs: dict = {"k": top_k}
-        if metadata_filter:
-            search_kwargs["filter"] = metadata_filter
-        docs_with_scores = store.similarity_search_with_relevance_scores(query, **search_kwargs)
+        docs_with_scores = hybrid_search(
+            query,
+            k=top_k,
+            metadata_filter=metadata_filter,
+        )
         if not docs_with_scores:
-            return "", [], []
+            return "", [], [], []
 
         reranked = _rerank(docs_with_scores)
 
@@ -278,6 +299,17 @@ class BaseAgent:
             structured_context: str = "") -> AgentResponse:
         t0 = time.time()
 
+        direct_answer = _direct_structured_answer(structured_context)
+        if direct_answer:
+            return AgentResponse(
+                answer=direct_answer,
+                sources=[],
+                confidence=0.99,
+                agent_name=self.name,
+                latency_ms=int((time.time() - t0) * 1000),
+                metadata={"direct_database_answer": True, **(extra_data or {})},
+            )
+
         # 1. Retrieve policy context via ChromaDB with freshness re-ranking + RBAC doc filter
         _permissions = (extra_data or {}).get("permissions", [])
         _doc_filter: Optional[dict] = None
@@ -395,6 +427,20 @@ class BaseAgent:
         {"type":"done", "answer":..., "sources":..., ...} as the final item.
         """
         t0 = time.time()
+
+        direct_answer = _direct_structured_answer(structured_context)
+        if direct_answer:
+            yield {"type": "token", "content": direct_answer}
+            yield {
+                "type": "done",
+                "answer": direct_answer,
+                "sources": [],
+                "confidence": 0.99,
+                "agent_name": self.name,
+                "latency_ms": int((time.time() - t0) * 1000),
+                "metadata": {"_sim_scores": [], "_source_texts": [structured_context], **(extra_data or {})},
+            }
+            return
 
         # RBAC doc_type filter (same logic as run())
         _permissions = (extra_data or {}).get("permissions", [])

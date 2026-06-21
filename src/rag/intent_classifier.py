@@ -52,6 +52,10 @@ _PATTERNS: dict[str, list[str]] = {
         r"loan.?portfolio", r"active.?loan", r"loan.?pipeline",
         r"loan.?application", r"loan.?status", r"loan.?history",
         r"outstanding.?loan", r"delinquent.?loan",
+        r"loan.?amount", r"loan.?balance", r"loan.?value",
+        r"(highest|largest|biggest|maximum|max|top|lowest|smallest|minimum|min).{0,25}loan",
+        r"loan.{0,25}(highest|largest|biggest|maximum|max|top|lowest|smallest|minimum|min)",
+        r"customer.{0,25}(loan|borrow)",
         r"(show|list|get|pull|display).{0,20}loan",
         r"mortgage.?status", r"loan.?summary",
     ],
@@ -91,12 +95,45 @@ def classify_intent(query: str) -> str:
     Matching is ordered: more specific intents checked first.
     Falls back to 'general' when nothing matches.
     """
+    return classify_intents(query)[0]
+
+
+def classify_intents(query: str, max_intents: int = 3) -> list[str]:
+    """Return all relevant intents for compound questions in priority order."""
     q = query.lower().strip()
-    for intent, patterns in _PATTERNS.items():
-        for pat in patterns:
-            if re.search(pat, q):
-                return intent
-    return "general"
+    matches = [
+        intent
+        for intent, patterns in _PATTERNS.items()
+        if any(re.search(pattern, q) for pattern in patterns)
+    ]
+    if not matches:
+        return ["general"]
+    # A concrete entity intent is more useful than the broad stats fallback.
+    if len(matches) > 1 and "stats" in matches:
+        matches.remove("stats")
+    return matches[:max_intents]
+
+
+def needs_graph_context(query: str, customer_id: str | None = None) -> bool:
+    """Detect multi-hop customer questions best served by Customer 360 traversal."""
+    q = query.lower()
+    relationship_cues = (
+        "why", "explain", "relationship", "connected", "linked", "across",
+        "customer 360", "full picture", "risk factors", "activity",
+    )
+    entity_cues = ("customer", "account", "transaction", "loan", "fraud", "risk")
+    return bool(customer_id or "customer" in q) and (
+        any(cue in q for cue in relationship_cues)
+        and sum(cue in q for cue in entity_cues) >= 2
+    )
+
+
+def plan_intents(query: str, customer_id: str | None = None) -> list[str]:
+    """Build a bounded structured-retrieval plan, adding graph traversal when useful."""
+    intents = classify_intents(query)
+    if needs_graph_context(query, customer_id) and "customer" not in intents:
+        intents.insert(0, "customer")
+    return intents[:3]
 
 
 def needs_db_data(intent: str) -> bool:

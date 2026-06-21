@@ -95,6 +95,11 @@ frontend-react/.vite/
 frontend-react/.env
 frontend-react/.env.*
 frontend-react/*.local
+frontend-react/*.tsbuildinfo
+*.tsbuildinfo
+.vercel/
+.vite/
+.tools/
 
 # ── Docker Runtime Volumes ──────────────────────────────────────────
 deployment/grafana-data/
@@ -103,9 +108,21 @@ deployment/prometheus-data/
 # ── Logs ────────────────────────────────────────────────────────────
 *.log
 *.log.*
+*.err
+*.out
 logs/
 backend*.log
+backend*.err
+frontend*.log
+frontend*.err
 frontend_vite.log
+
+# ── Local Runtime / Scratch ────────────────────────────────────────────────
+tmp/
+temp/
+.cache/
+.agents/
+.codex/
 
 # ── IDEs & Editors ──────────────────────────────────────────────────
 .vscode/

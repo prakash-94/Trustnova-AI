@@ -60,11 +60,16 @@ def _add_metadata(docs: List[Document], filepath: str) -> List[Document]:
     """Add standard metadata to loaded documents."""
     filename = os.path.basename(filepath)
     doc_type = get_doc_type(filename)
+    modified = datetime.fromtimestamp(os.path.getmtime(filepath))
     for doc in docs:
         doc.metadata["source"] = filename
         doc.metadata["source_file"] = filename
         doc.metadata["doc_type"] = doc_type
-        doc.metadata["date"] = datetime.now().strftime("%Y-%m-%d")
+        doc.metadata["date"] = modified.strftime("%Y-%m-%d")
+        doc.metadata["effective_date"] = modified.strftime("%Y-%m-%d")
+        doc.metadata["document_version"] = modified.strftime("%Y%m%d%H%M%S")
+        doc.metadata["last_modified"] = modified.isoformat()
+        doc.metadata["access_scope"] = "internal"
     return docs
 
 

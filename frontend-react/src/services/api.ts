@@ -89,6 +89,13 @@ export const chatApi = {
     const controller = new AbortController();
 
     (async () => {
+      let settled = false;
+      const timeout = window.setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        controller.abort();
+        onError('The AI response timed out. Please try again.');
+      }, 75_000);
       try {
         const res = await fetch(BASE + '/chat/stream', {
           method: 'POST',
@@ -122,14 +129,24 @@ export const chatApi = {
             try {
               const data = JSON.parse(line.slice(6));
               if (data.type === 'token') onToken(data.content);
-              else if (data.type === 'done') onDone(data as ChatResult);
+              else if (data.type === 'done') {
+                settled = true;
+                onDone(data as ChatResult);
+              }
             } catch { /* malformed chunk */ }
           }
         }
+        if (!settled) {
+          settled = true;
+          onError('The AI response stream ended before completion.');
+        }
       } catch (err) {
-        if ((err as Error).name !== 'AbortError') {
+        if (!settled && (err as Error).name !== 'AbortError') {
+          settled = true;
           onError(err instanceof Error ? err.message : 'Stream error');
         }
+      } finally {
+        window.clearTimeout(timeout);
       }
     })();
 

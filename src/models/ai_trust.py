@@ -45,6 +45,8 @@ class AITrustScorer:
 
     def __init__(self, db_url: str = DATABASE_URL):
         self.engine = create_engine(db_url)
+        self._grounding_embedder = None
+        self._grounding_embeddings_unavailable = False
         self._ensure_table()
 
     def _ensure_table(self):
@@ -124,8 +126,19 @@ class AITrustScorer:
             return 0.5  # Unknown — moderate risk
 
         try:
-            from src.rag.embeddings import get_embeddings_model
-            embedder = get_embeddings_model()
+            from src.rag.embeddings import get_embeddings
+
+            # Indexing/setup downloads the model. A live request must not stall while
+            # fetching hundreds of MB, so local models use the existing cache only.
+            if self._grounding_embeddings_unavailable:
+                raise RuntimeError("semantic grounding embeddings unavailable")
+            if self._grounding_embedder is None:
+                try:
+                    self._grounding_embedder = get_embeddings(local_files_only=True)
+                except Exception:
+                    self._grounding_embeddings_unavailable = True
+                    raise
+            embedder = self._grounding_embedder
 
             # Embed the answer (truncated for speed) and each source chunk
             answer_emb = embedder.embed_query(answer[:1200])
@@ -426,15 +439,9 @@ Answer:"""
             + prompt_rel * TRUST_WEIGHTS["prompt_reliability"]
         )
 
-        raw_score = max(0.0, min(100.0, weighted * 100))
-
-        # Calibration curve: map raw ≥65 into the 95–100 range.
-        # This accounts for the ~0.72 ceiling of all-MiniLM-L6-v2 cosine similarity.
-        # Formula: 65→95, 100→100  (linear over 35-point range)
-        if raw_score >= 65:
-            final_score = round(min(100.0, 95.0 + (raw_score - 65.0) * 5.0 / 35.0), 1)
-        else:
-            final_score = round(raw_score, 1)
+        # Report the actual weighted score. Previous code mapped every raw score
+        # >=65 into 95-100, masking meaningful differences in grounding quality.
+        final_score = round(max(0.0, min(100.0, weighted * 100)), 1)
 
         # Determine tier
         if final_score >= 95:

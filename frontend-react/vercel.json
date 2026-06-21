@@ -1,6 +1,5 @@
 {
   "rewrites": [
-    { "source": "/api/:path*", "destination": "https://trustnova-ai-1.onrender.com/:path*" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

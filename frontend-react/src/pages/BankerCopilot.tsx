@@ -288,7 +288,7 @@ export default function BankerCopilot({ user, onLogout }: BankerCopilotProps) {
         const activeConv = conversations.find(c => c.id === activeConvId);
         return (
           <motion.div key="ai_copilot" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }} className="h-full flex gap-1.5">
+            transition={{ duration: 0.2 }} className="h-full min-h-0 flex gap-1.5">
             <ChatHistorySidebar
               conversations={conversations}
               activeId={activeConvId}
@@ -305,6 +305,7 @@ export default function BankerCopilot({ user, onLogout }: BankerCopilotProps) {
                 customer={selectedCustomer}
                 onShowDocs={() => setShowDocsModal(true)}
                 onOpenFraud={() => setShowFraudModal(true)}
+                onClearCustomer={handleClearCustomer}
                 role={user.role}
               />
             </div>
@@ -542,8 +543,8 @@ export default function BankerCopilot({ user, onLogout }: BankerCopilotProps) {
           onOpenFeedback={() => setShowFeedback(true)}
         />
 
-        <main className={`flex-1 flex flex-col overflow-hidden min-h-0 ${activeTab === 'ai_copilot' ? 'p-1.5 gap-1.5' : 'p-5 gap-4'}`}>
-          <div className="flex-1 min-h-0 overflow-y-auto">
+        <main className={`flex-1 flex flex-col overflow-hidden min-h-0 ${activeTab === 'ai_copilot' ? 'p-0' : 'p-5 gap-4'}`}>
+          <div className={`flex-1 min-h-0 ${activeTab === 'ai_copilot' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
             {/* Dashboard: visible on home tab, and on customer tab only when no customer is selected */}
             {(activeTab === 'home' ||
               ((activeTab === 'customer_search' || activeTab === 'customer360') && !selectedCustomer)) && (
@@ -561,7 +562,9 @@ export default function BankerCopilot({ user, onLogout }: BankerCopilotProps) {
             )}
             {/* Section-specific content — appears below dashboard or fills the view */}
             {activeTab !== 'home' && (
-              <div className={!selectedCustomer && (activeTab === 'customer_search' || activeTab === 'customer360') ? 'mt-4' : ''}>
+              <div className={activeTab === 'ai_copilot'
+                ? 'h-full min-h-0'
+                : (!selectedCustomer && (activeTab === 'customer_search' || activeTab === 'customer360') ? 'mt-4' : '')}>
                 <AnimatePresence mode="wait">
                   {renderSection()}
                 </AnimatePresence>
@@ -685,10 +688,9 @@ export default function BankerCopilot({ user, onLogout }: BankerCopilotProps) {
             onCreated={(name, customerId) => {
               setShowAddCustomer(false);
               setKpiRefreshKey(k => k + 1);
-              // Navigate directly to the new customer's profile
-              handleSelectCustomer({ customer_id: customerId, name });
-              setActiveTab('customer_search');
-              setAddToast(`Customer ${name} created · opening profile…`);
+              // Creating a customer must not silently replace the active Copilot context.
+              // The user can explicitly select the record from Customer Search.
+              setAddToast(`Customer ${name} created · ID ${customerId}`);
               setTimeout(() => setAddToast(null), 4000);
             }}
           />

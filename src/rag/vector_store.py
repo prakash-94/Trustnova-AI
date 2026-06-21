@@ -37,7 +37,9 @@ def get_vector_store(collection_name: Optional[str] = None):
         LangChain VectorStore instance
     """
     backend = VECTOR_DB.lower().strip()
-    embeddings = get_embeddings()
+    # Live retrieval must use the model prepared by ingestion/setup; never turn
+    # a user request into an implicit model download.
+    embeddings = get_embeddings(local_files_only=True)
 
     if backend == "chroma":
         from langchain_chroma import Chroma
@@ -62,7 +64,8 @@ def get_vector_store(collection_name: Optional[str] = None):
         if not api_key:
             raise ValueError("PINECONE_API_KEY not set in .env but VECTOR_DB=pinecone")
 
-        index_name = collection_name or PINECONE_INDEX_NAME
+        # Pinecone requires lowercase letters, digits, and hyphens only
+        index_name = (collection_name or PINECONE_INDEX_NAME).replace("_", "-")
         pc = Pinecone(api_key=api_key)
 
         # Create index if it doesn't exist
@@ -144,11 +147,25 @@ def index_documents(chunks: List[Document], collection_name: Optional[str] = Non
         print(f"  Indexed {len(chunks)} chunks into ChromaDB ({col_name})")
 
     elif backend == "pinecone":
-        from pinecone import Pinecone
+        from pinecone import Pinecone, ServerlessSpec
 
         api_key = os.getenv("PINECONE_API_KEY")
         pc = Pinecone(api_key=api_key)
-        index_name = collection_name or PINECONE_INDEX_NAME
+        # Pinecone requires lowercase letters, digits, and hyphens only
+        index_name = (collection_name or PINECONE_INDEX_NAME).replace("_", "-")
+
+        # Auto-create the index if it doesn't exist (mirrors get_vector_store behaviour)
+        existing = [idx.name for idx in pc.list_indexes()]
+        if index_name not in existing:
+            dim = get_embedding_dimension()
+            print(f"  Creating Pinecone index: {index_name} (dim={dim})")
+            pc.create_index(
+                name=index_name,
+                dimension=dim,
+                metric="cosine",
+                spec=ServerlessSpec(cloud="aws", region="us-east-1"),
+            )
+
         index = pc.Index(index_name)
 
         # Batch embed and upsert

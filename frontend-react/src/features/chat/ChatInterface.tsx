@@ -152,13 +152,14 @@ interface ChatInterfaceProps {
   customer?: CustomerSummary | null;
   onShowDocs?: () => void;
   onOpenFraud?: () => void;
+  onClearCustomer?: () => void;
   role?: string;
   initialMessages?: ChatMessage[];
   onMessagesUpdate?: (msgs: ChatMessage[]) => void;
   onClear?: () => void;
 }
 
-export default function ChatInterface({ agentId, customerId, customer, onShowDocs, onOpenFraud, role, initialMessages, onMessagesUpdate, onClear }: ChatInterfaceProps) {
+export default function ChatInterface({ agentId, customerId, customer, onShowDocs, onOpenFraud, onClearCustomer, role, initialMessages, onMessagesUpdate, onClear }: ChatInterfaceProps) {
   const effectiveCustomerId = customerId ?? customer?.customer_id;
   const [messages, setMessages]   = useState<ChatMessage[]>(initialMessages ?? []);
   const [status, setStatus]       = useState<'online' | 'thinking' | 'offline'>('online');
@@ -265,7 +266,7 @@ export default function ChatInterface({ agentId, customerId, customer, onShowDoc
   const quickActions: QuickAction[] = ROLE_QUICK_ACTIONS[role ?? ''] ?? ROLE_QUICK_ACTIONS.personal_banker;
 
   return (
-    <GlassCard animate={false} className="flex flex-col h-full">
+    <GlassCard animate={false} className="flex flex-col h-full min-h-0 rounded-none border-y-0 border-r-0">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-white/[0.06]">
         <div className="flex items-center gap-2.5">
@@ -277,9 +278,18 @@ export default function ChatInterface({ agentId, customerId, customer, onShowDoc
           </div>
           <div>
             <div className="text-xs font-semibold text-t1">{persona.name}</div>
-            <div className="text-[10px] text-t3">
-              {customer ? `Context: ${customer.name}` : persona.description}
-            </div>
+            {customer ? (
+              <div className="flex items-center gap-1.5 text-[10px] text-t3">
+                <span>Context: {customer.name}</span>
+                {onClearCustomer && (
+                  <button onClick={onClearCustomer}
+                    className="text-purple-300/70 hover:text-red-400 transition-colors"
+                    title="Clear customer context">× clear</button>
+                )}
+              </div>
+            ) : (
+              <div className="text-[10px] text-t3">{persona.description}</div>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -420,22 +430,6 @@ export default function ChatInterface({ agentId, customerId, customer, onShowDoc
             );
           });
         })()}
-
-        {status === 'thinking' && !isStreaming && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-3 items-end">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 border border-purple-500/30 flex items-center justify-center text-xs text-purple-300">
-              ✦
-            </div>
-            <div className="glass px-4 py-3 rounded-2xl rounded-tl-sm border border-white/[0.06]">
-              <span className="flex gap-1">
-                {[0, 1, 2].map(i => (
-                  <motion.span key={i} className="w-1.5 h-1.5 rounded-full bg-purple-400"
-                    animate={{ y: [-3, 3, -3] }} transition={{ duration: 0.7, delay: i * 0.15, repeat: Infinity }} />
-                ))}
-              </span>
-            </div>
-          </motion.div>
-        )}
 
         <div ref={bottomRef} />
         </div>

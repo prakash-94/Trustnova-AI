@@ -314,6 +314,20 @@ def get_loans(query: str, customer_id: Optional[str] = None, limit: int = 25) ->
             filters.append("l.status IN ('delinquent','defaulted','past_due')")
         where = ("WHERE " + " AND ".join(filters)) if filters else ""
 
+        highest_terms = ("highest", "largest", "biggest", "maximum", "max ", "top ")
+        lowest_terms = ("lowest", "smallest", "minimum", "min ")
+        is_highest = any(term in q_lower for term in highest_terms)
+        is_lowest = any(term in q_lower for term in lowest_terms)
+        amount_field = "l.outstanding_balance_cents" if "outstanding" in q_lower else "l.amount_cents"
+        if is_highest:
+            order_by = f"{amount_field} DESC"
+            params["lim"] = 1
+        elif is_lowest:
+            order_by = f"{amount_field} ASC"
+            params["lim"] = 1
+        else:
+            order_by = "l.origination_date DESC"
+
         pk = customer_pk()
         rows = conn.execute(text(f"""
             SELECT l.id, l.customer_id, l.loan_type, l.status,
@@ -323,7 +337,7 @@ def get_loans(query: str, customer_id: Optional[str] = None, limit: int = 25) ->
             FROM   loans l
             LEFT   JOIN customers c ON l.customer_id = c.{pk}
             {where}
-            ORDER  BY l.origination_date DESC
+            ORDER  BY {order_by}
             LIMIT  :lim
         """), params).fetchall()
 
@@ -341,6 +355,17 @@ def get_loans(query: str, customer_id: Optional[str] = None, limit: int = 25) ->
         f"{'Customer':<22} {'Type':<12} {'Status':<14} {'Amount':>12} {'Outstanding':>13} {'Rate':>6} {'Term':>6} {'Date'}",
         "-" * 110,
     ]
+    if is_highest or is_lowest:
+        top = dict(rows[0]._mapping)
+        top_name = f"{top.get('first_name', '')} {top.get('last_name', '')}".strip() or str(top.get("customer_id", ""))[:8]
+        selected_cents = top.get("outstanding_balance_cents") if "outstanding" in q_lower else top.get("amount_cents")
+        metric = "outstanding loan balance" if "outstanding" in q_lower else "original loan amount"
+        direction = "highest" if is_highest else "lowest"
+        lines.extend([
+            f"ANSWER: {top_name} (customer ID: {top.get('customer_id')}) has the {direction} {metric}: "
+            f"${float(selected_cents or 0) / 100:,.2f}.",
+            "",
+        ])
     for r in rows:
         d = dict(r._mapping)
         name = f"{d.get('first_name', '')} {d.get('last_name', '')}".strip() or str(d.get("customer_id", ""))[:8]

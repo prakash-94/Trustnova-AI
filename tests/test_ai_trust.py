@@ -164,6 +164,47 @@ class TestHallucinationProbability:
         )
         assert 0.0 <= score <= 1.0
 
+    def test_semantic_path_uses_shared_embedding_factory(self, scorer, monkeypatch):
+        """The semantic path uses the real embedding API and reuses its client."""
+        calls = {"factory": 0}
+
+        class FakeEmbeddings:
+            def embed_query(self, text):
+                return [1.0, 0.0]
+
+            def embed_documents(self, texts):
+                return [[1.0, 0.0] for _ in texts]
+
+        def fake_factory(*args, **kwargs):
+            calls["factory"] += 1
+            assert kwargs["local_files_only"] is True
+            return FakeEmbeddings()
+
+        monkeypatch.setattr("src.rag.embeddings.get_embeddings", fake_factory)
+
+        first = scorer.compute_hallucination_probability("answer", ["source"])
+        second = scorer.compute_hallucination_probability("answer", ["source"])
+
+        assert first == 0.0
+        assert second == 0.0
+        assert calls["factory"] == 1
+
+    def test_embedding_failure_falls_back_without_repeated_loads(self, scorer, monkeypatch):
+        """An unavailable local model falls back quickly for the scorer lifetime."""
+        calls = {"factory": 0}
+
+        def unavailable(*args, **kwargs):
+            calls["factory"] += 1
+            raise OSError("model is not cached")
+
+        monkeypatch.setattr("src.rag.embeddings.get_embeddings", unavailable)
+        answer = "The policy requires identity verification"
+        sources = ["The policy requires identity verification"]
+
+        assert scorer.compute_hallucination_probability(answer, sources) < 0.5
+        assert scorer.compute_hallucination_probability(answer, sources) < 0.5
+        assert calls["factory"] == 1
+
 
 # ==================================================================
 # Test Component 3: Model Agreement
@@ -321,6 +362,22 @@ class TestFullScore:
             similarity_scores=[0.8],
         )
         assert 0 <= result["final_score"] <= 100
+
+    def test_score_is_not_artificially_inflated(self, scorer, monkeypatch):
+        """A middling weighted score must not be remapped into the 95-100 band."""
+        monkeypatch.setattr(scorer, "compute_hallucination_probability", lambda *args: 0.5)
+        monkeypatch.setattr(scorer, "compute_model_agreement", lambda *args: 0.5)
+        monkeypatch.setattr(scorer, "compute_citation_quality", lambda *args: 0.5)
+        monkeypatch.setattr(scorer, "compute_prompt_reliability", lambda *args: 0.5)
+
+        result = scorer.score(
+            query="test",
+            answer="test",
+            source_chunks=["test"],
+            similarity_scores=[0.4],  # normalized retrieval confidence = 0.5
+        )
+
+        assert result["final_score"] == 50.0
 
     def test_all_components_present(self, scorer):
         """All 5 components must be in the result."""
