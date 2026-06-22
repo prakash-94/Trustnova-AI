@@ -39,6 +39,22 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
     }
   };
 
+  const downloadCredentials = () => {
+    const rows = [
+      ['Username', 'Password', 'Role'],
+      ...DEMO_USERS.map(d => [d.username, d.password, d.role]),
+    ];
+    const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'trustnova-demo-credentials.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+
   return (
     <div className="h-full relative flex items-center justify-center p-6 overflow-y-auto">
       <AnimatedBackground />
@@ -93,6 +109,21 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
             </motion.button>
           </div>
 
+          <div className="flex items-center gap-3 my-5">
+            <div className="flex-1 h-px bg-white/[0.06]" />
+            <span className="text-xs text-t3">demo access</span>
+            <div className="flex-1 h-px bg-white/[0.06]" />
+          </div>
+
+          <button onClick={downloadCredentials}
+            className="w-full h-10 rounded-xl border border-purple-500/25 bg-purple-500/[0.07] hover:bg-purple-500/[0.13]
+                       text-purple-300 text-xs font-medium transition-all flex items-center justify-center gap-2">
+            <span>↓</span>
+            Download demo credentials (CSV)
+          </button>
+          <p className="text-[10px] text-t3 text-center mt-2">
+            13 roles — admin, banker, analyst, KYC, AML, compliance and more
+          </p>
         </div>
 
         <p className="text-center text-xs text-t3 mt-5">

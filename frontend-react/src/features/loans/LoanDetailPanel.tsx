@@ -31,12 +31,23 @@ const fmtNum = (n?: number | null, decimals = 0) =>
 const statusColor: Record<string, string> = {
   pending:    'bg-blue-500/15 text-blue-300 border-blue-500/20',
   reviewing:  'bg-purple-500/15 text-purple-300 border-purple-500/20',
+  active:     'bg-green-500/15 text-green-300 border-green-500/20',
   approved:   'bg-green-500/15 text-green-300 border-green-500/20',
   funded:     'bg-cyan-500/15 text-cyan-300 border-cyan-500/20',
+  rejected:   'bg-red-500/15 text-red-300 border-red-500/20',
   declined:   'bg-red-500/15 text-red-300 border-red-500/20',
   defaulted:  'bg-amber-500/15 text-amber-300 border-amber-500/20',
   closed:     'bg-gray-500/15 text-gray-300 border-gray-500/20',
   processing: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/20',
+};
+
+const decisionStyle: Record<string, { border: string; bg: string; icon: string; label: string }> = {
+  active:   { border: 'border-green-500/30', bg: 'bg-green-500/[0.06]', icon: '✅', label: 'Approval Decision' },
+  approved: { border: 'border-green-500/30', bg: 'bg-green-500/[0.06]', icon: '✅', label: 'Approval Decision' },
+  rejected: { border: 'border-red-500/30',   bg: 'bg-red-500/[0.06]',   icon: '❌', label: 'Decline Decision'  },
+  declined: { border: 'border-red-500/30',   bg: 'bg-red-500/[0.06]',   icon: '❌', label: 'Decline Decision'  },
+  pending:  { border: 'border-blue-500/30',  bg: 'bg-blue-500/[0.06]',  icon: '🔍', label: 'Under Review'       },
+  closed:   { border: 'border-gray-500/30',  bg: 'bg-gray-500/[0.06]',  icon: '🔒', label: 'Closure Notes'      },
 };
 
 const riskColor = (grade?: string) => {
@@ -261,6 +272,20 @@ export default function LoanDetailPanel({ loanId, onClose }: Props) {
                             </div>
                           ))}
                         </div>
+
+                        {/* Underwriting decision box */}
+                        {data.loan.description && (() => {
+                          const ds = decisionStyle[data.loan.status] ?? decisionStyle['closed'];
+                          return (
+                            <div className={clsx('rounded-xl border p-4', ds.border, ds.bg)}>
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className="text-base">{ds.icon}</span>
+                                <span className="text-xs font-semibold text-t1 uppercase tracking-wider">{ds.label}</span>
+                              </div>
+                              <p className="text-xs text-t2 leading-relaxed">{data.loan.description}</p>
+                            </div>
+                          );
+                        })()}
 
                         <Section title="Loan Terms" icon="📋">
                           <Row label="Loan Type"       value={data.loan.loan_label} />

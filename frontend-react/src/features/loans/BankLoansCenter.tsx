@@ -115,11 +115,13 @@ function ApprovalChart({
   const approved = (byStatus['approved'] ?? 0) + (byStatus['active'] ?? 0);
   const declined = byStatus['rejected'] ?? 0;
   const pending  = byStatus['pending'] ?? 0;
+  const closed   = byStatus['closed'] ?? 0;
 
   const segments = [
-    { label: 'Approved/Disbursed', count: approved, color: 'bg-green-400', pct: (approved / total) * 100 },
-    { label: 'Pending/Review',     count: pending,  color: 'bg-amber-400', pct: (pending  / total) * 100 },
-    { label: 'Rejected',           count: declined, color: 'bg-red-400',   pct: (declined / total) * 100 },
+    { label: 'Approved/Active',  count: approved, color: 'bg-green-400', pct: (approved / total) * 100 },
+    { label: 'Pending/Review',   count: pending,  color: 'bg-amber-400', pct: (pending  / total) * 100 },
+    { label: 'Rejected/Declined',count: declined, color: 'bg-red-400',   pct: (declined / total) * 100 },
+    { label: 'Closed/Repaid',    count: closed,   color: 'bg-gray-400',  pct: (closed   / total) * 100 },
   ];
 
   return (

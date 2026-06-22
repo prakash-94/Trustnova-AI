@@ -438,7 +438,13 @@ export default function BankerCopilot({ user, onLogout }: BankerCopilotProps) {
       case 'risk_center':
         return (
           <motion.div key="risk_center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
-            {gatedContent('risk_center', <RiskCenter customer={selectedCustomer} />)}
+            {gatedContent('risk_center', (
+              <RiskCenter
+                customer={selectedCustomer}
+                onSelectCustomer={c => { handleSelectCustomer(c); }}
+                onNavigate={setActiveTab}
+              />
+            ))}
           </motion.div>
         );
 
@@ -543,7 +549,7 @@ export default function BankerCopilot({ user, onLogout }: BankerCopilotProps) {
           onOpenFeedback={() => setShowFeedback(true)}
         />
 
-        <main className={`flex-1 flex flex-col overflow-hidden min-h-0 ${activeTab === 'ai_copilot' ? 'p-0' : 'p-5 gap-4'}`}>
+        <main className={`flex-1 flex flex-col overflow-hidden min-h-0 ${activeTab === 'ai_copilot' ? 'p-1.5 gap-1.5' : 'p-5 gap-4'}`}>
           <div className={`flex-1 min-h-0 ${activeTab === 'ai_copilot' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
             {/* Dashboard: visible on home tab, and on customer tab only when no customer is selected */}
             {(activeTab === 'home' ||
