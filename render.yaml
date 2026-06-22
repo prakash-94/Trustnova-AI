@@ -6,9 +6,7 @@ services:
     startCommand: uvicorn src.api.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: DATABASE_URL
-        fromDatabase:
-          name: trusnova-ai-db
-          property: connectionString
+        sync: false   # Set this in Render dashboard → your PostgreSQL connection string
       - key: ENVIRONMENT
         value: production
       - key: VECTOR_DB
@@ -35,7 +33,3 @@ services:
       - key: CORS_ORIGINS
         sync: false   # e.g. https://your-project.vercel.app
 
-databases:
-  - name: trusnova-ai-db
-    databaseName: trusnova
-    plan: free
