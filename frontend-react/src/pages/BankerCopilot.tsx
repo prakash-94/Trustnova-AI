@@ -551,9 +551,8 @@ export default function BankerCopilot({ user, onLogout }: BankerCopilotProps) {
 
         <main className={`flex-1 flex flex-col overflow-hidden min-h-0 ${activeTab === 'ai_copilot' ? 'p-1.5 gap-1.5' : 'p-5 gap-4'}`}>
           <div className={`flex-1 min-h-0 ${activeTab === 'ai_copilot' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
-            {/* Dashboard: visible on home tab, and on customer tab only when no customer is selected */}
-            {(activeTab === 'home' ||
-              ((activeTab === 'customer_search' || activeTab === 'customer360') && !selectedCustomer)) && (
+            {/* Dashboard: visible on home tab only */}
+            {activeTab === 'home' && (
               <RoleDashboard
                 role={user.role}
                 roleLabel={user.role_label ?? user.role.replace(/_/g, ' ')}
@@ -568,9 +567,7 @@ export default function BankerCopilot({ user, onLogout }: BankerCopilotProps) {
             )}
             {/* Section-specific content — appears below dashboard or fills the view */}
             {activeTab !== 'home' && (
-              <div className={activeTab === 'ai_copilot'
-                ? 'h-full min-h-0'
-                : (!selectedCustomer && (activeTab === 'customer_search' || activeTab === 'customer360') ? 'mt-4' : '')}>
+              <div className={activeTab === 'ai_copilot' ? 'h-full min-h-0' : ''}>
                 <AnimatePresence mode="wait">
                   {renderSection()}
                 </AnimatePresence>
