@@ -44,62 +44,286 @@ random.seed(42)
 
 APPROVAL_NOTES = {
     "auto": [
-        "Approved: Credit score {cs} exceeds minimum threshold (660). Debt-to-income ratio {dti}% within guidelines. Vehicle appraised at ${val:,} — LTV ratio {ltv}%. Stable employment {emp}+ years verified. Rate locked at {rate}% for {term}-month term.",
-        "Approved: Strong credit profile with no delinquencies in past 36 months. DTI ratio {dti}% acceptable. Dealership invoice confirmed; vehicle VIN verified. Co-applicant income adds additional repayment capacity. {term}-month term at {rate}%.",
-        "Approved: Applicant meets all auto lending criteria. Credit score {cs} (prime tier). Employment verified at current employer {emp}+ years; gross income ${{income:,}}/yr. Requested amount within approved vehicle value range. Fixed rate {rate}%.",
-        "Approved: Pre-owned vehicle (<5 years old), full CarFax report clear of accidents. LTV {ltv}% within 110% guideline for certified pre-owned. Applicant's banking relationship 3+ years — no NSF incidents. Rate: {rate}% / {term}mo.",
+        ("Approval Decision — Application Approved Following Full Credit Committee Review. "
+         "The Credit Committee has completed a thorough evaluation of this auto loan application and is pleased to confirm approval of financing in the requested amount. "
+         "The applicant's credit score of {cs} exceeds TrustNova's minimum threshold of 660 for standard auto lending and falls within the prime credit tier, indicating a strong and consistent repayment history. "
+         "The applicant's debt-to-income ratio of {dti}% is comfortably within the allowable guideline of 50%, confirming that existing monthly obligations remain manageable alongside the proposed new payment. "
+         "An independent vehicle appraisal has been completed and confirms a fair market value of ${val:,}, producing an LTV ratio of {ltv}% — within the bank's maximum collateral threshold. "
+         "Employment at the current employer has been verified and confirmed at {emp}+ years, establishing the income stability required to service a {term}-month obligation. "
+         "The loan has been originated at a fixed interest rate of {rate}% for the approved term. All closing documents are ready for execution."),
+
+        ("Approval Decision — Auto Loan Approved; Strong Credit File and Co-Applicant Support. "
+         "Following a comprehensive review of the application, supporting financial documentation, and vehicle details, the Credit Committee has approved this auto loan application. "
+         "The applicant presents a strong credit profile with no delinquencies recorded in the past 36 months across all open trade lines, demonstrating a reliable and consistent repayment pattern that satisfies TrustNova's underwriting standards. "
+         "The debt-to-income ratio of {dti}% is within acceptable parameters, and the inclusion of a co-applicant's verified income provides additional repayment capacity that further strengthens the overall risk profile. "
+         "The dealership invoice has been reviewed and the vehicle identification number has been verified and cross-referenced against lien records, confirming no pre-existing encumbrances on the collateral. "
+         "Financing has been approved on a {term}-month term at a fixed rate of {rate}%. "
+         "The Credit Committee thanks the applicant for their business and looks forward to a successful lending relationship."),
+
+        ("Approval Decision — Auto Loan Approved; All Prime Lending Criteria Satisfied. "
+         "After a detailed review of all submitted documentation, the Credit Committee has determined that this application meets all criteria established under TrustNova Auto Lending Policy for standard prime loan origination. "
+         "The applicant's credit score of {cs} positions the application firmly in the prime borrower tier, supported by a clean payment history and a manageable existing debt profile. "
+         "Employment with the current employer has been independently verified at {emp}+ years of continuous service, with confirmed annual gross income of ${income:,}, which comfortably supports the proposed monthly obligation. "
+         "The requested loan amount falls within the approved financing range relative to the independently confirmed vehicle value, ensuring adequate collateral coverage throughout the loan term. "
+         "The loan has been approved at a fixed interest rate of {rate}% for the agreed term, with monthly payments structured to remain within the applicant's demonstrated repayment capacity. "
+         "All required disclosures have been provided and the loan is ready to fund upon receipt of signed documentation."),
+
+        ("Approval Decision — Certified Pre-Owned Vehicle Financing Approved. "
+         "The Credit Committee has completed its review of this auto loan application and is pleased to confirm full approval for the financing of the stated certified pre-owned vehicle. "
+         "A comprehensive vehicle history report has been obtained and reviewed, confirming a clean title history with no reported accidents, odometer rollback concerns, or unresolved salvage designations. "
+         "The vehicle's age and condition fall within TrustNova's certified pre-owned financing eligibility criteria, and the LTV ratio of {ltv}% is within the 110% maximum permitted for this vehicle classification. "
+         "The applicant's established banking relationship of 3+ years with TrustNova has been reviewed and reflects consistent deposit activity with no non-sufficient funds incidents, which provides additional confidence in the applicant's financial management habits. "
+         "Relationship pricing has been applied where applicable. The loan has been originated at {rate}% for a {term}-month term."),
     ],
     "home": [
-        "Approved: Excellent credit profile — score {cs}, no late payments 7 years. Property appraised at ${val:,} (LTV {ltv}%). Verified W-2 income ${income:,}/yr, DTI {dti}%. Down payment {dp}% confirmed via bank statement. Fixed rate {rate}% / {term}-month term.",
-        "Approved: Conforming loan within FNMA limits. Credit score {cs}; debt obligations manageable at DTI {dti}%. Title search clear, no encumbrances. Homeowner's insurance binder received. Rate: {rate}% fixed for 30 years (est. closing {term}mo).",
-        "Approved: FHA-eligible borrower. Credit score {cs} exceeds 580 floor; 3.5% down confirmed. Appraisal completed — property meets HUD minimum property standards. Mortgage insurance premium applied. Employment continuous 2+ years in same industry.",
-        "Approved: Jumbo loan — enhanced underwriting applied. Credit score {cs} (required 720+). Reserves verified: {emp}+ months PITI in liquid accounts. DTI {dti}% below 38% jumbo cap. Two appraisals ordered per policy; both within 2% of each other.",
-        "Approved: Refinance — appraised equity sufficient for rate-and-term refi. Existing loan in good standing ({emp} consecutive on-time payments). New rate {rate}% saves estimated ${val:,}/mo vs current loan. No cash-out; LTV {ltv}% post-refi.",
+        ("Approval Decision — Mortgage Application Approved; Excellent Qualifying Profile. "
+         "Following a comprehensive underwriting review conducted in accordance with TrustNova Mortgage Policy and applicable conforming loan guidelines, the Credit Committee is pleased to confirm approval of this home loan application. "
+         "The applicant presents an outstanding credit profile with a score of {cs} and a verified history of on-time mortgage and installment payments spanning seven or more consecutive years — well in excess of the depth and consistency required for prime mortgage origination. "
+         "An independent appraisal has confirmed the subject property's fair market value at ${val:,}, producing an LTV ratio of {ltv}% at the requested loan amount — comfortably within conforming guidelines. "
+         "Verified W-2 income of ${income:,} annually has been confirmed via tax transcripts and employer records, and the applicant's back-end DTI of {dti}% is within FNMA conforming limits. "
+         "The down payment has been verified via three months of bank statements, confirming that all funds to close are sourced and seasoned. "
+         "The loan has been approved at a fixed rate of {rate}% for the approved term. Estimated closing timeline is within standard parameters."),
+
+        ("Approval Decision — Conforming Mortgage Approved; All FNMA Eligibility Criteria Met. "
+         "The Credit Committee has completed its review and confirmed that this mortgage application satisfies all eligibility requirements for a conforming loan under current Fannie Mae guidelines and TrustNova Mortgage Underwriting Standards. "
+         "The applicant's credit score of {cs} reflects a disciplined borrowing history, and all existing debt obligations produce a back-end DTI of {dti}% — within the conforming 43% back-end limit and reflecting strong overall debt management. "
+         "A title search has been completed and returned clear, with no outstanding liens, encumbrances, or ownership disputes identified against the subject property. "
+         "Homeowner's insurance binder has been received and reviewed, confirming adequate coverage effective from the anticipated closing date. "
+         "A flood zone determination has been completed per federal requirements. "
+         "The loan is approved at a fixed rate of {rate}% and the estimated closing date has been communicated to all parties. All required federal disclosures have been provided within regulatory timeframes."),
+
+        ("Approval Decision — FHA-Eligible Mortgage Approved; Minimum Down Payment Program Utilized. "
+         "Following review under TrustNova's FHA-eligible loan program guidelines and applicable HUD underwriting requirements, the Credit Committee has approved this mortgage application. "
+         "The applicant's credit score of {cs} exceeds the 580-point floor required for the 3.5% minimum down payment program, and the down payment has been verified in the applicant's deposit accounts with sufficient seasoning to confirm the funds are not borrowed. "
+         "An FHA-approved appraisal has been ordered and completed; the appraiser has confirmed that the subject property meets HUD Minimum Property Standards with no required repairs identified that would prevent closing. "
+         "The applicant's employment history reflects continuous employment within the same industry for two or more years, satisfying FHA's employment stability requirements. "
+         "Upfront and annual mortgage insurance premium obligations have been fully disclosed and the applicant has acknowledged receipt of all required disclosures. "
+         "The loan is approved and is ready to proceed to closing upon satisfaction of all standard pre-closing conditions."),
+
+        ("Approval Decision — Jumbo Mortgage Approved; Enhanced Underwriting Standards Satisfied. "
+         "The Credit Committee has completed an enhanced underwriting review appropriate for a jumbo loan origination and is pleased to confirm approval of this application. "
+         "Jumbo loan origination requires a more stringent qualification profile than conforming products, and the applicant has satisfied all heightened criteria. "
+         "The applicant's credit score of {cs} exceeds the 720-point minimum required for jumbo eligibility, and the credit file reflects a long and unblemished repayment history consistent with the premier borrower classification. "
+         "Liquid post-closing reserves have been verified at {emp}+ months of principal, interest, taxes, and insurance — well above the minimum reserve requirement of six months established under TrustNova's jumbo underwriting guidelines. "
+         "The applicant's back-end DTI of {dti}% is below the 38% cap applied to jumbo originations, providing a meaningful buffer against income variability. "
+         "Two independent appraisals have been obtained per jumbo policy; both values are within 2% of each other, confirming the integrity of the collateral valuation. The loan is approved."),
+
+        ("Approval Decision — Rate-and-Term Refinance Approved; Strong Equity Position Confirmed. "
+         "The Credit Committee has reviewed this refinance application and confirmed approval for a rate-and-term refinance of the existing mortgage obligation. "
+         "The applicant's existing loan is in excellent standing, with {emp} consecutive on-time payments recorded without a single delinquency — a payment history that speaks to the applicant's commitment to the current obligation. "
+         "An independent appraisal of the subject property has confirmed sufficient equity to support the refinance at an LTV of {ltv}%, well within the maximum threshold for a rate-and-term refinance without mortgage insurance. "
+         "The new loan is being originated at a fixed rate of {rate}%, which will reduce the applicant's estimated monthly payment by approximately ${val:,} relative to the existing loan — resulting in meaningful long-term interest savings over the remaining amortisation period. "
+         "No cash proceeds are being extracted in this transaction; the refinance is strictly a rate improvement. All required closing cost disclosures have been provided and the loan is ready to proceed."),
     ],
     "personal": [
-        "Approved: Unsecured personal loan — credit score {cs} (strong tier). Stable income ${income:,}/yr; DTI {dti}% within policy limit (45%). No bankruptcy in past 7 years; 0 collections. Loan purpose (debt consolidation) reduces overall monthly obligation. Rate: {rate}%.",
-        "Approved: Credit score {cs}; consistent payment history across {emp} open trade lines. Requested amount ${val:,} within unsecured limit for income bracket. 36-month term selected — estimated monthly payment well within capacity. Rate: {rate}%.",
-        "Approved: Existing customer — positive deposit relationship {emp}+ years; average balance maintained. Credit score {cs}; no current delinquencies. Debt consolidation purpose verified (payoff letters on file). Preferential rate {rate}% applied for relationship pricing.",
-        "Approved: Medical expense purpose — expedited review per hardship policy. Credit score {cs}; income verifiable via two recent pay stubs. Hospital invoice on file as supporting documentation. 60-month term approved at {rate}%.",
+        ("Approval Decision — Unsecured Personal Loan Approved; Strong Creditworthiness Confirmed. "
+         "Following a thorough review of the applicant's credit profile, verified income documentation, and loan purpose, the Credit Committee has approved this unsecured personal loan application. "
+         "The applicant's credit score of {cs} falls within the strong credit tier and is supported by a history of consistent on-time payments across all open accounts, with no bankruptcies filed in the past seven years and no accounts currently in collections. "
+         "Verified annual income of ${income:,} has been confirmed via recent pay stubs and the most recent filed tax return, and the applicant's debt-to-income ratio of {dti}% is comfortably within TrustNova's 45% maximum for unsecured personal lending. "
+         "The stated purpose of debt consolidation has been reviewed and is consistent with responsible financial management — consolidating higher-rate obligations into a single, lower-rate personal loan is expected to reduce the applicant's overall monthly debt burden. "
+         "The loan has been originated at a fixed rate of {rate}%, with all required TILA disclosures provided prior to final execution."),
+
+        ("Approval Decision — Personal Loan Approved; Consistent Payment History and Adequate Income Verified. "
+         "The Credit Committee has completed its review of this personal loan application and is pleased to confirm approval in the requested amount. "
+         "The applicant's credit score of {cs} reflects a responsible credit history with consistent, on-time payment activity maintained across {emp} open trade lines, demonstrating the applicant's reliability in meeting existing financial obligations. "
+         "The requested amount of ${val:,} is within the maximum unsecured limit applicable to the applicant's verified income bracket, ensuring that the proposed obligation remains proportionate to demonstrated repayment capacity. "
+         "The selected loan term produces a monthly payment that is well within the applicant's capacity based on current income and existing obligations, providing a meaningful buffer against unexpected financial variability. "
+         "The loan has been approved at a fixed rate of {rate}% for the agreed term. All required disclosures have been provided and the applicant has acknowledged receipt. Funds will be disbursed within two business days of final documentation execution."),
+
+        ("Approval Decision — Personal Loan Approved; Existing Customer Relationship Pricing Applied. "
+         "The Credit Committee has approved this personal loan application and has applied relationship-based preferential pricing in recognition of the applicant's longstanding and positive deposit relationship with TrustNova. "
+         "The applicant has maintained an active deposit account with TrustNova for {emp}+ years, reflecting consistent account management and no non-sufficient funds incidents throughout the relationship tenure. "
+         "The applicant's credit score of {cs} confirms creditworthiness within the approved tier, with no current delinquencies and no adverse credit events in the review period. "
+         "The stated loan purpose of debt consolidation has been verified; payoff letters from the creditors being consolidated are on file and confirm that the loan proceeds will be directed exclusively to the retirement of existing high-rate obligations. "
+         "A preferential rate of {rate}% has been applied in accordance with TrustNova's Relationship Pricing Policy, resulting in a lower effective rate than the standard grid for this credit tier. The loan is ready to fund."),
+
+        ("Approval Decision — Personal Loan Approved on Expedited Basis; Medical Hardship Criteria Met. "
+         "Pursuant to TrustNova's Medical Hardship Lending Policy, this personal loan application has been reviewed on an expedited basis and the Credit Committee has confirmed approval. "
+         "The applicant has presented documented evidence of a qualifying medical expense — specifically, a hospital invoice confirming services rendered — which satisfies the hardship threshold for expedited processing and consideration of the maximum available term. "
+         "The applicant's credit score of {cs} meets the minimum eligibility requirements for participation in the expedited review program, and income has been independently verified through two recent pay stubs, confirming adequate repayment capacity. "
+         "A 60-month repayment term has been approved to reduce the monthly payment burden and improve affordability during what may be a period of financial strain. "
+         "The approved rate of {rate}% reflects the applicant's current credit tier. All required disclosures, including the full cost-of-credit summary and right-to-rescind notice, have been provided. Funds will disburse upon completion of final execution."),
     ],
     "education": [
-        "Approved: Student loan — enrollment verification received from institution. Credit score {cs} (co-signer applied, score {cs}). Combined income supports repayment estimate at graduation. Deferment period approved through expected graduation date. Rate: {rate}% fixed.",
-        "Approved: Graduate-level education loan. Applicant's program (MBA, accredited university) qualifies for extended 180-month repayment term. Co-signer credit score {cs} with {emp}+ years stable employment. In-school interest capitalization terms disclosed. Rate: {rate}%.",
-        "Approved: Refinance of existing student loans — better rate obtained. Original federal loans ({emp} accounts) consolidated; total payoff sent to servicers. New fixed rate {rate}% vs previous weighted average {val}%. Projected savings ${income:,} over loan life.",
-        "Approved: Professional certification program — bootcamp eligible under continuing education policy. Employer tuition reimbursement letter on file (partial). Credit score {cs}; employed full-time while attending. Short-term 24-month repayment at {rate}%.",
+        ("Approval Decision — Education Loan Approved; Enrollment and Program Eligibility Confirmed. "
+         "The Credit Committee has completed a review of this student loan application and is pleased to confirm approval for the requested education financing. "
+         "Enrollment verification has been received directly from the institution's Registrar's Office, confirming that the applicant is actively registered in the stated program for the applicable academic term, as required for loan disbursement under TrustNova's Student Lending Policy. "
+         "The co-signer's credit profile has been evaluated independently and satisfies all minimum creditworthiness standards applicable to private student lending, providing the secondary repayment assurance required under the program. "
+         "The combined income of the applicant and co-signer has been assessed against the projected post-graduation repayment obligation, and the analysis supports a reasonable expectation of repayment capacity at anticipated graduation. "
+         "A deferment period has been approved through the applicant's expected graduation date, during which no principal or interest payments are required. "
+         "The loan is approved at a fixed rate of {rate}%. All required student loan disclosures, including the Loan Disclosure Statement and Borrower's Rights and Responsibilities, have been provided."),
+
+        ("Approval Decision — Graduate Education Loan Approved; Extended Repayment Term Applied. "
+         "After a thorough review of this graduate education loan application, the Credit Committee has confirmed approval and has authorised an extended repayment term based on the applicant's program type and projected post-graduation income. "
+         "The applicant is enrolled in a graduate-level professional program at an accredited institution that qualifies for extended repayment terms of up to 180 months under TrustNova's Graduate Lending Policy, which recognises the higher earning potential typically associated with advanced professional degrees. "
+         "The co-signer presents a strong credit profile with a score of {cs} and {emp}+ years of verified stable employment, providing robust secondary repayment assurance throughout the life of the loan. "
+         "In-school interest capitalisation terms have been fully disclosed and the applicant and co-signer have both confirmed their understanding of the total cost-of-credit implications. "
+         "The loan is originated at a fixed rate of {rate}%, and disbursement has been scheduled in accordance with the institution's tuition billing timeline."),
+
+        ("Approval Decision — Student Loan Refinance Approved; Favourable Rate Reduction Achieved. "
+         "The Credit Committee has reviewed this education loan refinance application and confirmed approval, resulting in a materially improved interest rate relative to the applicant's existing federal loan portfolio. "
+         "The applicant holds {emp} existing federal student loan accounts, which will be fully consolidated into a single private refinance loan. Payoff instructions have been transmitted to each servicer and the full outstanding principal balance will be retired on the disbursement date. "
+         "The new loan has been originated at a fixed rate of {rate}%, compared to a weighted average rate of {val}% across the existing portfolio — representing a meaningful reduction in the applicant's effective borrowing cost. "
+         "Over the remaining repayment horizon, the rate reduction is projected to produce cumulative interest savings of approximately ${income:,}, significantly reducing the total cost of the applicant's education financing. "
+         "All required refinance disclosures have been provided. The applicant has been informed that refinancing federal loans into a private loan results in the loss of federal borrower protections, including income-driven repayment options."),
+
+        ("Approval Decision — Continuing Education Loan Approved; Employer Reimbursement Documentation Received. "
+         "Following review of this application under TrustNova's Continuing Education Lending Policy, the Credit Committee has approved financing for the stated professional certification program. "
+         "The program has been assessed and confirmed as eligible under TrustNova's continuing education guidelines, which extend to accredited bootcamps and professional certification programs designed to enhance the applicant's existing professional competencies. "
+         "A partial employer tuition reimbursement commitment letter has been received and reviewed; the employer has confirmed in writing that a specified portion of the program cost will be reimbursed upon successful completion, providing partial secondary repayment assurance. "
+         "The applicant's credit score of {cs} meets the minimum threshold for this program, and the applicant's full-time employment status has been confirmed, indicating that loan repayment will not depend entirely on the outcome of the certification. "
+         "A 24-month repayment term has been structured to align with a short-term programme timeline. The loan is approved at {rate}%, with first payment due 30 days after disbursement."),
     ],
     "business": [
-        "Approved: Business term loan — 3 years operating history (required: 2). Gross revenue ${income:,}/yr; net margin {dti}%. Debt service coverage ratio 1.{emp}x (minimum 1.25x). Personal guarantee from majority owner (credit score {cs}). Rate: {rate}% / {term}-month term.",
-        "Approved: SBA 7(a) guaranteed loan. Business plan reviewed; market analysis supports revenue projections. Personal credit score {cs}; no prior SBA default. Collateral: business equipment + receivables. SBA guarantee 75% applied — reduced bank risk tier. Rate: Prime + {val}%.",
-        "Approved: Equipment financing — specific-purpose loan for listed equipment (invoice attached). Equipment serves as primary collateral (UCC-1 filing on origination). Business operating {emp}+ years, DSCR 1.{cs}x. Cross-collateralized with business deposit account. Rate: {rate}%.",
-        "Approved: Business line of credit converted to term loan. Track record: {emp} months of clean draws with no overdrafts. Business credit score 78 (Dun & Bradstreet). Revenue growth {dti}% YoY (last 2 fiscal years). Owners' equity injection {val}% confirmed. Rate: {rate}%.",
+        ("Approval Decision — Business Term Loan Approved; All Commercial Underwriting Criteria Satisfied. "
+         "Following a comprehensive review of the business financial statements, personal financial disclosures of the guarantor(s), business credit report, and supporting documentation, the Credit Committee has approved this business term loan application. "
+         "The business has been in continuous operation for more than three years, exceeding the 24-month minimum operating history required under TrustNova Commercial Lending Policy §4.1, and has demonstrated consistent revenue growth over the review period. "
+         "Gross annual revenue of ${income:,} and a net operating margin of {dti}% support a Debt Service Coverage Ratio of 1.{emp}x, which exceeds the required minimum of 1.25x and provides an adequate buffer against revenue variability. "
+         "A personal guarantee has been provided by the majority owner, whose personal credit score of {cs} meets the guarantor creditworthiness standards required for business credit origination. "
+         "The loan has been approved at a fixed commercial rate of {rate}% for a {term}-month term. All UCC-1 filings and guarantee documentation will be executed at closing."),
+
+        ("Approval Decision — SBA 7(a) Guaranteed Business Loan Approved. "
+         "The Credit Committee has completed its review of this SBA 7(a) loan application and is pleased to confirm approval, subject to final SBA authorisation. "
+         "The submitted business plan has been reviewed by TrustNova's commercial lending team and the financial projections have been assessed against current market conditions; the analysis supports a reasonable expectation that projected revenues are achievable within the stated timeframe. "
+         "The guarantor's personal credit score of {cs} meets SBA eligibility requirements and confirms no prior SBA loan defaults or unresolved federal delinquencies. "
+         "The proposed collateral package — consisting of business equipment and accounts receivable — has been assessed and, in conjunction with the SBA guarantee covering 75% of the outstanding balance, is sufficient to satisfy the bank's collateral requirements under the programme. "
+         "The SBA guarantee reduces the bank's net credit exposure to a level consistent with an acceptable risk tier for this loan size and industry. "
+         "Loan proceeds will be disbursed within 5 business days of SBA authorisation and completion of all closing conditions. Rate: Prime + {val}%."),
+
+        ("Approval Decision — Business Equipment Financing Loan Approved. "
+         "Following a review of this equipment financing application, the Credit Committee has confirmed approval for a specific-purpose equipment loan in the requested amount. "
+         "The loan proceeds are designated exclusively for the acquisition of the equipment items detailed in the attached vendor invoice, which has been reviewed and accepted as part of the credit file. "
+         "The financed equipment will serve as the primary collateral for this obligation, and a UCC-1 financing statement will be filed against the specific equipment upon loan origination to perfect the bank's first-priority security interest. "
+         "The business has been in operation for {emp}+ years and the reviewed financial statements support a Debt Service Coverage Ratio of 1.{cs}x, which exceeds the required minimum for equipment financing. "
+         "The equipment financing has been cross-collateralised with the business deposit account maintained at TrustNova to provide additional security. "
+         "The loan is approved at a fixed rate of {rate}% for the agreed term. First payment is due 30 days from disbursement."),
+
+        ("Approval Decision — Revolving Line of Credit Converted to Term Loan; Approved Based on Demonstrated Performance. "
+         "The Credit Committee has reviewed this request for conversion of the existing business revolving line of credit to a fixed-term loan and has approved the conversion based on the business's demonstrated performance under the line. "
+         "The business has utilised the revolving line of credit responsibly over {emp} months, with all draws repaid within agreed terms and no overdraft incidents recorded during the review period — a performance record that provides direct evidence of the business's ability to service a structured term obligation. "
+         "The business's Dun & Bradstreet Paydex score satisfies TrustNova's business credit standards, and the business has delivered year-over-year revenue growth of {dti}% across each of the two most recently completed fiscal years. "
+         "The owners have confirmed an equity injection of {val}% of the loan amount, further strengthening the overall credit profile. "
+         "The term loan is approved at a fixed commercial rate of {rate}%, with monthly principal and interest payments commencing on the first day of the month following disbursement."),
     ],
 }
 
 PENDING_NOTES = {
     "auto": [
-        "Under Review: Vehicle appraisal ordered; awaiting dealer invoice verification. Credit check complete (score {cs}). Employment verification in progress — verbal confirmation received, written confirmation pending. Est. decision: 2-3 business days.",
-        "Under Review: Application received. Credit score {cs} — marginal tier; additional documentation requested. Applicant asked to provide 2 recent pay stubs and employer contact. Co-applicant option presented. Awaiting response.",
-        "Under Review: VIN history report ordered. Preliminary credit review favorable (score {cs}). DTI calculation pending verification of all listed liabilities. Loan committee review scheduled.",
+        ("Application Under Review — Vehicle Verification and Employment Confirmation in Progress. "
+         "This auto loan application has been received, logged, and assigned to an underwriter for full review. "
+         "A preliminary credit assessment has been completed; the applicant's credit score of {cs} falls within the reviewable range and the credit file has been forwarded to the underwriting team for detailed analysis. "
+         "An independent vehicle appraisal has been ordered and is expected to be returned within two to three business days; the dealership invoice is currently being cross-referenced against published NADA values to confirm adequate collateral coverage. "
+         "Employment verification is underway — verbal confirmation of the applicant's employment status and income level has been obtained from the stated employer, and written verification in the form of a signed employer letter is currently pending receipt. "
+         "A debt-to-income calculation will be finalised upon confirmation of all verified liabilities. "
+         "The applicant can expect a final credit decision within 2 to 3 business days from receipt of all outstanding documentation. The assigned loan officer will be in contact with any further information requests."),
+
+        ("Application Under Review — Additional Documentation Required; Review Temporarily Paused. "
+         "This auto loan application has been received and an initial credit review has been completed. "
+         "The applicant's credit score of {cs} places the application in a review tier that requires additional supporting documentation before the Credit Committee can render a final decision. "
+         "Specifically, the underwriting team has requested two recent pay stubs covering the most recent 60-day period and a written employer contact reference to facilitate independent employment and income verification. "
+         "Additionally, due to the marginal credit profile, the loan officer has presented the applicant with the option of including a creditworthy co-applicant, which would provide additional income support and potentially improve the overall qualifying profile. "
+         "The application review has been temporarily paused pending receipt of the requested documents. "
+         "Once all required documentation has been received and verified, the file will be advanced to the Credit Committee for a final lending determination. No adverse action has been taken at this stage."),
+
+        ("Application Under Review — Vehicle History Report Ordered; Liability Verification Pending. "
+         "This auto loan application is currently in active underwriting review. "
+         "A vehicle history report has been ordered through a certified provider and is expected to be returned within one business day; this report will confirm the vehicle's accident history, title status, odometer reading record, and any open recall items relevant to the collateral assessment. "
+         "A preliminary credit review of the applicant's file has returned a favourable result at a score of {cs}, indicating the applicant's general creditworthiness meets the initial threshold for further review. "
+         "The debt-to-income calculation is currently in progress; the underwriter has identified several liabilities listed on the application that require third-party verification before the final DTI figure can be confirmed. "
+         "The file has been scheduled for a loan committee review upon completion of all outstanding verification items. "
+         "The applicant is advised to ensure that all listed debts and obligations are accurately reflected on the application to avoid delays in the final decision process."),
     ],
     "home": [
-        "Under Review: Appraisal ordered — 3rd party licensed appraiser assigned; report expected within 7 business days. Title search in progress. Credit score {cs}; income documentation complete. Flood zone determination requested.",
-        "Under Review: Full underwriting package received. Credit score {cs}; all income documents verified. Awaiting appraisal report (ordered {emp} days ago). Property survey requested by applicant's attorney — under review.",
-        "Under Review: Conditional approval issued pending: (1) gift letter for down-payment funds, (2) 12-month landlord reference, (3) explanation letter for credit inquiry from 4 months ago. Credit score {cs}.",
+        ("Application Under Review — Appraisal Ordered; Title Search and Income Verification in Progress. "
+         "This mortgage application has been received and assigned to a senior underwriter for full review. "
+         "All income documentation submitted to date — including W-2 forms, recent pay stubs, and the prior year's tax return — has been reviewed and is consistent with the income stated on the application. "
+         "A third-party licensed appraiser has been engaged and assigned to the subject property; the appraisal report is expected to be returned within seven business days, at which point the LTV calculation and final collateral review can be completed. "
+         "A title search has been ordered with a licensed title company; results are expected within five business days and will be reviewed for any encumbrances, liens, or ownership defects. "
+         "A flood zone determination has been requested for the subject property as required by federal law. "
+         "The applicant's credit score of {cs} is within the conforming loan approval range and no material adverse credit events have been identified during the preliminary review. The loan officer will provide a status update upon receipt of the appraisal report."),
+
+        ("Application Under Review — Full Underwriting Package Received; Awaiting Appraisal Report. "
+         "This mortgage application is currently in the final stage of underwriting review. "
+         "The complete underwriting package has been received, including all required income documentation, asset statements, employer verification letters, and identification documents; all submitted items have been reviewed and verified and are consistent with the information declared on the loan application. "
+         "The applicant's credit score of {cs} has been confirmed through a tri-merge credit report and all existing liabilities have been validated against the information on file. "
+         "The only outstanding item preventing a final credit decision is the return of the independent appraisal report, which was ordered {emp} days ago and is expected to be returned shortly. "
+         "A property survey has also been requested by the applicant's attorney and is currently being reviewed alongside the title search results. "
+         "The Credit Committee will render a final decision within two business days of receiving the completed appraisal report. The underwriter will notify the applicant and the loan officer upon receipt."),
+
+        ("Application Under Review — Conditional Approval Issued; Three Outstanding Conditions Remain. "
+         "Following an initial underwriting review, the Credit Committee has issued a Conditional Approval for this mortgage application, subject to satisfactory resolution of the following outstanding conditions prior to the final approval and clear-to-close determination. "
+         "First, a fully executed and compliant gift letter is required to document the source of the down payment funds, as a portion of the verified funds to close appears to be sourced from a family member; the gift letter must satisfy FNMA documentation requirements and confirm that no repayment is expected. "
+         "Second, a 12-month landlord reference letter from the applicant's current landlord is required to document rental payment history. "
+         "Third, a written explanation letter addressing a credit inquiry that appeared on the tri-merge credit report approximately four months prior to this application is required; the letter must identify the creditor and explain the purpose of the inquiry. "
+         "The applicant's credit score of {cs} is within the approved range. All three conditions must be satisfied before the loan can progress to closing."),
     ],
     "personal": [
-        "Under Review: Application complete. Credit score {cs} — borderline tier. Debt-to-income ratio being calculated; applicant asked to clarify two disputed liabilities. Bank statement analysis in progress.",
-        "Under Review: Loan purpose (home improvement) — contractor quote requested to validate loan amount. Credit profile satisfactory (score {cs}). Income verified. Awaiting scope-of-work documentation.",
-        "Under Review: Credit score {cs}. Stacking concerns flagged — applicant has 3 personal loan inquiries in past 60 days. Senior underwriter review requested. Additional income verification ordered.",
+        ("Application Under Review — DTI Verification in Progress; Applicant Clarification Requested. "
+         "This personal loan application has been received and assigned to the personal lending underwriting team for review. "
+         "An initial credit assessment has been completed; the applicant's credit score of {cs} places the application in a borderline review tier that requires a more detailed analysis of the full debt load before a final lending determination can be made. "
+         "The underwriting team is currently in the process of calculating the applicant's total debt-to-income ratio based on all verified liabilities. "
+         "During this review, two liabilities listed on the application were found to have discrepancies when compared against trade line data appearing on the credit report — specifically, the outstanding balances stated on the application appear to differ from the balances reported by the respective creditors. "
+         "The applicant has been contacted and asked to provide clarification and, where applicable, recent account statements to reconcile the discrepancy. "
+         "A review of the applicant's bank statements is also currently in progress. The file will be advanced to the Credit Committee upon resolution of the outstanding clarification items."),
+
+        ("Application Under Review — Contractor Documentation Requested for Home Improvement Purpose. "
+         "This personal loan application has been received and is currently under review by the personal lending underwriting team. "
+         "The applicant's credit profile has been reviewed and the credit score of {cs} is within the satisfactory range for unsecured personal lending. Income has been verified via submitted pay stubs and employer records and is consistent with the figures stated on the application. "
+         "The stated loan purpose is home improvement. TrustNova's personal lending policy requires that home improvement loans above a specified threshold be supported by a contractor estimate or scope-of-work documentation confirming that the requested amount is commensurate with the planned improvements. "
+         "The underwriter has requested that the applicant provide a written contractor quote or scope-of-work description itemising the planned improvements and associated costs. "
+         "The application review has been temporarily paused pending receipt of this supporting documentation. "
+         "Once the contractor documentation has been received and reviewed, the underwriter will finalise the DTI assessment and advance the file to the Credit Committee for a final decision."),
+
+        ("Application Under Review — Senior Underwriter Review Requested; Inquiry Pattern Under Assessment. "
+         "This personal loan application is currently in underwriting review and has been escalated for senior underwriter assessment due to a credit inquiry pattern identified during the initial credit review. "
+         "The applicant's credit score of {cs} is within the review range; however, the credit report reflects three personal loan-related credit inquiries within the preceding 60-day period, indicating that the applicant may have applied for personal financing at multiple institutions concurrently. "
+         "This pattern raises the possibility that the applicant's total outstanding and pending unsecured debt obligations may be materially higher than what is currently reflected on the credit report, as newly approved loans may not yet appear as open trade lines. "
+         "A senior underwriter has been assigned to complete a detailed assessment of the applicant's aggregate potential unsecured exposure before a final decision is rendered. "
+         "Additionally, an enhanced income verification has been ordered to confirm that repayment capacity is adequate even if some or all of the pending applications have been approved. "
+         "The applicant will be notified of the final decision within 3 to 5 business days."),
     ],
     "education": [
-        "Under Review: Enrollment verification pending — official letter requested from registrar. Co-signer application received; co-signer credit check in progress (score {cs}). Expected turnaround: 5 business days.",
-        "Under Review: Program eligibility review — verifying institution is on approved Title IV list. Applicant credit score {cs}. Cost of attendance breakdown requested. Financial aid award letter review pending.",
+        ("Application Under Review — Enrollment Verification and Co-Signer Credit Review in Progress. "
+         "This education loan application has been received and is currently in active review by the student lending team. "
+         "An official enrollment verification letter has been requested from the institution's Registrar's Office to confirm that the applicant is actively registered in the stated program for the upcoming academic term; this verification is a mandatory prerequisite for any disbursement of education loan funds and typically requires 3 to 5 business days to process. "
+         "The co-signer application has been received and the co-signer credit review is currently in progress; the preliminary credit check has returned a score of {cs}, which is being evaluated against TrustNova's co-signer eligibility criteria. "
+         "Income and employment information provided by the co-signer is also being independently verified. "
+         "The loan officer will notify both the applicant and co-signer of the outcome of the co-signer credit review within two business days. "
+         "A final credit decision will be issued within 5 business days of receipt of all outstanding verification items, including the enrollment confirmation from the Registrar."),
+
+        ("Application Under Review — Institution Eligibility and Cost of Attendance Verification in Progress. "
+         "This education loan application has been received and assigned to the student lending underwriting team. "
+         "An eligibility review is currently being conducted to confirm that the stated educational institution appears on the U.S. Department of Education's Title IV approved school list, which is a required condition for private education loan origination under TrustNova's Student Lending Policy. "
+         "Confirmation of institution eligibility is expected within two business days. "
+         "The applicant's credit profile has been reviewed; the credit score of {cs} is within the assessable range and no material adverse credit events have been identified at this stage of the review. "
+         "The institution has been contacted and asked to provide a formal Cost of Attendance breakdown for the stated program and enrollment period, which is required to confirm that the requested loan amount does not exceed certified educational expenses. "
+         "Additionally, the applicant's financial aid award letter has been requested to assess the role of other funding sources and to determine the appropriate private loan disbursement amount. "
+         "The applicant will be notified of a final decision once all outstanding items have been resolved."),
     ],
     "business": [
-        "Under Review: Business financials under analysis — CPA-prepared statements received for 2 of 3 required years. Revenue ${income:,}/yr (unaudited). Personal credit score {cs}. Site inspection scheduled next week.",
-        "Under Review: SBA pre-qualification in progress. Business plan submitted — reviewed by commercial lending team. Personal credit score {cs}; business credit report ordered. Environmental review for collateral property pending.",
-        "Under Review: Loan committee review scheduled. All documentation received; underwriter completing DSCR analysis. DSCR preliminary at 1.{cs}x — borderline. Additional revenue documentation from applicant requested.",
+        ("Application Under Review — Business Financials Under Analysis; Third Year of Tax Filings Requested. "
+         "This business loan application has been received and assigned to a commercial underwriter for full review. "
+         "CPA-prepared financial statements have been received and reviewed for two of the three required fiscal years; TrustNova's Commercial Lending Policy §4.2 requires three years of financial statements for business loans above the stated threshold, and the underwriter has formally requested the outstanding third year from the applicant's accountant. "
+         "Unaudited revenue figures of ${income:,} annually have been noted in the interim, though these figures will be subject to confirmation upon receipt of the full financial package. "
+         "The guarantor's personal credit score of {cs} has been obtained and is under review alongside the business credit report. "
+         "A site inspection of the primary business location has been scheduled for next week; the site visit is a standard requirement for commercial loans of this type and will be conducted by a member of the commercial lending team. "
+         "The file will be presented to the Credit Committee for a final decision within five business days of receipt of all outstanding documentation."),
+
+        ("Application Under Review — SBA Pre-Qualification and Environmental Review in Progress. "
+         "This SBA 7(a) loan application has been received and is currently progressing through the multi-step pre-qualification and underwriting process applicable to government-guaranteed business lending. "
+         "The business plan has been submitted and has been reviewed by TrustNova's commercial lending team; the plan's financial projections are currently being assessed against current market and industry data to evaluate their reasonableness. "
+         "The guarantor's personal credit score of {cs} has been obtained and confirms eligibility in the preliminary SBA pre-qualification assessment; no prior SBA defaults or unresolved federal delinquencies have been identified. "
+         "A formal business credit report has been ordered through Dun & Bradstreet and is expected to be returned within two business days. "
+         "An environmental review of the subject property proposed as collateral has been initiated, as required for real property collateral under SBA lending guidelines; completion is expected within 10 business days. "
+         "SBA pre-qualification is expected to be submitted within 3 business days of receipt of all outstanding items."),
+
+        ("Application Under Review — DSCR Analysis in Progress; Additional Revenue Documentation Requested. "
+         "This business loan application has been received and is currently in the final stages of underwriting review by TrustNova's commercial lending team. "
+         "All primary documentation — including business tax returns, CPA-prepared financial statements, bank statements, and personal financial disclosures of the guarantor(s) — has been received and verified. "
+         "The underwriter is in the process of completing the Debt Service Coverage Ratio analysis, which is a key determinant of approval eligibility for business term lending. "
+         "A preliminary DSCR calculation of 1.{cs}x has been derived from the submitted financial statements; this figure is at the borderline of TrustNova's required minimum of 1.25x, and the underwriter has determined that additional revenue documentation from the most recent quarter is required to confirm whether the current DSCR calculation is reflective of the business's ongoing operating trend. "
+         "The applicant has been contacted and asked to provide the requested quarterly financials. "
+         "The completed file will be presented to the loan committee for a final credit decision within 3 business days of receipt of the additional documentation."),
     ],
 }
 
