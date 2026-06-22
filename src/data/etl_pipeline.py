@@ -20,6 +20,8 @@ from sqlalchemy import create_engine
 import os
 import uuid
 import random
+from dotenv import load_dotenv
+load_dotenv()
 import hashlib
 import datetime
 
@@ -327,7 +329,7 @@ def run_etl():
     print("\n" + "=" * 60)
     print("ETL complete!")
     print(f"  Tables written: {sum(1 for v in tables.values() if v is not None and not v.empty)}")
-    print(f"  Database: banking.db")
+    print(f"  Database: {db_url[:40]}...")
     print("=" * 60)
     return df
 
