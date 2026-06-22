@@ -63,12 +63,11 @@ type LoanTypeId = (typeof LOAN_TYPES)[number]['id'];
  * 'all' = no status filter.
  */
 const STATUS_FILTERS = [
-  { id: 'all',       label: 'All',               icon: '📋', dbStatus: null,        color: 'gray' },
-  { id: 'pending',   label: 'Received/Pending',   icon: '📥', dbStatus: 'pending',   color: 'blue' },
-  { id: 'approved',  label: 'Approved',            icon: '✅', dbStatus: 'approved',  color: 'green' },
-  { id: 'active',    label: 'Disbursed/Active',    icon: '💸', dbStatus: 'active',    color: 'cyan' },
-  { id: 'rejected',  label: 'Rejected',            icon: '❌', dbStatus: 'rejected',  color: 'red' },
-  { id: 'completed', label: 'Closed/Completed',    icon: '🔒', dbStatus: 'completed', color: 'amber' },
+  { id: 'all',       label: 'All',               icon: '📋', dbStatus: null,       color: 'gray' },
+  { id: 'pending',   label: 'Received/Pending',   icon: '📥', dbStatus: 'pending',  color: 'blue' },
+  { id: 'approved',  label: 'Approved',            icon: '✅', dbStatus: 'active',   color: 'green' },
+  { id: 'rejected',  label: 'Rejected',            icon: '❌', dbStatus: 'rejected', color: 'red' },
+  { id: 'completed', label: 'Closed/Completed',    icon: '🔒', dbStatus: 'closed',   color: 'amber' },
 ] as const;
 
 type StatusId = (typeof STATUS_FILTERS)[number]['id'];
