@@ -110,6 +110,8 @@ def chunk_documents(
         for doc in docs:
             section_docs.extend(_split_into_sections(doc))
         chunks = splitter.split_documents(section_docs)
+        # Drop chunks that contain only a section heading with no body content.
+        chunks = [c for c in chunks if not _HEADING_LINE.match(c.page_content.strip())]
 
         for i, chunk in enumerate(chunks):
             # Enrich metadata
