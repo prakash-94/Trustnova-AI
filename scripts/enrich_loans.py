@@ -29,7 +29,8 @@ from pathlib import Path
 from datetime import date, timedelta
 
 ROOT = Path(__file__).resolve().parent.parent
-SQLITE_PATH = ROOT / "banking.db"
+_candidate = ROOT / "data" / "banking.db"
+SQLITE_PATH = _candidate if _candidate.exists() else ROOT / "banking.db"
 
 PG_URL = os.getenv(
     "DATABASE_URL",
@@ -131,44 +132,243 @@ CLOSED_NOTES = {
 
 REJECTION_REASONS = {
     "auto": [
-        ("dti_high",      "Declined: Debt-to-income ratio {dti}% exceeds maximum allowable 50% for auto loans. Combined existing monthly obligations (${obligations:,}) leave insufficient capacity for the requested additional payment of ${payment:,}/mo. Recommend reducing existing debt before reapplying."),
-        ("credit_score",  "Declined: Credit score {cs} falls below minimum threshold of 620 for standard auto lending. Two or more accounts currently 30+ days past due. Application may be reconsidered after 6 months of on-time payments and score improvement."),
-        ("no_income",     "Declined: Income verification failed. Provided pay stubs do not match employer records obtained during verification call. Self-employed income claimed — two years of tax returns required; only one year submitted. Application incomplete."),
-        ("ltv_high",      "Declined: Requested loan amount ${amount:,} exceeds 120% of vehicle's NADA retail value (${nada:,}). Bank policy limits auto LTV to 110% for vehicles over 5 years old. Customer may resolve with larger down payment of ${shortfall:,} or newer vehicle."),
-        ("employment",    "Declined: Applicant employed at current position for only {months} months; minimum 12 months required. Previous employment gap of {gap} months noted on application. Stable employment history not established."),
-        ("thin_file",     "Declined: Insufficient credit history — only {tradelines} open trade lines, all opened within past 11 months. Minimum 2 years of established credit required. Applicant encouraged to build credit through a secured card before reapplying."),
+        ("dti_high",
+         "Application Declined — Debt-to-Income Ratio Exceeds Policy Threshold. "
+         "Following a thorough review of this application, the Credit Committee has determined that the applicant's current debt-to-income ratio of {dti}% materially exceeds the maximum allowable limit of 50% established under TrustNova Auto Lending Policy §3.2. "
+         "The applicant's verified gross monthly income supports a maximum debt obligation of {dti}% of take-home pay; however, existing recurring obligations totalling ${obligations:,}/month combined with the proposed additional payment of ${payment:,}/month result in a combined ratio that falls outside acceptable risk parameters. "
+         "The Credit Committee recommends the applicant work to reduce outstanding revolving and installment balances to bring the DTI below 45% prior to reapplication. "
+         "A formal review may be requested after a minimum of six months of documented debt reduction. TrustNova remains committed to supporting this applicant's financing goals and encourages reapplication once the qualifying threshold has been met."),
+
+        ("credit_score",
+         "Application Declined — Credit Profile Does Not Meet Minimum Underwriting Standards. "
+         "After careful evaluation of the applicant's credit report and supporting documentation, the Credit Committee has determined that the current credit score of {cs} falls below the minimum required threshold of 620 for standard auto loan origination. "
+         "The file reflects two or more trade lines with delinquency status of 30 or more days past due within the most recent 12-month review period, indicating elevated repayment risk. "
+         "Additionally, a pattern of late payment behaviour suggests that the current financial position may not support the proposed additional debt obligation at this time. "
+         "The applicant is encouraged to bring all delinquent accounts current, maintain a consistent on-time payment record for a minimum of six consecutive months, and address any outstanding collection items. "
+         "Upon demonstrating improvement in credit profile metrics, the applicant is welcome to submit a new application for reconsideration."),
+
+        ("no_income",
+         "Application Declined — Income Verification Could Not Be Completed. "
+         "The Credit Committee has concluded its review and is unable to approve this application due to failure of the income verification process, a required step under TrustNova Lending Policy §5.1. "
+         "The pay stubs provided were cross-referenced with employment records obtained through our third-party verification service and were found to contain material discrepancies that could not be resolved through the standard verification protocol. "
+         "Furthermore, the applicant has declared self-employment income as the primary income source; however, only one year of federal tax returns has been submitted, whereas two full years are required to establish a verifiable income baseline for self-employed borrowers. "
+         "The application has been marked incomplete and placed on hold. The applicant may resubmit with two years of signed tax returns, a current profit and loss statement, and three months of business bank statements."),
+
+        ("ltv_high",
+         "Application Declined — Loan-to-Value Ratio Exceeds Permissible Limit. "
+         "Following underwriting review, the Credit Committee has determined that the requested loan amount of ${amount:,} exceeds the bank's allowable loan-to-value threshold for the collateral vehicle. "
+         "An independent appraisal has placed the current NADA retail value of the subject vehicle at ${nada:,}, resulting in a loan-to-value ratio that surpasses the 110% maximum permitted under TrustNova Auto Lending Guidelines for vehicles classified as more than five model years old. "
+         "This policy exists to ensure that the collateral adequately supports the loan balance in the event of repossession, protecting both the institution and the borrower from negative equity exposure. "
+         "To proceed, the applicant may consider making an additional down payment of at least ${shortfall:,} to bring the LTV within policy, or alternatively, selecting a newer vehicle whose appraisal value more closely aligns with the financing requested."),
+
+        ("employment",
+         "Application Declined — Insufficient Employment History at Current Position. "
+         "After reviewing the application file in its entirety, the Credit Committee has determined that the applicant does not currently meet TrustNova's employment stability requirements for auto loan origination. "
+         "Our standard underwriting guidelines require that applicants demonstrate a minimum of 12 consecutive months of employment with their current employer prior to loan origination. "
+         "The applicant has been employed in the current role for only {months} months, which falls below this threshold. "
+         "Furthermore, the file reflects a prior employment gap of {gap} months that was not adequately explained or documented, raising additional concerns regarding income continuity. "
+         "Lenders rely on demonstrated employment stability as a key indicator of an applicant's ability to sustain regular loan payments over the full term. "
+         "The applicant is encouraged to reapply after reaching the 12-month employment milestone and is advised to maintain uninterrupted employment until that time."),
+
+        ("thin_file",
+         "Application Declined — Insufficient Credit History to Support Underwriting Decision. "
+         "Following a thorough review of the applicant's credit profile, the Credit Committee has determined that there is insufficient credit history to make a lending determination consistent with TrustNova's standard underwriting practices. "
+         "The applicant's credit file reflects only {tradelines} open trade line(s), all of which were established within the past eleven months. "
+         "TrustNova's auto loan underwriting guidelines require a minimum of two years of established credit history across at least two distinct trade lines to evaluate repayment behaviour over a meaningful period. "
+         "A thin credit file does not necessarily reflect poor creditworthiness; however, it limits the institution's ability to assess risk with the confidence required for unsecured or collateral-backed lending. "
+         "The applicant is advised to establish additional credit accounts — such as a secured credit card or credit-builder loan — maintain zero delinquencies, and reapply after 12–18 months of demonstrated positive payment history."),
     ],
     "home": [
-        ("dti_high",      "Declined: Front-end DTI {fe_dti}% and back-end DTI {dti}% both exceed conforming loan limits (28%/43%). Monthly housing payment alone at ${housing:,} exceeds 28% of gross monthly income of ${income:,}. Application denied per underwriting guidelines."),
-        ("appraisal",     "Declined: Property appraisal returned at ${appraisal:,} — ${shortfall:,} below the contract price of ${price:,}. Seller declined to reduce price. Applicant unable to cover the appraisal gap. Loan cannot proceed at requested LTV."),
-        ("credit_score",  "Declined: Credit score {cs} below 620 minimum for conventional mortgage. Chapter 7 bankruptcy discharged {months} months ago; 48-month seasoning required post-discharge. Applicant may reapply after {reapply_date}."),
-        ("employment",    "Declined: Self-employment income unverifiable for required 2-year period. Only 14 months of Schedule C history provided. Frequent fluctuation in net income (${low:,}–${high:,}) does not support stable qualifying income calculation."),
-        ("title_issue",   "Declined: Title search revealed outstanding mechanics lien of ${lien:,} on subject property that seller has not resolved. Additionally, boundary dispute with adjacent parcel is unresolved. Loan cannot close with title in current condition."),
-        ("assets",        "Declined: Insufficient verified assets for closing. Required funds to close: ${required:,}. Verified liquid assets: ${available:,}. Shortfall of ${shortfall:,}. Gift funds provided but gift letter not compliant with FNMA requirements."),
-        ("fraud_flag",    "Declined: Application flagged for further review — discrepancies found between stated income on application (${stated:,}) and income reflected on tax transcripts (${actual:,}). Application declined pending resolution; referred to compliance team."),
+        ("dti_high",
+         "Application Declined — Debt-to-Income Ratios Exceed Conforming Loan Limits. "
+         "After a comprehensive underwriting review conducted in accordance with Fannie Mae conforming loan guidelines and TrustNova Mortgage Policy, the Credit Committee has determined that this application does not meet the required debt-to-income standards. "
+         "The applicant's front-end housing ratio of {fe_dti}% and back-end total obligation ratio of {dti}% both exceed the permissible conforming limits of 28% and 43% respectively. "
+         "The proposed monthly principal, interest, taxes, and insurance payment of ${housing:,} alone consumes an unacceptably high proportion of the applicant's verified gross monthly income of ${income:,}. "
+         "These ratios indicate that adding a mortgage obligation in the requested amount would create a material financial strain and significantly elevate the risk of payment default. "
+         "The applicant may improve eligibility by paying down existing debt obligations, increasing verified income, or applying for a lower loan amount that brings DTI ratios within conforming parameters."),
+
+        ("appraisal",
+         "Application Declined — Independent Appraisal Does Not Support Requested Loan Amount. "
+         "Following the completion of an independent appraisal of the subject property conducted by a licensed, third-party appraiser engaged by TrustNova, the Credit Committee has determined that the loan cannot be approved as submitted. "
+         "The appraisal has established a fair market value of ${appraisal:,} for the subject property, which is ${shortfall:,} below the agreed purchase price of ${price:,}. "
+         "The resulting loan-to-value ratio at the requested amount would exceed TrustNova's maximum LTV threshold for this product type. "
+         "An attempt was made to negotiate a price reduction with the seller; however, the seller has declined to adjust the contract price. "
+         "As the applicant has indicated they are unable to fund the appraisal gap with personal funds, the transaction cannot proceed on its current terms. "
+         "The applicant is advised to renegotiate the purchase price, identify alternative properties, or source additional equity funds to bridge the identified gap before reapplying."),
+
+        ("credit_score",
+         "Application Declined — Credit Profile Does Not Satisfy Conventional Mortgage Requirements. "
+         "Following a complete underwriting review of the mortgage application and supporting documentation, the Credit Committee has determined that the applicant's current credit profile does not meet the minimum standards established under TrustNova Mortgage Underwriting Guidelines and conventional loan requirements. "
+         "The applicant's credit score of {cs} falls below the 620-point minimum required for conventional mortgage origination. "
+         "Additionally, a Chapter 7 bankruptcy was discharged {months} months ago; TrustNova's mortgage policy mandates a minimum post-discharge seasoning period of 48 months before a conventional mortgage application may be considered. "
+         "This seasoning requirement is designed to ensure that applicants have had adequate time to rebuild their credit profile and demonstrate sustained financial responsibility following a significant credit event. "
+         "The applicant is encouraged to focus on credit rehabilitation during the intervening period and is eligible to reapply as early as {reapply_date}, provided all other eligibility criteria are met at that time."),
+
+        ("employment",
+         "Application Declined — Self-Employment Income Does Not Meet Verification Requirements. "
+         "The Credit Committee has concluded its review of this mortgage application and is unable to approve the loan due to inability to establish verifiable qualifying income, as required under TrustNova Mortgage Policy §6.3 for self-employed borrowers. "
+         "The applicant has declared self-employment as the primary income source; however, federal tax documentation covering only 14 months of business operation has been provided. "
+         "TrustNova's underwriting guidelines require a minimum of two full years of self-employment tax history to calculate a stable, annualised qualifying income baseline. "
+         "Furthermore, the net income figures reported across the available period exhibit significant fluctuation — ranging from ${low:,} to ${high:,} — making it impractical to establish a consistent qualifying income without the full two-year documentation set. "
+         "The applicant is advised to maintain detailed financial records, file complete tax returns for all applicable years, and reapply once the two-year documentation threshold has been satisfied."),
+
+        ("title_issue",
+         "Application Declined — Subject Property Title Is Not in Insurable Condition. "
+         "Following completion of the title search and review of supporting property documentation, the Credit Committee has determined that the subject property's title is not in a condition that satisfies TrustNova's clear title requirement for mortgage origination. "
+         "The title search has revealed an outstanding mechanics lien of ${lien:,} recorded against the property that the current seller has not resolved or arranged to discharge at settlement. "
+         "In addition, a boundary dispute with the adjacent parcel has been identified and remains unresolved at the county level, creating a cloud on title that a title insurance underwriter has declined to insure at standard rates. "
+         "TrustNova policy requires that all liens be discharged and all title defects be resolved prior to loan closing to protect the institution's first-lien position. "
+         "The applicant is advised to work with the seller and their respective legal counsel to resolve all outstanding title matters before this application can be reconsidered for approval."),
+
+        ("assets",
+         "Application Declined — Verified Liquid Assets Insufficient to Cover Required Closing Funds. "
+         "After a detailed review of the applicant's asset documentation, including bank statements, investment account records, and submitted gift fund documentation, the Credit Committee has determined that verified liquid assets are insufficient to satisfy the funds-to-close requirement for this mortgage transaction. "
+         "The total verified funds to close, including down payment, closing costs, prepaid items, and required post-closing reserves, amount to ${required:,}. "
+         "The applicant's verified liquid asset balance stands at ${available:,}, creating an uncovered shortfall of ${shortfall:,}. "
+         "While gift funds were submitted to partially address this shortfall, the accompanying gift letter does not satisfy the FNMA documentation requirements — specifically, it lacks the donor's signed certification that no repayment is expected — and therefore cannot be counted as verified funds under agency guidelines. "
+         "The applicant must either source additional verified liquid assets or provide a fully compliant gift letter before this application can be advanced."),
+
+        ("fraud_flag",
+         "Application Declined — Material Income Discrepancy Identified During Underwriting Review. "
+         "During the course of underwriting review, the Credit Committee identified a significant discrepancy between income figures declared on the loan application and those reflected in tax transcripts obtained directly from the Internal Revenue Service via IRS Form 4506-C. "
+         "The applicant's stated annual income on the application is ${stated:,}; however, the IRS transcript reports taxable income of ${actual:,} for the most recent filed tax year — a material variance that could not be reconciled through the standard documentation review process. "
+         "In accordance with TrustNova's fraud prevention protocol and Anti-Money Laundering Policy, this application has been escalated to the Compliance and Fraud Review Team for further investigation. "
+         "The applicant has been formally notified of this escalation. No adverse action has been taken pending the outcome of the internal review. "
+         "The applicant is advised to cooperate fully with the Compliance Team and to provide any requested documentation to support income verification."),
     ],
     "personal": [
-        ("dti_high",      "Declined: Debt-to-income ratio {dti}% exceeds maximum 45% for unsecured personal loans. Current monthly obligations: ${obligations:,}. Requested new payment: ${payment:,}. Combined DTI would reach {combined_dti}%. No collateral offered to mitigate risk."),
-        ("credit_score",  "Declined: Credit score {cs}. Three accounts currently in collections (${collections:,} combined balance). One charge-off within past 24 months. Pattern indicates elevated default risk. Account must be in good standing for minimum 12 months before reapplication."),
-        ("purpose",       "Declined: Loan purpose (gambling debt repayment) is an ineligible use under personal lending policy section 4.2. Policy prohibits loan proceeds designated for settling gambling obligations, payday loans, or other high-risk consumer debts."),
-        ("stacking",      "Declined: Application stacking detected — applicant has applied for personal loans at {other_lenders} other financial institutions within the past 30 days, with 2 approvals totaling ${other_loans:,} not yet reflected in credit report. Combined with requested amount, total unsecured exposure exceeds income-based limit."),
-        ("employment",    "Declined: Applicant terminated from employment {months} months ago; current income listed as 'self-employed' with no supporting documentation. Without verifiable income, repayment capacity cannot be established. May reapply upon 6 months of verifiable employment."),
-        ("thin_file",     "Declined: Insufficient credit history to assess creditworthiness for unsecured loan. No revolving credit established; only {tradelines} installment account(s) with combined history of {months} months. Secured personal loan or credit-builder product recommended instead."),
+        ("dti_high",
+         "Application Declined — Total Debt Obligation Exceeds Unsecured Lending Threshold. "
+         "After a thorough review of the applicant's financial profile, the Credit Committee has determined that this personal loan application cannot be approved based on the applicant's current debt-to-income position. "
+         "The applicant's verified monthly obligations currently total ${obligations:,}, and the proposed loan would add an estimated payment of ${payment:,}/month, bringing the combined debt-to-income ratio to approximately {combined_dti}%. "
+         "TrustNova's Unsecured Personal Lending Policy §2.4 establishes a maximum allowable DTI of 45% for unsecured credit products. "
+         "Without the backing of collateral, the institution bears the full credit risk of the obligation, which makes adherence to this threshold essential to sound risk management. "
+         "The applicant is advised to reduce outstanding balances on existing debt obligations before reapplying. "
+         "Alternatively, the applicant may wish to explore a smaller loan amount that, combined with existing obligations, would bring the total DTI within the approved range."),
+
+        ("credit_score",
+         "Application Declined — Credit Profile Reflects Elevated Repayment Risk. "
+         "Following a complete review of the applicant's credit report and financial documentation, the Credit Committee has determined that the applicant's current credit profile does not meet the minimum standards required for unsecured personal loan origination at TrustNova. "
+         "The applicant's credit score of {cs} reflects a history of adverse credit events, including three accounts currently placed with collection agencies carrying a combined outstanding balance of ${collections:,}, and one charged-off account that was written off within the past 24 months. "
+         "These indicators collectively represent a pattern of elevated default risk that is inconsistent with TrustNova's credit standards for unsecured lending products. "
+         "The Credit Committee recommends that the applicant prioritise resolution of all collection accounts, negotiate settlements or payment arrangements where possible, and maintain a spotless payment record for a sustained period of no less than 12 consecutive months prior to reapplication. "
+         "We remain available to assist the applicant in identifying credit improvement resources."),
+
+        ("stacking",
+         "Application Declined — Multiple Concurrent Loan Applications Identified; Aggregated Unsecured Exposure Exceeds Permissible Limit. "
+         "During the underwriting review process, the Credit Committee identified that the applicant has submitted loan applications to {other_lenders} additional financial institutions within the preceding 30-day period, with approved commitments totalling ${other_loans:,} not yet reflected in the applicant's current credit report. "
+         "This practice, commonly referred to as application stacking, creates a risk profile that is materially different from what the credit report alone would suggest. "
+         "When the aggregate of approved pending commitments and the current requested amount are combined, the applicant's projected total unsecured exposure exceeds the income-based borrowing limit established under TrustNova Unsecured Lending Policy. "
+         "The Credit Committee cannot approve additional unsecured credit under these circumstances, as doing so would expose the applicant to a debt burden that poses a significant risk of financial hardship. "
+         "The applicant is encouraged to allow all newly originated obligations to be reflected on the credit report and to demonstrate repayment capacity before seeking additional unsecured credit."),
+
+        ("employment",
+         "Application Declined — Verifiable Income Cannot Be Established. "
+         "Following a complete review of the application and all submitted documentation, the Credit Committee has determined that this personal loan application cannot be approved due to an inability to establish verifiable, stable income sufficient to support the requested debt obligation. "
+         "The applicant's employment records indicate termination from their most recent salaried position {months} months prior to the date of this application. "
+         "The application lists the current income source as self-employment; however, no supporting documentation — including tax filings, business bank statements, or client contracts — has been provided to substantiate self-employment income at the level required to qualify for the requested loan amount. "
+         "TrustNova's personal lending guidelines require that all income used for qualification be fully documented and verifiable. "
+         "The applicant is encouraged to reapply after accumulating a minimum of six consecutive months of verifiable employment or documented self-employment income supported by the required documentation package."),
+
+        ("thin_file",
+         "Application Declined — Credit History Insufficient to Support Unsecured Lending Decision. "
+         "After reviewing the applicant's credit profile and accompanying financial documentation, the Credit Committee has determined that the applicant does not possess the established credit history required to qualify for an unsecured personal loan under TrustNova's standard underwriting criteria. "
+         "The applicant's credit file contains only {tradelines} active installment account(s), with a combined credit history spanning {months} months, and no revolving credit accounts of any kind. "
+         "An unsecured personal loan represents a significant extension of credit without the protection of collateral, and as such, it requires a demonstrated credit track record across multiple account types to allow for a reliable risk assessment. "
+         "The Credit Committee is unable to make a lending determination based solely on the available limited credit data. "
+         "The applicant is advised to consider beginning with a secured credit product — such as a credit-builder loan or a secured credit card — to establish a broader and longer credit history, and to reapply once a more robust credit profile can be presented."),
     ],
     "education": [
-        ("cosigner",      "Declined: No established credit history — applicant's credit file is less than 12 months old. Co-signer required per student loan policy. Application submitted without co-signer. Applicant may reapply with a creditworthy co-signer (minimum credit score 660)."),
-        ("enrollment",    "Declined: Institution not on approved Title IV eligible school list. Loan proceeds cannot be disbursed to unapproved educational institutions under federal guidelines. Applicant encouraged to confirm school eligibility and reapply for an approved program."),
-        ("credit_score",  "Declined: Co-signer credit score {cs} below minimum 620 required for education loans without federal backing. Co-signer has two accounts 60+ days delinquent in past 24 months. A different co-signer or federal loan alternative is recommended."),
-        ("program",       "Declined: Requested loan amount ${amount:,} exceeds cost of attendance for the stated program (${coa:,}) as certified by the institution. Loan amount capped at certified cost; applicant declined full requested amount. Partial funding of ${coa:,} available upon resubmission."),
-        ("no_enrollment", "Declined: Enrollment verification could not be confirmed. School's registrar office reports applicant is not enrolled in the stated program for the upcoming term. Loan disbursement requires verified active enrollment."),
+        ("cosigner",
+         "Application Declined — Creditworthy Co-Signer Required; Application Submitted Without One. "
+         "After reviewing this education loan application in accordance with TrustNova Student Lending Policy, the Credit Committee has determined that the application cannot be approved as submitted. "
+         "The primary applicant has a credit file that is less than 12 months old, with no established history of repayment across any trade lines. "
+         "While a newly established credit file does not preclude eligibility, TrustNova's student loan guidelines require that all applicants with limited credit history provide a creditworthy co-signer — a responsible adult with a credit score of at least 660 and a demonstrated history of on-time payments — to co-sign the obligation and provide secondary repayment assurance. "
+         "This application was submitted without a co-signer, and therefore does not satisfy the minimum eligibility requirements for approval. "
+         "The applicant is encouraged to identify a suitable co-signer and resubmit the application, or to explore federal student loan options through FAFSA, which do not require a credit check or co-signer for most borrowers."),
+
+        ("enrollment",
+         "Application Declined — Educational Institution Not Listed on Approved Title IV Eligible School Registry. "
+         "Following a review of this education loan application, the Credit Committee has determined that the named institution does not appear on the U.S. Department of Education's list of Title IV-approved schools, which is a mandatory eligibility requirement under TrustNova's Student Lending Guidelines and applicable federal consumer lending regulations. "
+         "TrustNova's education loan products are designed to support attendance at accredited, Title IV-eligible institutions. "
+         "This policy exists to protect borrowers by ensuring that loan proceeds are directed toward programs that meet established quality and accreditation standards, and that students retain access to federal student aid protections and consumer rights. "
+         "The applicant is advised to verify the accreditation and Title IV eligibility status of the intended institution directly with the school's financial aid office or through the official U.S. Department of Education database. "
+         "If the institution is found to be eligible, the applicant is welcome to resubmit the application with supporting accreditation documentation."),
+
+        ("credit_score",
+         "Application Declined — Co-Signer Credit Profile Does Not Meet Minimum Eligibility Requirements. "
+         "Following a credit review of both the primary applicant and the co-signer named on this education loan application, the Credit Committee has determined that the co-signer's credit profile does not satisfy the minimum standards required under TrustNova Student Lending Policy. "
+         "The co-signer's current credit score of {cs} falls below the minimum threshold of 620, which is required to provide adequate repayment assurance for a private education loan without federal backing. "
+         "In addition, the co-signer's credit report reflects two accounts with delinquency of 60 or more days past due within the most recent 24-month period, which indicates an elevated risk of future payment default. "
+         "A co-signer is expected to serve as a reliable secondary source of repayment and must meet creditworthiness standards independently. "
+         "The applicant is advised to identify an alternative co-signer who meets the minimum credit requirements, or to explore federal loan options through FAFSA, which may be available regardless of credit history."),
+
+        ("program",
+         "Application Declined — Requested Loan Amount Exceeds Certified Cost of Attendance. "
+         "After completing a review of this education loan application and cross-referencing the requested amount against the Cost of Attendance certification provided by the institution, the Credit Committee has determined that the requested loan amount of ${amount:,} exceeds the certified Cost of Attendance for the stated academic program, which has been officially documented by the institution at ${coa:,} for the applicable enrollment period. "
+         "TrustNova's education lending policy strictly limits disbursements to the certified Cost of Attendance to prevent over-borrowing and to comply with federal and state regulations governing the use of education loan proceeds. "
+         "Disbursing funds beyond certified educational expenses could expose the applicant to unfavourable tax treatment and would be inconsistent with responsible lending practices. "
+         "The applicant may resubmit a revised application requesting a loan amount not to exceed ${coa:,}. "
+         "This institution is prepared to process and fund a compliant request promptly upon receipt of the corrected application."),
+
+        ("no_enrollment",
+         "Application Declined — Active Enrollment Status Could Not Be Confirmed for the Stated Academic Term. "
+         "Following receipt and review of this education loan application, the Credit Committee initiated enrollment verification through the institution's Registrar's Office as required under TrustNova's disbursement eligibility procedures. "
+         "The Registrar has formally confirmed that the applicant is not registered as an active student in the program stated on the loan application for the upcoming academic term. "
+         "Disbursement of education loan proceeds is contingent upon verified, active enrollment in an eligible program at an approved institution, as required by both TrustNova's internal lending policy and applicable consumer lending regulations. "
+         "Funding a loan in the absence of confirmed enrollment would violate the stated purpose of the loan and could expose the applicant to default risk in the event the educational program is not pursued. "
+         "The applicant is advised to confirm their enrollment status with the institution's Registrar and, once active enrollment is established, resubmit the application with an updated enrollment verification letter."),
     ],
     "business": [
-        ("operating_history", "Declined: Business has been operating for {months} months; minimum 24-month operating history required for term loans. Revenue trajectory is positive but unverifiable without 2-year tax history. Applicant may reapply after {reapply_date}. Microenterprise lending program suggested as alternative."),
-        ("dscr",          "Declined: Debt service coverage ratio calculated at {dscr:.2f}x — below the required minimum of 1.25x. Business net income insufficient to service the proposed new debt obligation alongside existing commitments. Revenue growth needed before approval is feasible."),
-        ("credit_score",  "Declined: Business owner personal credit score {cs}; two tax liens filed in past 5 years (${lien:,} combined) — must be fully satisfied before business credit can be extended. Business credit score (D&B) insufficient at {dbs} (required 50+)."),
-        ("collateral",    "Declined: Insufficient collateral to secure the requested loan amount. Business assets (equipment + A/R) appraised at ${assets:,} — collateral coverage ratio 0.{coverage}x below required 1.0x. Real property offered was found to have an existing senior lien leaving no available equity."),
-        ("cash_flow",     "Declined: Analysis of 12-month bank statements shows average monthly net cash flow of ${flow:,} — inadequate to support ${payment:,}/mo loan payment. Cash flow is also highly seasonal with {months}-month negative periods annually. Loan size must be reduced or seasonal line of credit explored instead."),
-        ("fraud_flag",    "Declined: Tax return income (${tax:,}) inconsistent with stated revenue (${stated:,}) — unexplained {gap}% gap. Additionally, business address listed on application does not match Secretary of State registration. Application referred to fraud review team; applicant notified."),
+        ("operating_history",
+         "Application Declined — Business Does Not Meet Minimum Operating History Requirement. "
+         "Following a detailed review of this business loan application, the Credit Committee has determined that the applicant business does not satisfy TrustNova's minimum operating history threshold for commercial term loan origination. "
+         "The business has been in operation for {months} months; TrustNova's Commercial Lending Policy §4.1 requires a minimum of 24 consecutive months of active business operations, supported by at least two full fiscal years of tax filings, before a term loan may be originated. "
+         "This requirement reflects the elevated risk profile associated with early-stage businesses, which statistically demonstrate significantly higher failure rates during their first two years of operation than established enterprises. "
+         "While the revenue trajectory presented in the business plan is encouraging, the absence of sufficient historical financial data makes it impractical to substantiate projected cash flows with the level of confidence required for prudent credit underwriting. "
+         "The applicant is encouraged to reapply after reaching the 24-month milestone and is advised to maintain meticulous financial records in the interim. "
+         "In the meantime, the applicant may wish to explore TrustNova's Microenterprise Lending Program, which offers tailored financing solutions for qualifying early-stage businesses."),
+
+        ("dscr",
+         "Application Declined — Debt Service Coverage Ratio Falls Below Minimum Required Threshold. "
+         "After a comprehensive analysis of the business's financial statements, tax returns, and 12-month bank statement history, the Credit Committee has determined that this business loan application cannot be approved based on an insufficient Debt Service Coverage Ratio. "
+         "The DSCR has been calculated at {dscr:.2f}x, which falls below TrustNova's required minimum of 1.25x for commercial term loan origination. "
+         "The DSCR measures the degree to which a business's net operating income exceeds its total debt service obligations — a ratio below 1.00x indicates that the business generates less income than is required to service its existing debt, while the required 1.25x minimum provides the institution with a 25% margin of safety against income variability. "
+         "At the current ratio, the addition of the proposed loan obligation would expose the business to a meaningful risk of payment default in the event of any revenue shortfall, seasonal downturn, or unexpected operating expense. "
+         "The Credit Committee recommends that the applicant focus on revenue growth and operating expense reduction initiatives to improve net income before reapplying for term financing."),
+
+        ("credit_score",
+         "Application Declined — Adverse Personal and Business Credit History; Outstanding Tax Liens Remain Unresolved. "
+         "Following a review of both the business credit profile and the personal credit history of the business owner(s), the Credit Committee has determined that this application does not meet TrustNova's creditworthiness standards for commercial lending. "
+         "The guarantor's personal credit score of {cs} reflects a history of adverse credit events, including two federal tax liens filed within the past five years carrying a combined outstanding balance of ${lien:,}. "
+         "TrustNova's commercial lending policy requires that all federal and state tax liens be fully satisfied and released prior to origination of any business credit facility, as unresolved tax liens take priority over the institution's lien position and significantly impair our ability to collect in the event of default. "
+         "In addition, the business's Dun & Bradstreet Paydex score is insufficient to qualify under current risk standards. "
+         "The applicant is advised to arrange full payment or release of all outstanding tax liens and to work with the business's trade creditors to improve the business credit rating before reapplying."),
+
+        ("collateral",
+         "Application Declined — Collateral Coverage Is Inadequate to Secure the Requested Loan Amount. "
+         "After conducting a thorough assessment of the assets proposed as collateral for this business loan, the Credit Committee has determined that the collateral package does not provide sufficient security to support the requested financing amount. "
+         "An appraisal of the business's tangible assets — including equipment, inventory, and accounts receivable — has established a combined liquidation value of ${assets:,}. "
+         "TrustNova's Commercial Lending Policy requires a minimum collateral coverage ratio of 1.0x for secured business term loans, meaning that the liquidation value of pledged assets must fully cover the outstanding loan balance. "
+         "At the appraised value, the current collateral package supports only a fraction of the requested amount, leaving a meaningful unsecured exposure that the Credit Committee cannot accept under present risk parameters. "
+         "The real property initially offered as additional collateral was found to carry an existing first-priority lien in favour of another creditor, leaving no unencumbered equity available to pledge. "
+         "The applicant is advised to identify additional unencumbered collateral or reduce the requested loan amount to align with available collateral value."),
+
+        ("cash_flow",
+         "Application Declined — Business Cash Flow Is Insufficient to Service the Proposed Debt Obligation. "
+         "Following a detailed analysis of 12 months of business bank statements and the most recently filed business tax returns, the Credit Committee has determined that the business's current cash flow position does not support the addition of the proposed loan payment obligation. "
+         "The analysis reveals an average monthly net cash inflow of ${flow:,} after operating expenses, which is materially below the estimated monthly debt service payment of ${payment:,} required under the proposed loan structure. "
+         "Furthermore, the business's cash flow profile exhibits pronounced seasonal variability, with {months} consecutive months per year during which net cash flow is negative — periods during which the business would be reliant on cash reserves or credit facilities to meet basic operating and debt service obligations. "
+         "Originating additional term debt under these conditions would expose the business to a significant and foreseeable risk of payment default. "
+         "The Credit Committee recommends that the applicant consider a reduced loan amount, explore a seasonal revolving line of credit product better suited to the business's cash flow pattern, or reapply after demonstrating sustained improvement in monthly net cash flow metrics."),
+
+        ("fraud_flag",
+         "Application Declined — Material Discrepancy Identified Between Stated and Verified Financial Information; Compliance Review Initiated. "
+         "During the course of underwriting review, the Credit Committee identified a significant and unexplained discrepancy between the financial information declared on the loan application and data obtained through independent third-party verification sources. "
+         "Specifically, the revenue figures stated on the application exceed the income reported on the business's most recent federal tax filings by a material margin, and the discrepancy could not be reconciled through the standard documentation review process. "
+         "In addition, the business address listed on the loan application does not correspond to the address of record filed with the applicable Secretary of State office, raising concerns regarding the accuracy of the application's representations. "
+         "Pursuant to TrustNova's Fraud Prevention and Bank Secrecy Act compliance obligations, this application has been escalated to the Internal Compliance and Fraud Risk Management Team for formal review. "
+         "The applicant has been notified of this escalation and is obligated to cooperate fully with all information requests from the Compliance Team. No further credit decisions will be made on this file pending the outcome of the review."),
     ],
 }
 
