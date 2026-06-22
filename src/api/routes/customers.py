@@ -69,6 +69,7 @@ class NewCustomerRequest(BaseModel):
     last_name: str
     email: str
     phone: Optional[str] = None
+    date_of_birth: Optional[str] = None
     credit_score: Optional[int] = 650
     annual_income: Optional[float] = 50000.0
     segment: Optional[str] = "retail"
@@ -126,9 +127,10 @@ async def create_customer(
 
         # Optional columns — only include if the column exists
         optional = [
-            ("phone",         body.phone,                     ":phone"),
-            ("address_city",  body.address_city,              ":city"),
-            ("address_state", body.address_state,             ":state"),
+            ("phone",         body.phone,          ":phone"),
+            ("date_of_birth", body.date_of_birth,  ":dob"),
+            ("address_city",  body.address_city,   ":city"),
+            ("address_state", body.address_state,  ":state"),
         ]
         for col, val, placeholder in optional:
             if col in existing_cols:

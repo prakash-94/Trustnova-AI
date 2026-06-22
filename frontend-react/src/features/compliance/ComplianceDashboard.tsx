@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react';
+﻿import { useState } from 'react';
 import { motion } from 'framer-motion';
 import GlassCard from '@/components/common/GlassCard';
 import Badge from '@/components/common/Badge';
@@ -31,16 +31,16 @@ const TRAINING = [
 
 // Synthetic complaint data derived from complaints.csv
 const COMPLAINTS = [
-  { id: 'CPL-001', complaint_id: 'bdd640fb-066', customer_id: 'C-bdd640fb', raised_by: 'Customer',   date: '2025-08-27', category: 'Product Issues',    description: 'Auto-pay withdrew mortgage payment twice ($1,087)', resolution: 'Bonus of $750 credited. System processing error fixed.', status: 'Resolved',    sentiment: -0.61 },
-  { id: 'CPL-002', complaint_id: 'bc8960a9-23b', customer_id: 'C-bc8960a9', raised_by: 'Customer',   date: '2025-06-21', category: 'Fees',              description: 'Overdraft fee of $45.03 for a $24.34 transaction',   resolution: 'All foreign transaction fees for 3 months reversed.', status: 'Resolved',    sentiment: -0.42 },
-  { id: 'CPL-003', complaint_id: 'a65ed389-b74', customer_id: 'C-a65ed389', raised_by: 'Customer',   date: '2026-02-09', category: 'Fraud Handling',    description: '3 weeks no provisional credit after fraud report',  resolution: 'Case reopened. Internal fraud review team assigned.',  status: 'In Review',   sentiment: -0.88 },
-  { id: 'CPL-004', complaint_id: 'a9488d99-0bb', customer_id: 'C-a9488d99', raised_by: 'Customer',   date: '2025-08-09', category: 'Fraud Handling',    description: 'Fraud case closed without authorization by customer', resolution: 'Provisional credit issued. Direct case manager assigned.', status: 'Resolved', sentiment: -0.81 },
-  { id: 'CPL-005', complaint_id: '07a0ca6e-082', customer_id: 'C-07a0ca6e', raised_by: 'Customer',   date: '2025-06-18', category: 'Account Access',    description: 'Account balance wrong by $3,073 after system update', resolution: 'Statements recovered. Portal access restored.', status: 'Resolved',           sentiment: -0.66 },
-  { id: 'CPL-006', complaint_id: '9a1de644-815', customer_id: 'C-9a1de644', raised_by: 'Customer',   date: '2025-05-23', category: 'Service Quality',   description: 'Financial advisor missed scheduled appointment',       resolution: 'Direct support line provided. $25 credit applied.',   status: 'Resolved',    sentiment: -0.72 },
-  { id: 'CPL-007', complaint_id: '93cd59bf-5c9', customer_id: 'C-93cd59bf', raised_by: 'Customer',   date: '2025-07-26', category: 'Fraud Handling',    description: 'Credit card opened in customer name fraudulently',    resolution: 'Case reopened. Investigation team assigned.',          status: 'Open',        sentiment: -0.87 },
-  { id: 'CPL-008', complaint_id: '146d3f31-fc3', customer_id: 'C-146d3f31', raised_by: 'Customer',   date: '2026-04-10', category: 'Product Issues',    description: 'Auto-pay withdrew mortgage twice ($4,224 taken)',     resolution: 'Duplicate payment reversed same-day.',                status: 'Resolved',    sentiment: -0.54 },
-  { id: 'CPL-009', complaint_id: '6c307511-b2b', customer_id: 'C-6c307511', raised_by: 'Customer',   date: '2025-09-21', category: 'Product Issues',    description: 'Savings rate dropped from 3.7% to 1.4% without notice', resolution: 'Missing cashback $154.70 credited. System glitch fixed.', status: 'Resolved', sentiment: -0.50 },
-  { id: 'CPL-010', complaint_id: '614ff3d7-19d', customer_id: 'C-614ff3d7', raised_by: 'Customer',   date: '2025-08-28', category: 'Fees',              description: 'New annual fee added to credit card without notice',  resolution: 'Overdraft fee reversed. Customer enrolled in protection.', status: 'Open',   sentiment: -0.68 },
+  { id: 'CPL-001', complaint_id: 'bdd640fb-066', customer_id: 'C-bdd640fb', raised_by: 'Customer',   created_at: '2025-08-27T09:14:33Z', category: 'Product Issues',    description: 'Auto-pay withdrew mortgage payment twice ($1,087)', resolution: 'Bonus of $750 credited. System processing error fixed.', status: 'Resolved',    sentiment: -0.61 },
+  { id: 'CPL-002', complaint_id: 'bc8960a9-23b', customer_id: 'C-bc8960a9', raised_by: 'Customer',   created_at: '2025-06-21T14:52:07Z', category: 'Fees',              description: 'Overdraft fee of $45.03 for a $24.34 transaction',   resolution: 'All foreign transaction fees for 3 months reversed.', status: 'Resolved',    sentiment: -0.42 },
+  { id: 'CPL-003', complaint_id: 'a65ed389-b74', customer_id: 'C-a65ed389', raised_by: 'Customer',   created_at: '2026-02-09T11:03:19Z', category: 'Fraud Handling',    description: '3 weeks no provisional credit after fraud report',  resolution: 'Case reopened. Internal fraud review team assigned.',  status: 'In Review',   sentiment: -0.88 },
+  { id: 'CPL-004', complaint_id: 'a9488d99-0bb', customer_id: 'C-a9488d99', raised_by: 'Customer',   created_at: '2025-08-09T16:41:55Z', category: 'Fraud Handling',    description: 'Fraud case closed without authorization by customer', resolution: 'Provisional credit issued. Direct case manager assigned.', status: 'Resolved', sentiment: -0.81 },
+  { id: 'CPL-005', complaint_id: '07a0ca6e-082', customer_id: 'C-07a0ca6e', raised_by: 'Customer',   created_at: '2025-06-18T08:27:44Z', category: 'Account Access',    description: 'Account balance wrong by $3,073 after system update', resolution: 'Statements recovered. Portal access restored.', status: 'Resolved',           sentiment: -0.66 },
+  { id: 'CPL-006', complaint_id: '9a1de644-815', customer_id: 'C-9a1de644', raised_by: 'Customer',   created_at: '2025-05-23T13:09:02Z', category: 'Service Quality',   description: 'Financial advisor missed scheduled appointment',       resolution: 'Direct support line provided. $25 credit applied.',   status: 'Resolved',    sentiment: -0.72 },
+  { id: 'CPL-007', complaint_id: '93cd59bf-5c9', customer_id: 'C-93cd59bf', raised_by: 'Customer',   created_at: '2025-07-26T10:58:31Z', category: 'Fraud Handling',    description: 'Credit card opened in customer name fraudulently',    resolution: 'Case reopened. Investigation team assigned.',          status: 'Open',        sentiment: -0.87 },
+  { id: 'CPL-008', complaint_id: '146d3f31-fc3', customer_id: 'C-146d3f31', raised_by: 'Customer',   created_at: '2026-04-10T07:33:18Z', category: 'Product Issues',    description: 'Auto-pay withdrew mortgage twice ($4,224 taken)',     resolution: 'Duplicate payment reversed same-day.',                status: 'Resolved',    sentiment: -0.54 },
+  { id: 'CPL-009', complaint_id: '6c307511-b2b', customer_id: 'C-6c307511', raised_by: 'Customer',   created_at: '2025-09-21T15:22:49Z', category: 'Product Issues',    description: 'Savings rate dropped from 3.7% to 1.4% without notice', resolution: 'Missing cashback $154.70 credited. System glitch fixed.', status: 'Resolved', sentiment: -0.50 },
+  { id: 'CPL-010', complaint_id: '614ff3d7-19d', customer_id: 'C-614ff3d7', raised_by: 'Customer',   created_at: '2025-08-28T12:45:06Z', category: 'Fees',              description: 'New annual fee added to credit card without notice',  resolution: 'Overdraft fee reversed. Customer enrolled in protection.', status: 'Open',   sentiment: -0.68 },
 ];
 
 const statusColor = (s: string): 'green' | 'amber' | 'red' | 'blue' | 'gray' =>
@@ -131,7 +131,7 @@ export default function ComplianceDashboard() {
                     onClick={() => setExpandedComplaint(expandedComplaint === c.id ? null : c.id)}>
                     <td className="px-4 py-3 font-mono text-purple-400">{c.id}</td>
                     <td className="px-4 py-3 text-t2">{c.raised_by}</td>
-                    <td className="px-4 py-3 text-t3 whitespace-nowrap">{c.date}</td>
+                    <td className="px-4 py-3 text-t3 whitespace-nowrap">{c.created_at.slice(0, 10)}</td>
                     <td className="px-4 py-3">
                       <span className="px-1.5 py-0.5 rounded bg-white/[0.06] text-t2 whitespace-nowrap">{c.category}</span>
                     </td>
@@ -154,21 +154,27 @@ export default function ComplianceDashboard() {
                         <motion.div
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
-                          className="ml-4 p-3 rounded-xl bg-white/[0.03] border border-white/[0.06] space-y-2"
+                          className="ml-4 p-3 rounded-xl bg-white/[0.03] border border-white/[0.06] space-y-3"
                         >
-                          <div>
-                            <span className="text-[10px] text-t3 uppercase tracking-wider">Full Complaint</span>
-                            <p className="text-xs text-t2 mt-0.5">{c.description}</p>
-                          </div>
-                          {c.resolution && (
+                          <div className="grid grid-cols-2 gap-3">
                             <div>
-                              <span className="text-[10px] text-t3 uppercase tracking-wider">Resolution</span>
-                              <p className="text-xs text-green-300 mt-0.5">{c.resolution}</p>
+                              <span className="text-[10px] text-t3 uppercase tracking-wider">Full Complaint</span>
+                              <p className="text-xs text-t2 mt-0.5 leading-relaxed">{c.description}</p>
                             </div>
-                          )}
-                          <div className="flex items-center gap-4 text-[10px] text-t3">
-                            <span>Reference: {c.complaint_id}</span>
-                            <span>Customer: {c.customer_id}</span>
+                            {c.resolution && (
+                              <div>
+                                <span className="text-[10px] text-t3 uppercase tracking-wider">Resolution</span>
+                                <p className="text-xs text-green-300 mt-0.5 leading-relaxed">{c.resolution}</p>
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-[10px] text-t3 pt-2 border-t border-white/[0.05]">
+                            <span>Reference: <span className="font-mono text-purple-400/80">{c.complaint_id}</span></span>
+                            <span>Customer: <span className="font-mono text-t2">{c.customer_id}</span></span>
+                            <span>Category: <span className="text-t2">{c.category}</span></span>
+                            <span>Raised by: <span className="text-t2">{c.raised_by}</span></span>
+                            <span>Sentiment: <span className={sentimentColor(c.sentiment)}>{c.sentiment.toFixed(2)}</span></span>
+                            <span title={c.created_at}>Logged: <span className="font-mono text-t2">{c.created_at}</span></span>
                           </div>
                         </motion.div>
                       </td>

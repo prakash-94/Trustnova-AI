@@ -1,9 +1,10 @@
 """KYC (Know Your Customer) endpoints — derived from real customer data."""
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from typing import Optional
 from sqlalchemy import text
 from src.api.auth import CurrentUser, require_permission
-from src.models.database import engine
+from src.models.database import engine, _table_columns
 import datetime
 
 router = APIRouter()
@@ -170,6 +171,67 @@ async def get_kyc_record(
     if not row:
         raise HTTPException(status_code=404, detail="Customer not found")
     return _row_to_kyc(dict(row._mapping))
+
+
+class KYCStatusUpdate(BaseModel):
+    action: str          # "verify" | "approve" | "reject"
+    notes: Optional[str] = None
+
+
+_ACTION_STATUS = {
+    "verify":  "in_review",
+    "approve": "verified",
+    "reject":  "pending",
+}
+
+
+@router.patch("/records/{customer_id}/status")
+async def update_kyc_status(
+    customer_id: str,
+    body: KYCStatusUpdate,
+    current_user: CurrentUser = Depends(require_permission("kyc:write")),
+):
+    action = body.action.lower()
+    if action not in _ACTION_STATUS:
+        raise HTTPException(status_code=400, detail=f"Invalid action '{action}'. Use verify, approve, or reject.")
+
+    new_status = _ACTION_STATUS[action]
+    now = datetime.datetime.utcnow().isoformat()
+
+    with engine.begin() as conn:
+        from src.models.database import customer_pk
+        pk = customer_pk()
+        row = conn.execute(text(f"SELECT 1 FROM customers WHERE {pk} = :cid"), {"cid": customer_id}).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Customer not found")
+
+        existing_cols = _table_columns(conn, "customers")
+
+        # Always update kyc_status
+        updates = {"kyc_status": new_status}
+        params: dict = {"cid": customer_id, "status": new_status, "now": now}
+
+        # Persist reviewer notes if the column exists
+        if "kyc_notes" in existing_cols and body.notes:
+            updates["kyc_notes"] = body.notes
+            params["notes"] = body.notes
+            conn.execute(
+                text(f"UPDATE customers SET kyc_status = :status, kyc_notes = :notes WHERE {pk} = :cid"),
+                params,
+            )
+        else:
+            conn.execute(
+                text(f"UPDATE customers SET kyc_status = :status WHERE {pk} = :cid"),
+                params,
+            )
+
+    return {
+        "customer_id": customer_id,
+        "action": action,
+        "new_status": new_status,
+        "updated_at": now,
+        "updated_by": current_user.username,
+    }
 
 
 @router.get("/stats/summary")

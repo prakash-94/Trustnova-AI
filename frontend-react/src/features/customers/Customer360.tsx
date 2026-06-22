@@ -42,11 +42,13 @@ export default function Customer360({ customer, onClearCustomer, defaultTab = 'o
   const [data, setData] = useState<C360 | null>(null);
   const [trustScore, setTrustScore] = useState<TrustScoreData | null>(null);
   const [trustLoading, setTrustLoading] = useState(false);
+  const [trustStatus, setTrustStatus] = useState<string | null>(null);
   const [loans, setLoans] = useState<Loan[]>([]);
   const [allAccounts, setAllAccounts] = useState<Account[]>([]);
   const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showTrustInfo, setShowTrustInfo] = useState(false);
   const [innerTab, setInnerTab] = useState<InnerTab>(defaultTab);
 
   // Auto-load when customer prop changes
@@ -72,6 +74,7 @@ export default function Customer360({ customer, onClearCustomer, defaultTab = 'o
     setLoading(true);
     setError('');
     setTrustScore(null);
+    setTrustStatus(null);
     setLoans([]);
     setAllAccounts([]);
     setAllTransactions([]);
@@ -81,8 +84,11 @@ export default function Customer360({ customer, onClearCustomer, defaultTab = 'o
       // Load all sub-data in parallel (non-blocking after summary)
       setTrustLoading(true);
       trustApi.customerScore(id)
-        .then(ts => { if (ts.status === 'ok') setTrustScore(ts as TrustScoreData); })
-        .catch(() => {})
+        .then(ts => {
+          setTrustStatus(ts.status);
+          if (ts.status === 'ok') setTrustScore(ts as TrustScoreData);
+        })
+        .catch(() => setTrustStatus('error'))
         .finally(() => setTrustLoading(false));
       customersApi.accounts(id)
         .then(r => setAllAccounts(r.accounts ?? []))
@@ -230,7 +236,52 @@ export default function Customer360({ customer, onClearCustomer, defaultTab = 'o
 
               {/* Trust Score */}
               <GlassCard animate={false} className="p-4">
-                <h3 className="text-xs font-semibold text-t1 mb-3">Customer Trust Score</h3>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-xs font-semibold text-t1">Customer Trust Score</h3>
+                  <button onClick={() => setShowTrustInfo(v => !v)}
+                    className={`w-5 h-5 rounded-full border text-[10px] font-bold transition-colors flex items-center justify-center
+                      ${showTrustInfo ? 'border-purple-400/60 text-purple-300 bg-purple-500/10' : 'border-white/20 text-t3 hover:border-purple-400/40 hover:text-purple-300'}`}
+                    title="How is the trust score calculated?">
+                    ℹ
+                  </button>
+                </div>
+
+                {/* Formula explainer */}
+                <AnimatePresence>
+                  {showTrustInfo && (
+                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.2 }}
+                      className="overflow-hidden mb-3">
+                      <div className="bg-purple-500/[0.06] border border-purple-500/20 rounded-xl p-3 space-y-2.5">
+                        <p className="text-[9px] text-purple-300/80 uppercase tracking-widest font-semibold">Trust Score Formula</p>
+                        <p className="text-[10px] text-t3 font-mono bg-black/20 rounded-lg px-2 py-1.5">
+                          Score = Σ (component × weight)
+                        </p>
+                        <div className="space-y-1.5">
+                          {[
+                            { name: 'Credit Score',      weight: '30%', desc: 'FICO-based creditworthiness indicator' },
+                            { name: 'Fraud History',     weight: '25%', desc: 'Penalty for past fraud incidents' },
+                            { name: 'Account Age',       weight: '20%', desc: 'Tenure and relationship longevity' },
+                            { name: 'Sentiment Avg',     weight: '15%', desc: 'Average sentiment from AI interactions' },
+                            { name: 'Interaction Count', weight: '10%', desc: 'Volume of recorded customer interactions' },
+                          ].map(f => (
+                            <div key={f.name} className="flex items-start gap-2">
+                              <span className="text-[9px] font-semibold text-purple-400 w-7 shrink-0 mt-0.5">{f.weight}</span>
+                              <div>
+                                <span className="text-[10px] font-medium text-t2">{f.name}</span>
+                                <span className="text-[9px] text-t3 ml-1">— {f.desc}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <p className="text-[9px] text-t3 pt-1 border-t border-white/[0.06]">
+                          Scores range 0–100. Tiers: Excellent ≥80, Good ≥65, Fair ≥50, Poor &lt;50.
+                        </p>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
                 {trustScore ? (
                   <div className="flex items-start gap-3">
                     <TrustGauge score={trustScore.score} tier={trustScore.tier} size="sm" />
@@ -261,6 +312,28 @@ export default function Customer360({ customer, onClearCustomer, defaultTab = 'o
                   <div className="flex items-center justify-center py-4 gap-2 text-xs text-t3">
                     <span className="w-3 h-3 border border-purple-500 border-t-transparent rounded-full animate-spin" />
                     Computing trust score…
+                  </div>
+                ) : trustStatus === 'not_found' ? (
+                  <div className="rounded-xl bg-amber-500/[0.06] border border-amber-500/20 px-4 py-4 space-y-1.5">
+                    <div className="flex items-center gap-2 text-xs font-medium text-amber-300">
+                      <span>⏳</span> Trust Score Pending
+                    </div>
+                    <p className="text-[10px] text-t3 leading-relaxed">
+                      No transaction history yet. The trust score is computed from account age, credit score,
+                      fraud history, sentiment, and interactions. It will appear automatically once this
+                      customer has activity recorded.
+                    </p>
+                    <div className="grid grid-cols-2 gap-1.5 pt-1">
+                      {[['Account Age','20%'],['Credit Score','30%'],['Fraud History','25%'],['Sentiment','15%'],['Interactions','10%']].map(([k,w]) => (
+                        <div key={k} className="flex justify-between text-[9px] text-t3">
+                          <span>{k}</span><span className="text-purple-400/70">{w}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : trustStatus === 'error' ? (
+                  <div className="rounded-xl bg-red-500/[0.06] border border-red-500/20 px-4 py-3 text-xs text-red-300">
+                    Trust score computation failed — check backend logs.
                   </div>
                 ) : (
                   <div className="flex items-center justify-center py-4 text-xs text-t3">Not available</div>

@@ -104,6 +104,12 @@ function AlertDetailPanel({
               {alert.location  && <Tile label="Location"  value={alert.location} />}
               {alert.category  && <Tile label="Category"  value={alert.category} capitalize />}
               <Tile label="Date" value={(alert.created_at ?? '').slice(0, 10)} />
+              {alert.transaction_id && (
+                <div className="col-span-2 bg-red-500/[0.06] rounded-lg px-3 py-2 border border-red-500/20">
+                  <p className="text-[9px] text-red-400/70 uppercase tracking-wider mb-0.5">Flagged Transaction ID</p>
+                  <p className="text-xs text-red-300 font-mono truncate">{alert.transaction_id}</p>
+                </div>
+              )}
             </div>
           </section>
 
@@ -149,42 +155,67 @@ function AlertDetailPanel({
             )}
           </section>
 
-          {/* ── Recent transactions for same customer ── */}
-          {customer360?.recent_transactions && customer360.recent_transactions.length > 0 && (
-            <section>
-              <h3 className="text-[10px] text-t3 uppercase tracking-widest mb-3">Recent Transactions</h3>
-              <div className="rounded-xl border border-white/[0.06] overflow-hidden">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="border-b border-white/[0.06] text-t3 text-[9px] uppercase tracking-wider">
-                      <th className="text-left px-3 py-2">Merchant</th>
-                      <th className="text-left px-3 py-2">Category</th>
-                      <th className="text-right px-3 py-2">Amount</th>
-                      <th className="text-left px-3 py-2">Date</th>
-                      <th className="text-left px-3 py-2">Flag</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {customer360.recent_transactions.slice(0, 8).map(t => (
-                      <tr key={t.id} className={`border-b border-white/[0.03] ${t.is_flagged ? 'bg-red-500/5' : ''}`}>
-                        <td className="px-3 py-2 text-t2 truncate max-w-[120px]">{t.description ?? '—'}</td>
-                        <td className="px-3 py-2 text-t3 capitalize">{t.merchant_category ?? '—'}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">
-                          <span className={t.transaction_type === 'credit' ? 'text-green-400' : 'text-t2'}>
-                            {t.transaction_type === 'credit' ? '+' : '-'}{cents(t.amount_cents)}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 text-t3">{(t.created_at ?? '').slice(0, 10)}</td>
-                        <td className="px-3 py-2">
-                          {t.is_flagged && <span className="text-red-400 text-[9px]">⚠ Flagged</span>}
-                        </td>
+          {/* ── Transactions ── */}
+          {customer360?.recent_transactions && customer360.recent_transactions.length > 0 && (() => {
+            const txns = [...customer360.recent_transactions];
+            // Pin the transaction that triggered this alert to the top
+            const alertTxIdx = alert.transaction_id
+              ? txns.findIndex(t => t.id === alert.transaction_id)
+              : -1;
+            if (alertTxIdx > 0) {
+              const [pinned] = txns.splice(alertTxIdx, 1);
+              txns.unshift(pinned);
+            }
+            return (
+              <section>
+                <h3 className="text-[10px] text-t3 uppercase tracking-widest mb-3">
+                  Transactions
+                  {alertTxIdx >= 0 && (
+                    <span className="ml-2 text-red-400/70 normal-case text-[9px]">— flagged transaction pinned</span>
+                  )}
+                </h3>
+                <div className="rounded-xl border border-white/[0.06] overflow-hidden">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-white/[0.06] text-t3 text-[9px] uppercase tracking-wider">
+                        <th className="text-left px-3 py-2">Merchant</th>
+                        <th className="text-left px-3 py-2">Category</th>
+                        <th className="text-right px-3 py-2">Amount</th>
+                        <th className="text-left px-3 py-2">Date</th>
+                        <th className="text-left px-3 py-2">Flag</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          )}
+                    </thead>
+                    <tbody>
+                      {txns.slice(0, 8).map(t => {
+                        const isAlertTxn = alert.transaction_id && t.id === alert.transaction_id;
+                        return (
+                          <tr key={t.id} className={`border-b border-white/[0.03] ${isAlertTxn ? 'bg-red-500/10' : t.is_flagged ? 'bg-red-500/5' : ''}`}>
+                            <td className="px-3 py-2 text-t2 truncate max-w-[120px]">
+                              {isAlertTxn && <span className="text-red-400 mr-1">▶</span>}
+                              {t.description ?? '—'}
+                            </td>
+                            <td className="px-3 py-2 text-t3 capitalize">{t.merchant_category ?? '—'}</td>
+                            <td className="px-3 py-2 text-right tabular-nums">
+                              <span className={t.transaction_type === 'credit' ? 'text-green-400' : 'text-t2'}>
+                                {t.transaction_type === 'credit' ? '+' : '-'}{cents(t.amount_cents)}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-t3">{(t.created_at ?? '').slice(0, 10)}</td>
+                            <td className="px-3 py-2">
+                              {isAlertTxn
+                                ? <span className="text-red-400 text-[9px] font-semibold">⚠ Alert Source</span>
+                                : t.is_flagged && <span className="text-red-400 text-[9px]">⚠ Flagged</span>
+                              }
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            );
+          })()}
 
           {/* ── Investigation notes ── */}
           <section>

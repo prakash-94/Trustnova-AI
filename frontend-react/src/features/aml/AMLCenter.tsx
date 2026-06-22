@@ -9,6 +9,61 @@ import type { CustomerSummary } from '@/types';
 const fmtMoney = (cents: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(cents / 100);
 
+function generateInvestigationNarrative(c: AMLCase): string[] {
+  const amount = (c.total_amount_cents ?? 0) > 0 ? fmtMoney(c.total_amount_cents) : null;
+  const txnCount = c.transaction_count ?? 1;
+  const caseTypeFmt = (c.case_type ?? 'suspicious activity').replace(/_/g, ' ');
+  const dateDetected = c.created_at ? new Date(c.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Unknown date';
+  const sarStatus = c.sar_filed ? (c.sar_reference ? `SAR ${c.sar_reference} filed with FinCEN` : 'SAR filed with FinCEN') : 'SAR not yet filed';
+
+  const lines: string[] = [];
+
+  // 1. Alert initiation
+  lines.push(`Case ${c.id} flagged on ${dateDetected} by AML transaction monitoring engine for ${caseTypeFmt}.`);
+
+  // 2. Pattern description
+  const patterns: Record<string, string> = {
+    structuring: `Detected structured deposits designed to evade the $10,000 BSA reporting threshold across ${txnCount} transactions.`,
+    layering: `Complex layering pattern identified — funds moved through ${txnCount} intermediate transactions to obscure origin.`,
+    placement: `Suspicious cash placement activity observed${amount ? ` totalling ${amount}` : ''} across ${txnCount} transactions.`,
+    integration: `Integration-stage activity: funds re-entering legitimate financial system after suspected laundering cycle.`,
+    money_laundering: `Money laundering indicators present across ${txnCount} transactions${amount ? ` totalling ${amount}` : ''}.`,
+    terrorist_financing: `Potential terrorist financing pattern — transactions match typology indicators in OFAC screening database.`,
+    suspicious_activity: `Anomalous transaction pattern deviating significantly from customer's established behaviour profile.`,
+    high_value: `High-value transaction${amount ? ` of ${amount}` : ''} exceeding customer's expected income range and account history.`,
+  };
+  const patternKey = Object.keys(patterns).find(k => (c.case_type ?? '').toLowerCase().includes(k));
+  lines.push(patternKey ? patterns[patternKey] : `${txnCount} transactions${amount ? ` totalling ${amount}` : ''} flagged for manual review.`);
+
+  // 3. Financial exposure
+  if (amount) {
+    lines.push(`Total financial exposure: ${amount} across ${txnCount} linked transaction${txnCount !== 1 ? 's' : ''}.`);
+  }
+
+  // 4. Severity-specific action
+  const sevActions: Record<string, string> = {
+    critical: 'Immediate escalation required — case meets threshold for Compliance Officer review within 24 hours.',
+    high: 'Enhanced due diligence initiated — account activity restricted pending investigation completion.',
+    medium: 'Standard AML review workflow activated — analyst verification required before case resolution.',
+    low: 'Monitoring flag set — case under passive surveillance; no immediate customer impact.',
+  };
+  lines.push(sevActions[c.severity] ?? 'Under standard review protocol.');
+
+  // 5. Regulatory action
+  lines.push(sarStatus + (c.sar_filed ? ' — regulatory obligation met under BSA §5318.' : ' — required if investigation confirms suspicious activity.'));
+
+  // 6. Next steps
+  const statusNext: Record<string, string> = {
+    open: 'Next step: Analyst to review transaction history and customer profile within 3 business days.',
+    reviewing: `Currently under active review by ${c.analyst_id ?? 'assigned analyst'}. Evidence gathering in progress.`,
+    resolved: 'Case resolved. Findings documented and archived in compliance record system.',
+    escalated: 'Escalated to Senior Compliance Officer and Legal. External regulatory notification may be required.',
+  };
+  lines.push(statusNext[c.status] ?? `Current status: ${c.status}.`);
+
+  return lines;
+}
+
 const sev = (s: string): 'red' | 'amber' | 'blue' | 'green' | 'gray' =>
   ({ critical: 'red', high: 'amber', medium: 'blue', low: 'green' } as Record<string, 'red' | 'amber' | 'blue' | 'green'>)[s] ?? 'gray';
 
@@ -187,6 +242,19 @@ export default function AMLCenter({ customer }: AMLCenterProps) {
                       <span className="text-t1 text-right max-w-[60%]">{row.value}</span>
                     </div>
                   ))}
+
+                  {/* Investigation Narrative */}
+                  <div className="pt-2">
+                    <p className="text-[10px] text-t3 uppercase tracking-widest mb-2">Investigation Narrative</p>
+                    <div className="space-y-2">
+                      {generateInvestigationNarrative(selected).map((line, i) => (
+                        <div key={i} className="flex gap-2 text-xs text-t2 bg-white/[0.02] rounded-lg px-3 py-2.5 border border-white/[0.05]">
+                          <span className="text-amber-400/60 mt-0.5 shrink-0">•</span>
+                          <span className="leading-relaxed">{line}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </motion.div>
               ) : (
                 <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center justify-center py-16 text-center">

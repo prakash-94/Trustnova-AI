@@ -17,6 +17,7 @@ const US_STATES = ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','
 
 type FormState = {
   first_name: string; last_name: string; email: string; phone: string;
+  date_of_birth: string;
   credit_score: string; opening_balance: string; annual_income: string;
   aml_risk_rating: string; account_type: string;
   address_city: string; address_state: string;
@@ -24,6 +25,7 @@ type FormState = {
 
 const INITIAL: FormState = {
   first_name: '', last_name: '', email: '', phone: '',
+  date_of_birth: '',
   credit_score: '650', opening_balance: '0', annual_income: '50000',
   aml_risk_rating: 'low', account_type: 'checking',
   address_city: '', address_state: 'CA',
@@ -82,6 +84,7 @@ export default function AddCustomerModal({ onClose, onCreated }: Props) {
         last_name: form.last_name.trim(),
         email: form.email.trim(),
         phone: form.phone.trim() || undefined,
+        date_of_birth: form.date_of_birth || undefined,
         credit_score: Number(form.credit_score),
         annual_income: Number(form.annual_income),
         aml_risk_rating: form.aml_risk_rating,
@@ -198,6 +201,12 @@ export default function AddCustomerModal({ onClose, onCreated }: Props) {
                         focus:outline-none focus:border-purple-500/50 transition-colors
                         ${errors.phone ? 'border-red-500/50' : 'border-white/[0.08]'}`}
                     />, true)}
+                </div>
+
+                {/* Date of Birth */}
+                <div className="grid grid-cols-2 gap-3">
+                  {label('Date of Birth', 'date_of_birth', inp('date_of_birth', { type: 'date', max: new Date().toISOString().slice(0, 10) }))}
+                  <div />
                 </div>
 
                 {/* Financial */}

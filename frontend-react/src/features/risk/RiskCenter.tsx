@@ -7,6 +7,7 @@ import { riskApi } from '@/services/api';
 import GlassCard from '@/components/common/GlassCard';
 import Badge from '@/components/common/Badge';
 import type { CustomerSummary } from '@/types';
+import type { NavSection } from '@/components/layout/Sidebar';
 
 const BAND_FILL: Record<string, string> = {
   low:      '#22c55e',
@@ -41,9 +42,11 @@ interface SegmentCustomer {
 
 interface RiskCenterProps {
   customer?: CustomerSummary | null;
+  onSelectCustomer?: (c: CustomerSummary) => void;
+  onNavigate?: (tab: NavSection) => void;
 }
 
-export default function RiskCenter({ customer: _customer }: RiskCenterProps) {
+export default function RiskCenter({ customer: _customer, onSelectCustomer, onNavigate }: RiskCenterProps) {
   const [portfolio, setPortfolio] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeBand, setActiveBand] = useState<string | null>(null);
@@ -310,8 +313,12 @@ export default function RiskCenter({ customer: _customer }: RiskCenterProps) {
                       {segmentCustomers.map((c, i) => (
                         <motion.tr key={c.customer_id}
                           initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.03 }}
-                          className="hover:bg-white/[0.02] transition-colors">
-                          <td className="px-4 py-2.5 font-mono text-purple-400">{c.customer_id}</td>
+                          onClick={() => {
+                            onSelectCustomer?.({ customer_id: c.customer_id, name: c.name, email: c.email });
+                            onNavigate?.('customer_search');
+                          }}
+                          className={`transition-colors group ${onSelectCustomer ? 'cursor-pointer hover:bg-purple-500/[0.08]' : 'hover:bg-white/[0.02]'}`}>
+                          <td className="px-4 py-2.5 font-mono text-purple-400 underline underline-offset-2 decoration-purple-400/30">{c.customer_id}</td>
                           <td className="px-4 py-2.5 text-t1 font-medium">{c.name}</td>
                           <td className="px-4 py-2.5 text-t3">{c.email}</td>
                           <td className="px-4 py-2.5">
@@ -319,10 +326,36 @@ export default function RiskCenter({ customer: _customer }: RiskCenterProps) {
                               {c.credit_score}
                             </span>
                           </td>
-                          <td className="px-4 py-2.5">
+                          <td className="px-4 py-2.5 relative">
                             <Badge label={c.risk_level} color={
                               ({ Low: 'green', Medium: 'amber', High: 'red', 'Very High': 'red' } as Record<string, 'green' | 'amber' | 'red' | 'gray'>)[c.risk_level] ?? 'gray'
                             } />
+                            {/* Risk reason tooltip */}
+                            <div className="absolute left-0 top-full mt-1 z-50 hidden group-hover:block w-56 bg-[#0f0f1a] border border-white/[0.12] rounded-xl shadow-2xl p-3 pointer-events-none">
+                              <p className="text-[9px] text-t3 uppercase tracking-widest mb-2">Risk Factors</p>
+                              <div className="space-y-1.5">
+                                <div className="flex justify-between text-[10px]">
+                                  <span className="text-t3">AML Rating</span>
+                                  <span className={({ Low: 'text-green-400', Medium: 'text-amber-400', High: 'text-red-400', 'Very High': 'text-red-400' } as Record<string, string>)[c.risk_level] ?? 'text-t2'}>{c.risk_level}</span>
+                                </div>
+                                <div className="flex justify-between text-[10px]">
+                                  <span className="text-t3">Credit Score</span>
+                                  <span className={c.credit_score >= 720 ? 'text-green-400' : c.credit_score >= 640 ? 'text-amber-400' : 'text-red-400'}>
+                                    {c.credit_score} — {c.credit_score >= 720 ? 'Good' : c.credit_score >= 640 ? 'Fair' : 'Poor'}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between text-[10px]">
+                                  <span className="text-t3">Fraud Alerts</span>
+                                  <span className={c.fraud_alert_count > 2 ? 'text-red-400' : c.fraud_alert_count > 0 ? 'text-amber-400' : 'text-green-400'}>
+                                    {c.fraud_alert_count} {c.fraud_alert_count > 2 ? '— elevated' : c.fraud_alert_count > 0 ? '— watch' : '— clean'}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between text-[10px]">
+                                  <span className="text-t3">Account Type</span>
+                                  <span className="text-t2 capitalize">{c.account_type?.replace(/_/g, ' ')}</span>
+                                </div>
+                              </div>
+                            </div>
                           </td>
                           <td className="px-4 py-2.5 text-t2 capitalize">{c.account_type?.replace(/_/g, ' ')}</td>
                           <td className="px-4 py-2.5 text-t2">

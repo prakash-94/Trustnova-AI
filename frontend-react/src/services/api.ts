@@ -158,6 +158,7 @@ export const chatApi = {
 export type NewCustomer = {
   first_name: string; last_name: string; email: string;
   phone?: string;
+  date_of_birth?: string;
   credit_score?: number;
   annual_income?: number;
   aml_risk_rating?: string;
@@ -287,6 +288,11 @@ export const kycApi = {
   },
   record: (customerId: string) => request<KYCRecord>(`/kyc/records/${customerId}`),
   summary: () => request<Record<string, unknown>>('/kyc/stats/summary'),
+  updateStatus: (customerId: string, action: 'verify' | 'approve' | 'reject', notes?: string) =>
+    request<{ customer_id: string; action: string; new_status: string; updated_at: string; updated_by: string }>(
+      `/kyc/records/${customerId}/status`,
+      { method: 'PATCH', body: JSON.stringify({ action, notes }) },
+    ),
 };
 
 // ── Fraud ─────────────────────────────────────────────────────────────────────

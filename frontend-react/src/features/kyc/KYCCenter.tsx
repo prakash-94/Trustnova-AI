@@ -5,6 +5,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
 } from 'recharts';
 import { kycApi } from '@/services/api';
+import { Auth } from '@/services/auth';
 import GlassCard from '@/components/common/GlassCard';
 import Badge from '@/components/common/Badge';
 import type { KYCRecord } from '@/types/banking';
@@ -52,10 +53,35 @@ const ChartTooltip = ({ active, payload }: { active?: boolean; payload?: { name:
 };
 
 // ── Detail Panel ─────────────────────────────────────────────────────────────
-function KYCDetail({ rec, onClose }: { rec: KYCRecord; onClose: () => void }) {
+function KYCDetail({ rec, onClose, onActionComplete }: {
+  rec: KYCRecord;
+  onClose: () => void;
+  onActionComplete?: () => void;
+}) {
   const docsDone = (rec.documents ?? []).filter(d => d.status === 'verified').length;
   const docsTotal = (rec.documents ?? []).length;
   const pct = docsTotal > 0 ? Math.round((docsDone / docsTotal) * 100) : 0;
+
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [actionResult, setActionResult] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  const user = Auth.getUser();
+  const canAct = user?.role === 'kyc_analyst' || user?.role === 'admin';
+
+  const handleAction = async (action: 'verify' | 'approve' | 'reject') => {
+    setActionLoading(action);
+    setActionResult(null);
+    try {
+      const res = await kycApi.updateStatus(rec.customer_id, action);
+      setActionResult({ ok: true, msg: `Status updated to "${res.new_status}"` });
+      onActionComplete?.();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Action failed — check backend logs';
+      setActionResult({ ok: false, msg });
+    } finally {
+      setActionLoading(null);
+    }
+  };
 
   return (
     <motion.div initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 16 }}
@@ -149,6 +175,34 @@ function KYCDetail({ rec, onClose }: { rec: KYCRecord; onClose: () => void }) {
             ))}
           </div>
         </div>
+
+        {/* KYC Actions — visible to kyc_analyst and admin only */}
+        {canAct && (
+          <div>
+            <div className="text-[10px] text-t3 uppercase tracking-wider mb-2">Actions</div>
+            <div className="grid grid-cols-3 gap-2">
+              {([
+                { action: 'verify',  label: 'Mark Under Review', cls: 'border-blue-500/40 text-blue-300 hover:bg-blue-500/10' },
+                { action: 'approve', label: 'Approve KYC',       cls: 'border-green-500/40 text-green-300 hover:bg-green-500/10' },
+                { action: 'reject',  label: 'Reject',            cls: 'border-red-500/40 text-red-300 hover:bg-red-500/10' },
+              ] as const).map(({ action, label, cls }) => (
+                <button
+                  key={action}
+                  disabled={!!actionLoading}
+                  onClick={() => handleAction(action)}
+                  className={`px-2 py-2 rounded-xl border text-[10px] font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${cls}`}
+                >
+                  {actionLoading === action ? '…' : label}
+                </button>
+              ))}
+            </div>
+            {actionResult && (
+              <div className={`mt-2 px-3 py-2 rounded-xl text-xs ${actionResult.ok ? 'bg-green-500/[0.08] border border-green-500/20 text-green-300' : 'bg-red-500/[0.08] border border-red-500/20 text-red-300'}`}>
+                {actionResult.ok ? '✓ ' : '✗ '}{actionResult.msg}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </motion.div>
   );
@@ -522,7 +576,7 @@ export default function KYCCenter({ customer }: Props) {
         <AnimatePresence>
           {selected && (
             <GlassCard animate={false} className="col-span-2 overflow-hidden p-0">
-              <KYCDetail rec={selected} onClose={() => setSelected(null)} />
+              <KYCDetail rec={selected} onClose={() => setSelected(null)} onActionComplete={load} />
             </GlassCard>
           )}
         </AnimatePresence>

@@ -5,6 +5,13 @@ import { Auth } from '@/services/auth';
 import AnimatedBackground from '@/components/common/AnimatedBackground';
 import type { User } from '@/types/banking';
 
+const DEMO_USERS = [
+  { username: 'admin',      password: 'Admin@2026',   role: 'admin' },
+  { username: 'banker1',    password: 'Banker@2026',  role: 'banker' },
+  { username: 'analyst',    password: 'Analyst@2026', role: 'fraud_analyst' },
+  { username: 'compliance', password: 'Comply@2026',  role: 'compliance_officer' },
+] as const;
+
 interface LoginPageProps {
   onLogin: (user: User) => void;
 }

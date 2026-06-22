@@ -84,6 +84,8 @@ def migrate_customers(pg, sl):
             first_name      TEXT,
             last_name       TEXT,
             kyc_status      TEXT,
+            kyc_notes       TEXT,
+            date_of_birth   TEXT,
             segment         TEXT,
             customer_type   TEXT,
             is_pep          BIGINT,
@@ -96,6 +98,15 @@ def migrate_customers(pg, sl):
         )
     """)
     pg.commit()
+
+    # Add columns that may be missing from already-migrated production tables
+    for col, col_type in [("kyc_notes", "TEXT"), ("date_of_birth", "TEXT")]:
+        try:
+            pg.cursor().execute(f"ALTER TABLE customers ADD COLUMN {col} {col_type}")
+            pg.commit()
+            print(f"  customers: added column {col}")
+        except Exception:
+            pg.rollback()  # column already exists — safe to ignore
 
     if pg_row_count(pg, "customers") > 0:
         print("  customers: already populated, skipping.")
@@ -347,6 +358,26 @@ def migrate_trust_scores(pg, sl):
     bulk_insert(pg, "trust_scores", cols, rows)
 
 
+def migrate_access_requests(pg):
+    """access_requests — auto-created at runtime but ensure it exists on fresh deploy."""
+    pg.cursor().execute("""
+        CREATE TABLE IF NOT EXISTS access_requests (
+            id          SERIAL PRIMARY KEY,
+            username    TEXT NOT NULL,
+            role        TEXT NOT NULL,
+            section     TEXT NOT NULL,
+            reason      TEXT,
+            status      TEXT NOT NULL DEFAULT 'pending',
+            reviewed_by TEXT,
+            reviewed_at TEXT,
+            expires_at  TEXT,
+            created_at  TEXT NOT NULL
+        )
+    """)
+    pg.commit()
+    print("  access_requests: table ready.")
+
+
 def migrate_llm_usage(pg, sl):
     pg.cursor().execute("""
         CREATE TABLE IF NOT EXISTS llm_usage (
@@ -395,6 +426,7 @@ def main():
         ("risk_assessments",       migrate_risk_assessments),
         ("trust_scores",           migrate_trust_scores),
         ("llm_usage",              migrate_llm_usage),
+        ("access_requests",        lambda pg, _sl: migrate_access_requests(pg)),
     ]
 
     for name, fn in steps:
