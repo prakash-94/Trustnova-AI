@@ -49,6 +49,30 @@ async function request<T>(url: string, options: RequestInit = {}, opts?: { skipA
   return null as unknown as T;
 }
 
+// ── LocalStorage stale-while-revalidate cache ─────────────────────────────────
+const CACHE_NS = 'tn_swr_';
+const SWR_TTL  = 3 * 60 * 1000; // 3 minutes default
+
+function cacheGet<T>(key: string, ttlMs: number): T | null {
+  try {
+    const raw = localStorage.getItem(CACHE_NS + key);
+    if (!raw) return null;
+    const { ts, data } = JSON.parse(raw);
+    if (Date.now() - ts > ttlMs) return null;
+    return data as T;
+  } catch { return null; }
+}
+
+function cacheSet<T>(key: string, data: T) {
+  try { localStorage.setItem(CACHE_NS + key, JSON.stringify({ ts: Date.now(), data })); } catch { /* quota */ }
+}
+
+export function swr<T>(key: string, fn: () => Promise<T>, ttlMs = SWR_TTL): Promise<T> {
+  const cached = cacheGet<T>(key, ttlMs);
+  const live = fn().then(d => { cacheSet(key, d); return d; });
+  return cached !== null ? Promise.resolve(cached) : live;
+}
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 export const authApi = {
   login: (username: string, password: string) =>
@@ -187,7 +211,8 @@ export const customersApi = {
     if (params?.limit)  p.set('limit', String(params.limit));
     if (params?.offset) p.set('offset', String(params.offset));
     if (params?.risk_level) p.set('risk_level', params.risk_level);
-    return request<{ customers: Customer[]; total: number }>(`/customers/list?${p}`);
+    const key = `customers_list_${params?.limit}_${params?.offset}_${params?.risk_level}`;
+    return swr(key, () => request<{ customers: Customer[]; total: number }>(`/customers/list?${p}`));
   },
   accounts: (id: string) => request<{ accounts: Account[] }>(`/customers/${id}/accounts`),
   transactions: (id: string, limit = 20) => request<{ transactions: Transaction[] }>(`/customers/${id}/transactions?limit=${limit}`),
@@ -798,5 +823,21 @@ export const adminUsersApi = {
   deactivate: (username: string) =>
     request<{ status: string; username: string }>(`/admin/users/${username}`, { method: 'DELETE' }),
 };
+
+/**
+ * Fire all heavy read endpoints in parallel right after login.
+ * Results land in localStorage SWR cache so every section loads instantly
+ * when the user navigates there (cache hit = <10 ms instead of a DB round-trip).
+ */
+export function prefetchAll(): void {
+  const q = (p: Promise<unknown>) => p.catch(() => {});
+  q(kpiApi.stats());
+  q(customersApi.list({ limit: 50 }));
+  q(loansApi.list(undefined, undefined, 200));
+  q(fraudApi.list({ limit: 50 }));
+  q(amlApi.cases({ limit: 50 }));
+  q(kycApi.records({ limit: 100 }));
+  q(riskApi.portfolio());
+}
 
 

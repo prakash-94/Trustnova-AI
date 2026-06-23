@@ -1,6 +1,6 @@
 ﻿import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { authApi, customersApi, accessRequestsApi } from '@/services/api';
+import { authApi, customersApi, accessRequestsApi, prefetchAll } from '@/services/api';
 import type { Customer } from '@/types/banking';
 import { Auth } from '@/services/auth';
 import type { User } from '@/types/banking';
@@ -247,6 +247,9 @@ export default function BankerCopilot({ user, onLogout }: BankerCopilotProps) {
     pollRef.current = setInterval(fetchGrants, 30_000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [fetchGrants]);
+
+  // Warm the SWR cache for all heavy endpoints so every section loads instantly
+  useEffect(() => { prefetchAll(); }, []);
 
   // Listen for navigation events dispatched by NotificationBell popup
   useEffect(() => {

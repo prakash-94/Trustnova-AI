@@ -22,7 +22,7 @@ export default defineConfig(({ mode }) => {
     alias: { '@': path.resolve(__dirname, './src') },
   },
   server: {
-    port: 3000,
+    port: 5173,
     proxy,
   },
   };
