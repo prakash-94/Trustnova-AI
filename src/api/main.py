@@ -24,6 +24,7 @@ load_dotenv()
 
 # Import route modules
 from src.api.routes import chat, fraud, customer, trust, documents, feedback
+from src.api.routes import rag_eval as rag_eval_module
 from src.api.routes import customers, loans, aml, kyc, risk, treasury
 from src.api.routes import access_requests
 from src.api.routes import kpi as kpi_module
@@ -160,6 +161,7 @@ app.include_router(auth_module.router, prefix="/auth", tags=["Authentication"])
 
 # Business routes (all protected — auth dependencies declared in each route)
 app.include_router(chat.router,      prefix="/chat",      tags=["Chat — AI Copilot"])
+app.include_router(rag_eval_module.router, prefix="/rag/eval", tags=["RAG — Eval Pipeline"])
 app.include_router(fraud.router,     prefix="/fraud",     tags=["Fraud Detection"])
 app.include_router(customer.router,  prefix="/customer",  tags=["Customer Intelligence"])
 app.include_router(trust.router,     prefix="/trust",     tags=["Trust Scoring"])

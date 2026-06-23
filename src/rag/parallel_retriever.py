@@ -192,8 +192,10 @@ async def _retrieve_vector(manifest: RetrievalManifest) -> SourceResult:
     query = manifest.entity_refs.get("original_query", "")
 
     def _sync_fetch():
-        from src.rag.hybrid_retriever import hybrid_search
-        docs = hybrid_search(query, k=6)
+        # HyDE: generate hypothetical document → embed it → search.
+        # Falls back to standard hybrid_search() automatically on any failure.
+        from src.rag.hyde import hybrid_hyde_search
+        docs = hybrid_hyde_search(query, k=6)
 
         lines: list[str] = ["[POLICY / DOCUMENT EVIDENCE]"]
         meta: list[dict] = []
@@ -217,7 +219,7 @@ async def _retrieve_vector(manifest: RetrievalManifest) -> SourceResult:
         content=ctx,
         raw_text=ctx,
         metadata=meta,
-        freshness_score=0.75,     # documents can be dated
+        freshness_score=0.75,
         retrieval_latency_ms=latency,
     )
 
