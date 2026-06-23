@@ -189,15 +189,23 @@ async def _retrieve_fraud(manifest: RetrievalManifest) -> SourceResult:
 
 # ── Vector DB retrieval ───────────────────────────────────────────────────────
 
+_HYDE_INTENTS = {"policy", "aml", "kyc"}
+
+
 async def _retrieve_vector(manifest: RetrievalManifest) -> SourceResult:
     t0 = asyncio.get_event_loop().time()
     query = manifest.entity_refs.get("original_query", "")
+    use_hyde = bool(_HYDE_INTENTS.intersection(manifest.intents))
 
     def _sync_fetch():
-        # HyDE: generate hypothetical document → embed it → search.
-        # Falls back to standard hybrid_search() automatically on any failure.
-        from src.rag.hyde import hybrid_hyde_search
-        docs = hybrid_hyde_search(query, k=6)
+        # HyDE (extra LLM call) only for policy/AML/KYC where vocabulary gap is real.
+        # All other intents use direct hybrid search — no extra LLM round-trip.
+        if use_hyde:
+            from src.rag.hyde import hybrid_hyde_search
+            docs = hybrid_hyde_search(query, k=6)
+        else:
+            from src.rag.hybrid_retriever import hybrid_search
+            docs = hybrid_search(query, k=6)
 
         lines: list[str] = ["[POLICY / DOCUMENT EVIDENCE]"]
         meta: list[dict] = []
@@ -284,8 +292,8 @@ async def _retrieve_codebase(manifest: RetrievalManifest) -> SourceResult:
 
     def _sync_fetch() -> tuple[str, list[dict]]:
         try:
-            from src.rag.hyde import hybrid_hyde_search
-            docs = hybrid_hyde_search(
+            from src.rag.hybrid_retriever import hybrid_search
+            docs = hybrid_search(
                 query, k=4,
                 metadata_filter={"source_type": "codebase"},
             )

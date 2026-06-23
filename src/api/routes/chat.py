@@ -172,7 +172,7 @@ async def chat(
     from src.rag.query_router import build_retrieval_manifest
     from src.rag.parallel_retriever import parallel_retrieve
     from src.rag.context_fusion import fuse_context
-    from src.rag.verification import verify_response, build_correction_prompt
+    from src.rag.verification import verify_response
     from src.rag.entity_memory import (
         get_entity_state, update_entity_state, resolve_customer_id
     )
@@ -288,28 +288,9 @@ async def chat(
     )
 
     if not verification.passed:
-        # One regeneration attempt with a correction prompt
-        try:
-            correction_q = build_correction_prompt(
-                original_query=req.question,
-                failed_response=result.answer,
-                violations=verification.violations,
-                fused_context=fused_ctx,
-            )
-            corrected = agent.run(
-                question=correction_q,
-                customer_context=customer_ctx,
-                extra_data={
-                    "customer_id": req.customer_id,
-                    "role": current_user.role,
-                    "permissions": current_user.permissions,
-                },
-                structured_context=fused_ctx,
-            )
-            result.answer   = corrected.answer
-            result.metadata["verification_corrected"] = True
-        except Exception as exc:
-            result.metadata["verification_error"] = str(exc)
+        # Keep the original answer — lowered confidence signals the issue without
+        # a second LLM call that doubles latency on every verification miss.
+        result.metadata["verification_corrected"] = False
 
     result.metadata["verification_passed"]    = verification.passed
     result.metadata["verification_confidence"] = verification.confidence
