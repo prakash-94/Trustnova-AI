@@ -32,35 +32,84 @@ class CustomerSummaryResponse(BaseModel):
     error: Optional[str] = None
 
 
-@router.get("/search", tags=["Customer Intelligence"])
-async def search_customers(
-    q: str = "",
-    limit: int = 5,
+_CUSTOMER_COLS = """
+    customer_id  AS id,
+    first_name,
+    last_name,
+    email,
+    credit_score,
+    aml_risk_rating,
+    customer_type,
+    kyc_status,
+    is_pep,
+    is_sanctioned,
+    is_active,
+    created_at,
+    segment,
+    account_type
+"""
+
+
+@router.get("/list", tags=["Customer Intelligence"])
+async def list_customers(
+    limit: int = 50,
+    offset: int = 0,
+    risk_level: str = "",
     http_request: Request = None,
     current_user: CurrentUser = Depends(require_permission("customer")),
 ):
-    """
-    Search customers by name or ID.
-    Returns matching customer records for the dashboard search bar.
-    """
+    """Return a paginated list of all customers."""
     try:
         import pandas as pd
         from sqlalchemy import text
         from src.models.database import engine
 
-        query = text("""
-            SELECT customer_id, name, age, income, credit_score, balance, account_type
+        where = "WHERE LOWER(aml_risk_rating) = LOWER(:risk)" if risk_level else "WHERE 1=1"
+        sql = text(f"""
+            SELECT {_CUSTOMER_COLS}
             FROM customers
-            WHERE customer_id LIKE :q OR name LIKE :qn
+            {where}
+            ORDER BY created_at DESC
+            LIMIT :lim OFFSET :off
+        """)
+        count_sql = text(f"""
+            SELECT COUNT(*) as cnt FROM customers {where}
+        """)
+        params = {"lim": limit, "off": offset, "risk": risk_level}
+        df = pd.read_sql(sql, engine, params=params)
+        total = pd.read_sql(count_sql, engine, params=params).iloc[0]["cnt"]
+
+        return {"customers": df.to_dict(orient="records"), "total": int(total)}
+    except Exception as e:
+        return {"customers": [], "total": 0, "error": str(e)}
+
+
+@router.get("/search", tags=["Customer Intelligence"])
+async def search_customers(
+    q: str = "",
+    limit: int = 20,
+    http_request: Request = None,
+    current_user: CurrentUser = Depends(require_permission("customer")),
+):
+    """Search customers by name or ID."""
+    try:
+        import pandas as pd
+        from sqlalchemy import text
+        from src.models.database import engine
+
+        sql = text(f"""
+            SELECT {_CUSTOMER_COLS}
+            FROM customers
+            WHERE customer_id LIKE :q
+               OR LOWER(first_name || ' ' || last_name) LIKE LOWER(:qn)
+               OR LOWER(first_name) LIKE LOWER(:qn)
+               OR LOWER(last_name) LIKE LOWER(:qn)
+            ORDER BY created_at DESC
             LIMIT :lim
         """)
-        df = pd.read_sql(query, engine, params={"q": f"%{q}%", "qn": f"%{q}%", "lim": limit})
+        df = pd.read_sql(sql, engine, params={"q": f"%{q}%", "qn": f"%{q}%", "lim": limit})
 
-        return {
-            "status": "ok",
-            "results": df.to_dict(orient="records"),
-            "total": len(df),
-        }
+        return {"results": df.to_dict(orient="records"), "total": len(df)}
     except Exception as e:
         return {"status": "error", "error": str(e), "results": []}
 
