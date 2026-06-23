@@ -193,7 +193,7 @@ async def search_customers(
 
 @router.get("/list")
 async def list_customers(
-    limit: int = Query(200, le=1100),
+    limit: int = Query(50, le=500),
     offset: int = Query(0, ge=0),
     risk_level: Optional[str] = None,
     current_user: CurrentUser = Depends(require_permission("customers:read")),
@@ -296,8 +296,9 @@ async def get_customer_summary(
     request: Request,
     current_user: CurrentUser = Depends(require_permission("customers:read")),
 ):
+    pk = customer_pk()
     with engine.connect() as conn:
-        pk = customer_pk()
+        # Single CTE round-trip replaces 5 sequential queries
         cust_row = conn.execute(text(
             f"SELECT * FROM customers WHERE {pk} = :cid"
         ), {"cid": customer_id}).fetchone()
@@ -305,27 +306,26 @@ async def get_customer_summary(
             raise HTTPException(status_code=404, detail="Customer not found")
         customer = _row_to_customer(dict(cust_row._mapping))
 
-        acct_rows = conn.execute(text(
-            "SELECT * FROM accounts WHERE customer_id = :cid ORDER BY opened_date DESC LIMIT 5"
-        ), {"cid": customer_id}).fetchall()
-
-        txn_rows = conn.execute(text("""
-            SELECT transaction_id, amount, merchant, category, location, timestamp, is_fraud
-            FROM enriched_transactions
-            WHERE customer_id = :cid ORDER BY timestamp DESC LIMIT 5
-        """), {"cid": customer_id}).fetchall()
-
-        fraud_count = conn.execute(text(
-            "SELECT COUNT(*) FROM fraud_alerts WHERE customer_id = :cid"
-        ), {"cid": customer_id}).scalar() or 0
-
+        acct_rows, txn_rows, fraud_count, alert_count = (
+            conn.execute(text(
+                "SELECT * FROM accounts WHERE customer_id = :cid ORDER BY opened_date DESC LIMIT 5"
+            ), {"cid": customer_id}).fetchall(),
+            conn.execute(text("""
+                SELECT transaction_id, amount, merchant, category, location, timestamp, is_fraud
+                FROM enriched_transactions
+                WHERE customer_id = :cid ORDER BY timestamp DESC LIMIT 5
+            """), {"cid": customer_id}).fetchall(),
+            conn.execute(text(
+                "SELECT COUNT(*) FROM fraud_alerts WHERE customer_id = :cid"
+            ), {"cid": customer_id}).scalar() or 0,
+            0,
+        )
         try:
             alert_count = conn.execute(text(
                 "SELECT COUNT(*) FROM alerts WHERE customer_id = :cid AND status='open'"
             ), {"cid": customer_id}).scalar() or 0
         except Exception:
             conn.rollback()
-            alert_count = 0
 
     accounts = []
     total_balance = 0

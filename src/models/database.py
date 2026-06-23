@@ -53,6 +53,38 @@ def _table_columns(conn, table: str) -> set[str]:
     return {r[0] for r in rows}
 
 
+def ensure_indexes() -> None:
+    """Create performance indexes if they don't exist. Safe to run on every startup."""
+    indexes = [
+        # customers — list ordering + risk filter + search
+        "CREATE INDEX IF NOT EXISTS idx_customers_name       ON customers(first_name, last_name)",
+        "CREATE INDEX IF NOT EXISTS idx_customers_aml        ON customers(aml_risk_rating)",
+        # fraud_alerts — most queried join column
+        "CREATE INDEX IF NOT EXISTS idx_fraud_customer       ON fraud_alerts(customer_id)",
+        "CREATE INDEX IF NOT EXISTS idx_fraud_status         ON fraud_alerts(status)",
+        "CREATE INDEX IF NOT EXISTS idx_fraud_ts             ON fraud_alerts(timestamp)",
+        # loans
+        "CREATE INDEX IF NOT EXISTS idx_loans_customer       ON loans(customer_id)",
+        "CREATE INDEX IF NOT EXISTS idx_loans_status         ON loans(status)",
+        "CREATE INDEX IF NOT EXISTS idx_loans_created        ON loans(created_at)",
+        # enriched_transactions
+        "CREATE INDEX IF NOT EXISTS idx_etxn_customer        ON enriched_transactions(customer_id)",
+        "CREATE INDEX IF NOT EXISTS idx_etxn_ts              ON enriched_transactions(timestamp)",
+        "CREATE INDEX IF NOT EXISTS idx_etxn_fraud           ON enriched_transactions(is_fraud)",
+        # trust_scores
+        "CREATE INDEX IF NOT EXISTS idx_trust_customer_ts    ON trust_scores(customer_id, timestamp)",
+        # accounts
+        "CREATE INDEX IF NOT EXISTS idx_accounts_customer    ON accounts(customer_id)",
+    ]
+    with engine.begin() as conn:
+        for sql in indexes:
+            try:
+                conn.execute(text(sql))
+            except Exception as e:
+                print(f"  [index] Skipped: {e}")
+    print("  [index] Performance indexes verified.")
+
+
 def run_migrations() -> None:
     """Add any missing columns to existing tables so old DB volumes stay compatible."""
     migrations = [

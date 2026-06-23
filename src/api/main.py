@@ -13,6 +13,7 @@ from datetime import datetime
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from dotenv import load_dotenv
 from prometheus_fastapi_instrumentator import Instrumentator
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -59,8 +60,9 @@ async def lifespan(app: FastAPI):
     print(f"  CORS:     {_cors_origins}")
 
     # Apply DB schema migrations (add missing columns to old volumes)
-    from src.models.database import run_migrations
+    from src.models.database import run_migrations, ensure_indexes
     run_migrations()
+    ensure_indexes()
 
     # Seed auth tables and demo users
     auth_module.ensure_users_table()
@@ -109,6 +111,7 @@ _cors_origins = (
     if _cors_origins_raw.strip() == "*"
     else [o.strip() for o in _cors_origins_raw.split(",") if o.strip()]
 )
+app.add_middleware(GZipMiddleware, minimum_size=512)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,

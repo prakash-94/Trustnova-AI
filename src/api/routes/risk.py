@@ -97,10 +97,20 @@ async def get_risk_segment_customers(
                 c.credit_score,
                 c.aml_risk_rating AS risk_level,
                 c.annual_income,
-                (SELECT account_type FROM accounts WHERE customer_id = c.id LIMIT 1) AS account_type,
-                (SELECT COALESCE(SUM(balance_cents), 0) FROM accounts WHERE customer_id = c.id) AS balance_cents,
-                (SELECT COUNT(*) FROM fraud_alerts fa WHERE fa.customer_id = c.id) AS fraud_count
+                COALESCE(a.account_type, 'checking') AS account_type,
+                COALESCE(a.balance_cents, 0)         AS balance_cents,
+                COALESCE(f.fraud_count, 0)           AS fraud_count
             FROM customers c
+            LEFT JOIN (
+                SELECT customer_id,
+                       MIN(account_type) AS account_type,
+                       SUM(balance_cents) AS balance_cents
+                FROM accounts GROUP BY customer_id
+            ) a ON a.customer_id = c.id
+            LEFT JOIN (
+                SELECT customer_id, COUNT(*) AS fraud_count
+                FROM fraud_alerts GROUP BY customer_id
+            ) f ON f.customer_id = c.id
             WHERE LOWER(c.aml_risk_rating) IN ({placeholders})
             ORDER BY c.credit_score ASC NULLS LAST
             LIMIT :limit OFFSET :offset

@@ -27,7 +27,7 @@
  *   3. Fraud toggle → bankTransactionsApi.list({ is_fraud: true }) → fraud-only view
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { clsx } from 'clsx';
 import { bankTransactionsApi, type TransactionStats, type BankTransaction } from '@/services/api';
@@ -37,6 +37,7 @@ import Badge from '@/components/common/Badge';
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const PAGE_SIZE = 50;
+const FRAUD_PAGE_SIZE = 50;
 
 /**
  * Period tabs — each one maps to a time window the backend uses.
@@ -349,6 +350,8 @@ export default function TransactionsCenter() {
   // Fraud Alerts Modal
   const [showFraudModal, setShowFraudModal] = useState(false);
   const [fraudTxns, setFraudTxns] = useState<BankTransaction[]>([]);
+  const [fraudTotal, setFraudTotal] = useState(0);
+  const [fraudPage, setFraudPage] = useState(0);
   const [fraudLoading, setFraudLoading] = useState(false);
   const [selectedTxn, setSelectedTxn] = useState<BankTransaction | null>(null);
   const [fraudFilter, setFraudFilter] = useState<string>('all');
@@ -374,9 +377,11 @@ export default function TransactionsCenter() {
     return 'unusual_activity';
   }
 
-  // Derived: filtered fraud transactions
-  const filteredFraudTxns = fraudFilter === 'all' ? fraudTxns
-    : fraudTxns.filter(tx => riskToSeverity(tx.merchant_risk) === fraudFilter);
+  // Derived: filtered fraud transactions (memoised — fraudTxns can be large)
+  const filteredFraudTxns = useMemo(
+    () => fraudFilter === 'all' ? fraudTxns : fraudTxns.filter(tx => riskToSeverity(tx.merchant_risk) === fraudFilter),
+    [fraudTxns, fraudFilter],
+  );
 
   // ── Data fetching ──────────────────────────────────────────────────────────
 
@@ -412,23 +417,30 @@ export default function TransactionsCenter() {
 
   useEffect(() => { loadTransactions(); }, [loadTransactions]);
 
-  /** Load fraud transactions when modal is opened. */
+  /** Load fraud transactions when modal opens or user pages through results. */
   useEffect(() => {
-    if (!showFraudModal) return;
+    if (!showFraudModal) { setFraudPage(0); return; }
     setFraudLoading(true);
-    setSelectedTxn(null);
-    setFraudFilter('all');
-    bankTransactionsApi.list({ is_fraud: true, period: activePeriod, limit: 500 })
-      .then(res => setFraudTxns(res.transactions ?? []))
-      .catch((err) => { console.error('[FraudModal] fetch failed:', err); setFraudTxns([]); })
+    if (fraudPage === 0) {
+      setSelectedTxn(null);
+      setFraudFilter('all');
+    }
+    bankTransactionsApi.list({ is_fraud: true, period: activePeriod, limit: FRAUD_PAGE_SIZE, offset: fraudPage * FRAUD_PAGE_SIZE })
+      .then(res => {
+        const batch = res.transactions ?? [];
+        setFraudTxns(prev => fraudPage === 0 ? batch : [...prev, ...batch]);
+        setFraudTotal(res.total ?? 0);
+      })
+      .catch((err) => { console.error('[FraudModal] fetch failed:', err); if (fraudPage === 0) setFraudTxns([]); })
       .finally(() => setFraudLoading(false));
-  }, [showFraudModal, activePeriod]);
+  }, [showFraudModal, activePeriod, fraudPage]);
 
   const handlePeriodChange = (id: PeriodId) => {
     setActivePeriod(id);
     setPage(0);
     setFraudOnly(false);
     setSearch('');
+    setFraudPage(0);
   };
 
   // ── Derived ───────────────────────────────────────────────────────────────
@@ -769,8 +781,8 @@ export default function TransactionsCenter() {
                 <div>
                   <h2 className="text-sm font-semibold text-t1">Fraud Alerts</h2>
                   <p className="text-[10px] text-t3">
-                    {fraudLoading ? 'Loading…'
-                      : `${fraudTxns.length} flagged transactions · ${PERIODS.find(p => p.id === activePeriod)?.label} period · ML + rule-based detection`}
+                    {fraudLoading && fraudPage === 0 ? 'Loading…'
+                      : `${fraudTxns.length}${fraudTotal > fraudTxns.length ? ` of ${fraudTotal}` : ''} flagged transactions · ${PERIODS.find(p => p.id === activePeriod)?.label} period`}
                   </p>
                 </div>
                 {!fraudLoading && (
@@ -871,6 +883,23 @@ export default function TransactionsCenter() {
                     })
                   )}
                 </div>
+                {/* Load More */}
+                {!fraudLoading && fraudTxns.length < fraudTotal && (
+                  <div className="px-5 py-3 border-t border-white/[0.04] flex-shrink-0">
+                    <button
+                      onClick={() => setFraudPage(p => p + 1)}
+                      className="w-full py-2 text-xs text-t3 hover:text-t2 rounded-lg hover:bg-white/[0.03] transition-colors"
+                    >
+                      Load more ({fraudTotal - fraudTxns.length} remaining)
+                    </button>
+                  </div>
+                )}
+                {fraudLoading && fraudPage > 0 && (
+                  <div className="px-5 py-3 border-t border-white/[0.04] flex items-center justify-center gap-2 flex-shrink-0">
+                    <div className="w-4 h-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
+                    <span className="text-xs text-t3">Loading more…</span>
+                  </div>
+                )}
               </div>
 
               {/* ── Transaction Detail (right 45%) ───────────────────────── */}

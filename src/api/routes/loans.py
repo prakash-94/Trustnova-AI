@@ -78,7 +78,7 @@ async def get_loans_for_customer(
 ):
     with engine.connect() as conn:
         rows = conn.execute(text(
-            "SELECT * FROM loans WHERE customer_id = :cid ORDER BY created_at DESC"
+            "SELECT * FROM loans WHERE customer_id = :cid ORDER BY created_at DESC LIMIT 50"
         ), {"cid": customer_id}).fetchall()
     loans = [_row_to_loan(dict(r._mapping)) for r in rows]
     summary = {
@@ -213,6 +213,7 @@ async def get_loan_detail(
             FROM   loans
             WHERE  customer_id = :cid AND id != :lid
             ORDER  BY origination_date DESC
+            LIMIT  10
         """), {"cid": cid, "lid": loan_id}).fetchall()
         loan_history = []
         for r in other_rows:

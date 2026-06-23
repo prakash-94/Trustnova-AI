@@ -16,6 +16,7 @@ Endpoints:
 """
 
 import datetime
+import time
 from fastapi import APIRouter, Depends, Query
 from typing import Optional
 from sqlalchemy import text
@@ -51,24 +52,24 @@ PERIOD_TREND: dict[str, dict] = {
 # not wall-clock time.  This prevents the "30-day window lands past all data" problem
 # when running against a dataset seeded in the past.
 _DB_MAX_TS_CACHE: str | None = None
+_DB_MAX_TS_CACHE_AT: float = 0.0
+_DB_MAX_TS_TTL: float = 300.0  # refresh every 5 minutes
 
 
 def _get_db_max_ts(conn) -> datetime.datetime:
     """
     Return the latest timestamp in enriched_transactions.
     Falls back to utcnow() if table is empty.
-    Cached after first call so we don't hit the DB on every request.
+    Cached for 5 minutes so we don't hit the DB on every request.
     """
-    global _DB_MAX_TS_CACHE
-    if _DB_MAX_TS_CACHE is None:
+    global _DB_MAX_TS_CACHE, _DB_MAX_TS_CACHE_AT
+    if _DB_MAX_TS_CACHE is None or (time.monotonic() - _DB_MAX_TS_CACHE_AT) > _DB_MAX_TS_TTL:
         row = conn.execute(text(
             "SELECT MAX(timestamp) FROM enriched_transactions"
         )).fetchone()
         raw = row[0] if row and row[0] else None
-        if raw:
-            _DB_MAX_TS_CACHE = raw
-        else:
-            _DB_MAX_TS_CACHE = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+        _DB_MAX_TS_CACHE = raw if raw else datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+        _DB_MAX_TS_CACHE_AT = time.monotonic()
     try:
         return datetime.datetime.fromisoformat(_DB_MAX_TS_CACHE)
     except Exception:
