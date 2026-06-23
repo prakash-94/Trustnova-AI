@@ -308,7 +308,9 @@ def get_loans(query: str, customer_id: Optional[str] = None, limit: int = 25) ->
             filters.append("l.customer_id = :cid")
             params["cid"] = customer_id
         q_lower = query.lower()
-        if "active" in q_lower:
+        if "pending" in q_lower:
+            filters.append("l.status = 'pending'")
+        elif "active" in q_lower:
             filters.append("l.status = 'active'")
         elif "delinquent" in q_lower or "overdue" in q_lower:
             filters.append("l.status IN ('delinquent','defaulted','past_due')")
@@ -489,9 +491,10 @@ def get_portfolio_summary() -> tuple[str, list[dict]]:
         )).fetchall()
         total_fraud = conn.execute(text("SELECT COUNT(*) FROM fraud_alerts")).scalar() or 0
         open_fraud  = conn.execute(text("SELECT COUNT(*) FROM fraud_alerts WHERE status='open'")).scalar() or 0
-        total_loans = conn.execute(text("SELECT COUNT(*) FROM loans")).scalar() or 0
-        active_loans = conn.execute(text("SELECT COUNT(*) FROM loans WHERE status='active'")).scalar() or 0
-        delinquent  = conn.execute(text(
+        total_loans   = conn.execute(text("SELECT COUNT(*) FROM loans")).scalar() or 0
+        active_loans  = conn.execute(text("SELECT COUNT(*) FROM loans WHERE status='active'")).scalar() or 0
+        pending_loans = conn.execute(text("SELECT COUNT(*) FROM loans WHERE status='pending'")).scalar() or 0
+        delinquent    = conn.execute(text(
             "SELECT COUNT(*) FROM loans WHERE status IN ('delinquent','defaulted','past_due')"
         )).scalar() or 0
         try:
@@ -524,6 +527,7 @@ def get_portfolio_summary() -> tuple[str, list[dict]]:
         "── LOAN PORTFOLIO ──",
         f"  Total Loans     : {total_loans:,}",
         f"  Active          : {active_loans:,}",
+        f"  Pending         : {pending_loans:,}",
         f"  Delinquent/NPL  : {delinquent:,}  (NPL ratio: {delinquent/max(total_loans,1)*100:.2f}%)",
         "",
         f"── AI TRUST SCORE (avg across customers) : {float(avg_trust):.1f}/100 ──",

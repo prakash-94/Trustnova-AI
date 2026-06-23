@@ -51,7 +51,8 @@ _PATTERNS: dict[str, list[str]] = {
     "loan": [
         r"loan.?portfolio", r"active.?loan", r"loan.?pipeline",
         r"loan.?application", r"loan.?status", r"loan.?history",
-        r"outstanding.?loan", r"delinquent.?loan",
+        r"outstanding.?loan", r"delinquent.?loan", r"pending.?loan",
+        r"loan.{0,15}pending", r"how.?many.?loan",
         r"loan.?amount", r"loan.?balance", r"loan.?value",
         r"(highest|largest|biggest|maximum|max|top|lowest|smallest|minimum|min).{0,25}loan",
         r"loan.{0,25}(highest|largest|biggest|maximum|max|top|lowest|smallest|minimum|min)",
