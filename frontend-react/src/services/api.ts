@@ -224,8 +224,8 @@ export const customersApi = {
 };
 
 export const kpiApi = {
-  stats: () => request<KpiStats>('/kpi/stats'),
-  get: () => request<KpiStats>('/kpi/stats'),
+  stats: () => swr('kpi/stats', () => request<KpiStats>('/kpi/stats'), 2 * 60 * 1000),
+  get: () => swr('kpi/stats', () => request<KpiStats>('/kpi/stats'), 2 * 60 * 1000),
   aiTrustInfo: () => request<{
     entries: Record<string, unknown>[];
     storage: Record<string, string>;
