@@ -31,6 +31,7 @@ class ChatRequest(BaseModel):
     customer_id: Optional[str] = None
     agent_id:    Optional[str] = None
     context:     Optional[dict] = None
+    session_id:  Optional[str] = None    # banker session for entity carryover
 
 
 class AITrustScore(BaseModel):
@@ -90,6 +91,10 @@ async def chat(
     from src.rag.parallel_retriever import parallel_retrieve
     from src.rag.context_fusion import fuse_context
     from src.rag.verification import verify_response, build_correction_prompt
+    from src.rag.entity_memory import (
+        get_entity_state, update_entity_state, resolve_customer_id
+    )
+    from src.rag.query_rewriter import rewrite_query
 
     agent = (
         get_agent(req.agent_id)
@@ -97,10 +102,29 @@ async def chat(
         else get_default_agent_for_role(current_user.role)
     )
 
+    # ── Priority 1: Entity Carryover + Query Rewriting ─────────────────────────
+    session_id = req.session_id or current_user.username   # username as fallback session key
+    entity_state  = get_entity_state(session_id)
+
+    # Resolve customer_id: explicit request > active session entity
+    resolved_customer_id = resolve_customer_id(req.customer_id, session_id)
+
+    # Rewrite vague queries ("what are his loans?") into self-contained ones
+    session_history = []
+    try:
+        from src.api.memory import get_memory
+        session_history = get_memory().get_session_history(session_id, last_n=6)
+    except Exception:
+        pass
+
+    rewritten_question = rewrite_query(req.question, entity_state, session_history)
+    if rewritten_question != req.question:
+        print(f"[QueryRewriter] '{req.question}' → '{rewritten_question}'")
+
     # ── Customer context (legacy block — kept for agent compatibility) ─────────
     customer_ctx = ""
-    if req.customer_id:
-        customer_ctx = _build_customer_context(req.customer_id)
+    if resolved_customer_id:
+        customer_ctx = _build_customer_context(resolved_customer_id)
         customer_ctx = rbac_filter.redact_customer_fields(customer_ctx, current_user.permissions)
 
     extra_ctx = ""
@@ -108,10 +132,10 @@ async def chat(
         for k, v in req.context.items():
             extra_ctx += f"\n{k.replace('_', ' ').title()}: {v}"
 
-    # ── Step 1: Query Router ───────────────────────────────────────────────────
+    # ── Step 1: Query Router (uses rewritten question) ─────────────────────────
     manifest = build_retrieval_manifest(
-        query=req.question,
-        customer_id=req.customer_id,
+        query=rewritten_question,
+        customer_id=resolved_customer_id,
         permissions=set(current_user.permissions),
     )
 
@@ -127,10 +151,10 @@ async def chat(
 
     # ── Step 4: LLM Generation ─────────────────────────────────────────────────
     result = agent.run(
-        question=req.question,
+        question=rewritten_question,
         customer_context=customer_ctx + extra_ctx,
         extra_data={
-            "customer_id":       req.customer_id,
+            "customer_id":       resolved_customer_id,
             "role":              current_user.role,
             "permissions":       current_user.permissions,
             "retrieval_intents": retrieval.intents,
@@ -208,13 +232,13 @@ async def chat(
 
     # ── Step 6b: 3-Layer Trust Score v2 ───────────────────────────────────────
     trust_score_v2 = None
-    if req.customer_id:
+    if resolved_customer_id:
         try:
             from src.models.trust_scorer_v2 import compute_all_scores
 
             avg_sim_score = _avg_sim(sim_scores)
             scores = compute_all_scores(
-                customer_id=req.customer_id,
+                customer_id=resolved_customer_id,
                 retrieval_meta={
                     "sources_succeeded":   retrieval.sources_succeeded,
                     "sources_attempted":   retrieval.sources_attempted,
@@ -236,11 +260,29 @@ async def chat(
         except Exception as e:
             print(f"[Chat] Trust score v2 failed: {e}")
 
+    # ── Update entity memory for next turn ────────────────────────────────────
+    try:
+        # Persist which customer + intent was active so next turn can carry over
+        primary_intent = retrieval.intents[0] if retrieval.intents else None
+        update_entity_state(
+            session_id    = session_id,
+            customer_id   = resolved_customer_id,
+            last_intent   = primary_intent,
+            last_topic    = rewritten_question[:80],
+        )
+        # Also append turns to session memory for query rewriter history
+        from src.api.memory import get_memory
+        mem = get_memory()
+        mem.append_to_session(session_id, "user", req.question)
+        mem.append_to_session(session_id, "assistant", result.answer, model_used=LLM_MODEL)
+    except Exception as e:
+        print(f"[Chat] Entity memory update failed: {e}")
+
     # ── Audit + response ───────────────────────────────────────────────────────
     log_audit(
         current_user.username, current_user.role, "chat", "ai_copilot",
         resource_id=req.agent_id or agent.name,
-        customer_id=req.customer_id or "",
+        customer_id=resolved_customer_id or "",
         ip=request.client.host if request.client else "",
     )
 
