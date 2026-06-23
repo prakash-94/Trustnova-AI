@@ -33,7 +33,14 @@ _SYSTEM_FOOTER = (
     "3. If a value is absent from the context above, say "
     "'Data not available in current context.' Do NOT invent it.\n"
     "4. Cite your source in every factual claim: [SQL], [Fraud Engine], [Policy Doc].\n"
-    "5. For fields marked ⚠ ACCESS RESTRICTED, do not speculate or guess.\n"
+    "5. RBAC HARD RULE: For sources marked ⚠ SOURCES BLOCKED BY ROLE PERMISSIONS —\n"
+    "   do NOT speculate, infer, or reason about the blocked data from any other field.\n"
+    "   Specifically: do NOT use a customer's AML risk rating, credit score, or any\n"
+    "   unblocked field to deduce what a blocked source (e.g., fraud_engine) would say.\n"
+    "   If asked about blocked data, respond: 'This information is not accessible with\n"
+    "   your current role permissions. Please contact your compliance officer.'\n"
+    "6. SCOPE RULE: Only answer questions within banking/financial services scope.\n"
+    "   If the question is unrelated to banking, say so and decline to speculate.\n"
     "─────────────────────────────────────────────────────────────\n"
 )
 

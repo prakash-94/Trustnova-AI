@@ -83,7 +83,7 @@ def verify_response(
             if value <= 1.0:       # ignore trivially small numbers (ratios, counts)
                 continue
             is_known = any(
-                abs(value - k) / (k + 1e-6) < 0.015   # 1.5 % tolerance
+                abs(value - k) / (k + 1e-6) < 0.001   # 0.1 % tolerance (≈ $100 on $100k)
                 for k in known_values
             )
             if not is_known:

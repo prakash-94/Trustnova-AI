@@ -12,9 +12,10 @@ Pipeline (per request):
 import os
 import json
 import re
+import time
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 
 from src.api.auth import CurrentUser, require_permission, log_audit, ROLES
@@ -27,7 +28,7 @@ LLM_MODEL = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
 # ── Request / Response models ─────────────────────────────────────────────────
 
 class ChatRequest(BaseModel):
-    question:    str
+    question:    str = Field(..., min_length=1, max_length=2000)
     customer_id: Optional[str] = None
     agent_id:    Optional[str] = None
     context:     Optional[dict] = None
@@ -60,6 +61,72 @@ class ChatResponse(BaseModel):
     trust_score_v2: Optional[TrustScoreV2Response] = None
 
 
+# ── Input-guard helpers ───────────────────────────────────────────────────────
+
+# Imperative write-operation verbs that indicate a banker expects the AI to
+# execute a financial action rather than answer an information query.
+_WRITE_ACTION_RE = re.compile(
+    r"^\s*(please\s+)?"
+    r"(transfer|send|wire|move\s+money|deposit|withdraw|"
+    r"approve\s+(?:this|the|a)\s+loan|reject\s+(?:this|the)|deny\s+(?:this|the)|"
+    r"close\s+(?:this|the|an?)\s+account|delete\s+(?:this|the|a)\s+customer|"
+    r"remove\s+(?:this|the)|update\s+(?:this|the)\s+(?:customer|account|record)|"
+    r"change\s+(?:this|the)\s+(?:customer|account)|"
+    r"open\s+an?\s+(?:account|loan)|apply\s+for\s+a|"
+    r"pay\s+(?:off|the|this)|debit\s+(?:the|this)|credit\s+(?:the|this)|"
+    r"submit\s+(?:a|the)\s+sar|process\s+(?:the|this)\s+(?:transfer|payment)|"
+    r"execute\s+(?:the|this)|cancel\s+(?:the|this)\s+(?:account|loan|card)|"
+    r"suspend\s+(?:the|this)|freeze\s+(?:the|this)\s+account|"
+    r"block\s+(?:the|this)\s+(?:account|card))\b",
+    re.IGNORECASE,
+)
+
+# Known jailbreak/injection patterns
+_JAILBREAK_RE = re.compile(
+    r"(ignore\s+(all\s+)?(previous|prior|your|all\s+previous\s+)?(?:instructions?|rules?|guidelines?|constraints?)|"
+    r"you\s+are\s+now\s+(?!a\s+banking)|act\s+as\s+(?!a\s+banking)|"
+    r"pretend\s+(?:to\s+be|you\s+are)|"
+    r"\bdan\b|jailbreak|bypass\s+(?:all\s+)?(?:rules?|restrictions?|guidelines?)|"
+    r"override\s+(?:all\s+)?(?:instructions?|rules?)|"
+    r"disregard\s+(?:all\s+)?(?:previous|prior|your)|"
+    r"forget\s+(?:everything|all\s+(?:previous|prior|your))|"
+    r"no\s+restrictions?\s+(?:at\s+all|from\s+now)|"
+    r"without\s+(?:any\s+)?restrictions?)",
+    re.IGNORECASE,
+)
+
+_ACTION_DENIED_MSG = (
+    "I'm an information-only assistant and cannot perform banking transactions, "
+    "approve or reject applications, or modify account data. "
+    "Please use the bank's core banking system for operational actions, "
+    "or contact your branch manager."
+)
+
+_SECURITY_BLOCKED_MSG = (
+    "This request cannot be processed. If you believe this is an error, "
+    "please rephrase your question in the context of banking information queries."
+)
+
+
+def _is_write_action(question: str) -> bool:
+    return bool(_WRITE_ACTION_RE.match(question.strip()))
+
+
+def _is_jailbreak(question: str) -> bool:
+    return bool(_JAILBREAK_RE.search(question))
+
+
+def _make_early_response(message: str, agent_name: str = "guard", latency_ms: int = 0) -> "ChatResponse":
+    return ChatResponse(
+        answer=message,
+        sources=[],
+        confidence=0.0,
+        agent_name=agent_name,
+        latency_ms=latency_ms,
+        metadata={"early_exit": True},
+    )
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _count_source_citations(text: str) -> int:
@@ -85,6 +152,21 @@ async def chat(
     request:      Request,
     current_user: CurrentUser = Depends(require_permission("chat")),
 ):
+    t_start = time.time()
+
+    # ── Input guards (before any pipeline work) ────────────────────────────────
+    if _is_jailbreak(req.question):
+        log_audit(current_user.username, current_user.role, "chat_blocked_jailbreak",
+                  "ai_copilot", ip=request.client.host if request.client else "")
+        return _make_early_response(_SECURITY_BLOCKED_MSG, agent_name="security_guard",
+                                    latency_ms=int((time.time() - t_start) * 1000))
+
+    if _is_write_action(req.question):
+        log_audit(current_user.username, current_user.role, "chat_blocked_action",
+                  "ai_copilot", ip=request.client.host if request.client else "")
+        return _make_early_response(_ACTION_DENIED_MSG, agent_name="action_guard",
+                                    latency_ms=int((time.time() - t_start) * 1000))
+
     from src.agents.registry import get_agent, get_default_agent_for_role
     from src.rag import rbac_filter
     from src.rag.query_router import build_retrieval_manifest
@@ -94,7 +176,7 @@ async def chat(
     from src.rag.entity_memory import (
         get_entity_state, update_entity_state, resolve_customer_id
     )
-    from src.rag.query_rewriter import rewrite_query
+    from src.rag.query_rewriter import rewrite_query, needs_rewrite
 
     agent = (
         get_agent(req.agent_id)
@@ -121,6 +203,19 @@ async def chat(
     if rewritten_question != req.question:
         print(f"[QueryRewriter] '{req.question}' → '{rewritten_question}'")
 
+    # ── Pronoun-without-context guard ──────────────────────────────────────────
+    # If the rewritten question STILL contains unresolved pronouns and we have no
+    # customer context at all, asking the LLM would silently return portfolio-wide
+    # data as if it were the intended answer.  Return a clarification instead.
+    if needs_rewrite(rewritten_question) and not resolved_customer_id:
+        return _make_early_response(
+            "It looks like your question refers to a specific customer "
+            "(e.g., 'his', 'her', 'the account'). "
+            "Please select a customer first or include their name or ID in your question.",
+            agent_name="clarification_guard",
+            latency_ms=int((time.time() - t_start) * 1000),
+        )
+
     # ── Customer context (legacy block — kept for agent compatibility) ─────────
     customer_ctx = ""
     if resolved_customer_id:
@@ -138,6 +233,19 @@ async def chat(
         customer_id=resolved_customer_id,
         permissions=set(current_user.permissions),
     )
+    # Surface intent truncation to the caller when the query spans many topics
+    _intent_count_hint: Optional[str] = None
+    if len(manifest.intents) >= 3:
+        from src.rag.semantic_router import semantic_route_with_scores
+        all_scored = semantic_route_with_scores(rewritten_question)
+        addressable = [i for i, s in all_scored if s >= 0.40]
+        if len(addressable) > len(manifest.intents):
+            _intent_count_hint = (
+                f"Note: Your question covers {len(addressable)} topics. "
+                f"I addressed the top {len(manifest.intents)} "
+                f"({', '.join(manifest.intents)}). "
+                "For the remaining topics, please ask a follow-up question."
+            )
 
     # ── Step 2: Parallel Retrieval ─────────────────────────────────────────────
     retrieval = await parallel_retrieve(manifest)
@@ -296,6 +404,11 @@ async def chat(
         sim_scores_out,
         has_customer_ctx,
     )
+
+    if _intent_count_hint:
+        raw["metadata"]["intent_truncation_note"] = _intent_count_hint
+        # Prepend the note to the answer so the banker always sees it
+        raw["answer"] = _intent_count_hint + "\n\n" + raw.get("answer", "")
 
     return ChatResponse(**raw, trust_score=trust_score, trust_score_v2=trust_score_v2)
 

@@ -16,6 +16,16 @@ LLM_MODEL      = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
 GROQ_API_KEY   = os.getenv("GROQ_API_KEY", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
+# If ALL vector similarity scores are below this, topic is outside knowledge base
+_LOW_RELEVANCE_THRESHOLD = 0.30
+
+_OFF_TOPIC_RESPONSE = (
+    "I don't have relevant information about this topic in TrustNova Bank's knowledge base. "
+    "I can help with: customer profiles, account balances, loan portfolios, fraud alerts, "
+    "AML/KYC compliance, transaction history, risk assessments, and banking policy documents. "
+    "Please ask a banking-related question."
+)
+
 # Freshness: policy doc file modification timestamps (seconds since epoch)
 # Used to penalise stale content at retrieval time.
 _DOCS_DIR = os.getenv("DOCS_DIR", "data/raw/banking_docs")
@@ -321,8 +331,25 @@ class BaseAgent:
                 pass
         rag_context, sources, sim_scores, chunk_texts = get_rag_context(question, top_k=12, metadata_filter=_doc_filter)
 
-        # 2. For policy-listing queries, inject the full catalog as the first context block
-        #    so the LLM cannot miss it — it appears as retrieved data, not just instructions.
+        # 2a. Off-topic / low-relevance guard:
+        #     If ALL vector similarity scores are below threshold AND no structured DB data
+        #     was injected, the question is outside the knowledge base — refuse without LLM.
+        if (
+            sim_scores
+            and max(sim_scores) < _LOW_RELEVANCE_THRESHOLD
+            and not structured_context
+        ):
+            return AgentResponse(
+                answer=_OFF_TOPIC_RESPONSE,
+                sources=[],
+                confidence=0.10,
+                agent_name=self.name,
+                latency_ms=int((time.time() - t0) * 1000),
+                metadata={"off_topic": True, "max_similarity": round(max(sim_scores), 3)},
+            )
+
+        # 2b. For policy-listing queries, inject the full catalog as the first context block
+        #     so the LLM cannot miss it — it appears as retrieved data, not just instructions.
         final_rag_context = rag_context
         if self._is_policy_listing_query(question):
             catalog_block = (
@@ -452,6 +479,25 @@ class BaseAgent:
             except Exception:
                 pass
         rag_context, sources, sim_scores, chunk_texts = get_rag_context(question, top_k=12, metadata_filter=_doc_filter)
+
+        # Off-topic guard for streaming path (same logic as run())
+        if (
+            sim_scores
+            and max(sim_scores) < _LOW_RELEVANCE_THRESHOLD
+            and not structured_context
+        ):
+            yield {"type": "token", "content": _OFF_TOPIC_RESPONSE}
+            yield {
+                "type": "done",
+                "answer": _OFF_TOPIC_RESPONSE,
+                "sources": [],
+                "confidence": 0.10,
+                "agent_name": self.name,
+                "latency_ms": int((time.time() - t0) * 1000),
+                "metadata": {"off_topic": True, "max_similarity": round(max(sim_scores), 3),
+                             "_sim_scores": [], "_source_texts": []},
+            }
+            return
 
         final_rag_context = rag_context
         if self._is_policy_listing_query(question):

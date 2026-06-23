@@ -245,6 +245,7 @@ def get_customer_360(
         searched_name = _extract_name_from_query(query)
         if searched_name:
             with engine.connect() as conn:
+                # Exact full-name match first
                 row = conn.execute(text(f"""
                     SELECT * FROM customers
                     WHERE LOWER(first_name || ' ' || last_name) LIKE :nm
@@ -252,6 +253,19 @@ def get_customer_360(
                 """), {"nm": f"%{searched_name.lower()}%"}).fetchone()
                 if row:
                     customer_id = str(dict(row._mapping).get(pk, ""))
+                else:
+                    # Fuzzy fallback: try each name part (≥3 chars) against first or last name
+                    for part in searched_name.split():
+                        if len(part) < 3:
+                            continue
+                        row = conn.execute(text(f"""
+                            SELECT * FROM customers
+                            WHERE LOWER(first_name) LIKE :p OR LOWER(last_name) LIKE :p
+                            LIMIT 1
+                        """), {"p": f"%{part.lower()}%"}).fetchone()
+                        if row:
+                            customer_id = str(dict(row._mapping).get(pk, ""))
+                            break
 
     if not customer_id:
         if searched_name:
@@ -626,6 +640,91 @@ def get_portfolio_summary() -> tuple[str, list[dict]]:
     return "\n".join(lines), [_db_source("Institution Risk Dashboard", "multi-table", total_customers)]
 
 
+# ── KYC Status ───────────────────────────────────────────────────────────────
+
+def get_kyc_status(query: str, customer_id: Optional[str] = None, limit: int = 10) -> tuple[str, list[dict]]:
+    """Retrieve KYC / CDD identity verification status from the customers table."""
+    pk = customer_pk()
+    q_lower = query.lower()
+
+    with engine.connect() as conn:
+        count_params: dict = {}
+        filters = []
+        if customer_id:
+            filters.append(f"c.{pk} = :cid")
+            count_params["cid"] = customer_id
+
+        if "pending" in q_lower:
+            filters.append("LOWER(c.kyc_status) LIKE '%pending%'")
+        elif "approved" in q_lower or "complete" in q_lower or "verified" in q_lower:
+            filters.append("LOWER(c.kyc_status) LIKE '%approved%'")
+        elif "rejected" in q_lower or "failed" in q_lower:
+            filters.append("LOWER(c.kyc_status) LIKE '%reject%'")
+
+        where = ("WHERE " + " AND ".join(filters)) if filters else ""
+
+        total_matching = conn.execute(text(
+            f"SELECT COUNT(*) FROM customers c {where}"
+        ), count_params).scalar() or 0
+
+        params = {**count_params, "lim": limit}
+        rows = conn.execute(text(f"""
+            SELECT c.{pk} AS cid, c.first_name, c.last_name, c.email,
+                   c.kyc_status, c.aml_risk_rating, c.is_pep, c.is_sanctioned,
+                   c.created_at
+            FROM   customers c
+            {where}
+            ORDER  BY c.created_at DESC
+            LIMIT  :lim
+        """), params).fetchall()
+
+    if not rows:
+        return "No KYC records found matching the query.\n", []
+
+    shown = len(rows)
+    truncated = total_matching - shown
+    trunc_note = f" (showing {shown} of {total_matching:,})" if truncated > 0 else f" ({shown} total)"
+
+    label = f"{'Customer ' + customer_id[:8] if customer_id else 'KYC Status Overview'}"
+    lines = [
+        f"=== KYC / IDENTITY VERIFICATION — {label.upper()} ===",
+        f"Records: {total_matching:,}{trunc_note} | As of {_now_iso()}",
+        "",
+        f"{'Customer':<22} {'ID':<12} {'KYC Status':<18} {'AML Risk':<12} "
+        f"{'PEP':<5} {'Sanctioned':<14} {'Opened'}",
+        "-" * 95,
+    ]
+    for r in rows:
+        d = dict(r._mapping)
+        name = f"{d.get('first_name', '')} {d.get('last_name', '')}".strip()
+        cid = str(d.get("cid", ""))[:10]
+        kyc = str(d.get("kyc_status") or "unknown")
+        aml = str(d.get("aml_risk_rating") or "—")
+        pep = "YES" if d.get("is_pep") else "No"
+        sanctioned = "YES — BLOCKED" if d.get("is_sanctioned") else "No"
+        opened = str(d.get("created_at") or "")[:10]
+        lines.append(
+            f"{name:<22} {cid:<12} {kyc:<18} {aml:<12} {pep:<5} {sanctioned:<14} {opened}"
+        )
+    if truncated > 0:
+        lines.append(f"\n… {truncated:,} more records not shown. Filter by KYC status to narrow.")
+    lines += ["", f"Data source: customers table (KYC fields) | As of {_now_iso()}"]
+    return "\n".join(lines), [_db_source(label, "customers", total_matching)]
+
+
+# ── AML Data ──────────────────────────────────────────────────────────────────
+
+def get_aml_data(query: str, customer_id: Optional[str] = None, limit: int = 10) -> tuple[str, list[dict]]:
+    """
+    Retrieve AML-related alerts (SARs, CTRs, structuring flags) from fraud_alerts.
+    Thin wrapper around get_fraud_data() with AML-specific header.
+    """
+    ctx, srcs = get_fraud_data(query, customer_id=customer_id, limit=limit)
+    if ctx and not ctx.startswith("No fraud"):
+        ctx = "=== AML COMPLIANCE ALERTS (from fraud_alerts) ===\n" + ctx
+    return ctx, srcs
+
+
 # ── Main dispatch ─────────────────────────────────────────────────────────────
 
 def retrieve_structured_data(
@@ -673,6 +772,12 @@ def retrieve_structured_data(
 
         elif intent == "trust_score":
             return get_trust_scores(query, customer_id)
+
+        elif intent == "kyc":
+            return get_kyc_status(query, customer_id)
+
+        elif intent == "aml":
+            return get_aml_data(query, customer_id)
 
         elif intent == "stats":
             return get_portfolio_summary()
