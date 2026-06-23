@@ -120,12 +120,14 @@ async def _retrieve_sql(manifest: RetrievalManifest) -> SourceResult:
     t0 = asyncio.get_event_loop().time()
 
     def _sync_fetch():
-        from src.rag.intent_classifier import needs_db_data, plan_intents
+        from src.rag.intent_classifier import needs_db_data
         from src.rag.data_retriever import retrieve_structured_data
 
         query      = manifest.entity_refs.get("original_query", "")
         cid        = manifest.entity_refs.get("customer_id")
-        intents    = plan_intents(query, cid)
+        # Use the manifest intents (semantic router result) — NOT a second regex pass.
+        # Re-running plan_intents() here was discarding the semantic router's work.
+        intents    = manifest.intents
 
         parts: list[str] = []
         metadata: list[dict] = []

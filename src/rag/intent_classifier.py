@@ -73,6 +73,24 @@ _PATTERNS: dict[str, list[str]] = {
         r"(trusnova|trustnova).{0,20}(offer|platform|overview|capabilities)",
         r"trusnova.{0,20}(do|work|help)", r"features.{0,20}available",
     ],
+    "kyc": [
+        r"kyc.?status", r"kyc.?document", r"kyc.?complete", r"identity.?verif",
+        r"customer.?due.?diligence", r"cdd.?level", r"enhanced.?due.?diligence",
+        r"know.?your.?customer", r"(show|check|get).{0,20}kyc",
+    ],
+    "aml": [
+        r"aml.?alert", r"suspicious.?activity.?report", r"\bsar\b", r"\bctr\b",
+        r"cash.?transaction.?report", r"structuring", r"aml.?watchlist",
+        r"currency.?transaction", r"anti.?money.?laundering", r"aml.?flag",
+    ],
+    "policy": [
+        r"what.?is.?the.?policy", r"compliance.?rule", r"regulatory.?requirement",
+        r"policy.?for.{0,20}(wire|transfer|aml|kyc|loan|account)",
+        r"threshold.?for.{0,20}(flagging|alert|report)",
+        r"(bsa|aml|kyc).{0,20}(policy|rule|compliance|regulation)",
+        r"what.?triggers.{0,20}(sar|ctr|alert|flag)",
+        r"documentation.?required.{0,20}policy",
+    ],
     "stats": [
         r"(total|how.?many|number.?of|count.?of|how.?much).{0,25}customer",
         r"customer.{0,20}(total|count|number|stat|summary|overview|breakdown)",
@@ -91,7 +109,7 @@ def classify_intent(query: str) -> str:
     """
     Classify query into one of:
       risk | fraud | customer | transaction | account | loan |
-      trust_score | trustnova_features | general
+      trust_score | kyc | aml | policy | trustnova_features | general
 
     Matching is ordered: more specific intents checked first.
     Falls back to 'general' when nothing matches.
@@ -139,4 +157,7 @@ def plan_intents(query: str, customer_id: str | None = None) -> list[str]:
 
 def needs_db_data(intent: str) -> bool:
     """Return True if this intent requires live structured DB data."""
-    return intent in {"risk", "fraud", "customer", "transaction", "account", "loan", "trust_score", "stats"}
+    return intent in {
+        "risk", "fraud", "customer", "transaction", "account",
+        "loan", "trust_score", "stats", "kyc", "aml",
+    }

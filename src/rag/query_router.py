@@ -18,26 +18,40 @@ from src.rag.semantic_router import semantic_route
 # ── Intent → SQL tables needed ────────────────────────────────────────────────
 
 _INTENT_TABLES: dict[str, list[str]] = {
-    "risk":             ["customers"],
+    # Risk needs all signal tables — not just customers
+    "risk":             ["customers", "fraud_alerts", "trust_scores", "loans"],
     "fraud":            ["fraud_alerts", "enriched_transactions", "customers"],
     "customer":         ["customers", "accounts", "enriched_transactions", "loans"],
-    "transaction":      ["enriched_transactions", "customers"],
+    "transaction":      ["enriched_transactions", "customers", "accounts"],
     "account":          ["accounts", "customers"],
-    "loan":             ["loans", "customers"],
-    "trust_score":      ["trust_scores", "customers"],
+    # Loans + accounts for collateral context
+    "loan":             ["loans", "customers", "accounts"],
+    # Trust score needs all contributing signal tables
+    "trust_score":      ["trust_scores", "customers", "loans", "fraud_alerts"],
+    "kyc":              ["customers"],          # KYC fields live in customers table
+    "aml":              ["fraud_alerts", "customers"],
     "stats":            [],  # portfolio summary — no customer-specific tables
     "trustnova_features": [],
+    "policy":           [],  # vector-only intent — no SQL tables
     "general":          [],
 }
 
 # Intents that always need the risk engine output
-_RISK_ENGINE_INTENTS  = {"risk", "customer", "trust_score"}
+_RISK_ENGINE_INTENTS  = {"risk", "customer", "trust_score", "kyc", "aml"}
 # Intents that always need fraud engine output
-_FRAUD_ENGINE_INTENTS = {"fraud", "customer", "transaction"}
+_FRAUD_ENGINE_INTENTS = {"fraud", "customer", "transaction", "aml"}
 # Intents that always need vector DB (policy/docs)
-_VECTOR_INTENTS       = {"trustnova_features", "general", "stats"}
+_VECTOR_INTENTS       = {"trustnova_features", "general", "stats", "trust_score", "policy", "kyc"}
 # Codebase/feature reference
 _CODE_INTENTS         = {"trustnova_features"}
+
+# Explanation-mode keywords: any query containing these should also pull policy docs
+# regardless of intent, so the LLM can explain WHY, not just WHAT.
+_EXPLANATION_KEYWORDS = frozenset({
+    "why", "how", "explain", "because", "reason", "reasoning",
+    "methodology", "policy", "rule", "threshold", "criteria",
+    "based on", "calculated", "determined", "considered",
+})
 
 # Permission required to access each source
 _SOURCE_PERMISSIONS: dict[str, str] = {
@@ -87,9 +101,14 @@ def build_retrieval_manifest(
 
     use_risk   = any(i in _RISK_ENGINE_INTENTS   for i in intents)
     use_fraud  = any(i in _FRAUD_ENGINE_INTENTS  for i in intents)
+
+    query_lower = query.lower()
+    explanation_mode = any(kw in query_lower for kw in _EXPLANATION_KEYWORDS)
+
     use_vector = (
         any(i in _VECTOR_INTENTS for i in intents)
         or not sql_tables          # always fall back to vector when no SQL data
+        or explanation_mode        # "why/how/explain" queries always need policy docs
     )
     use_code   = any(i in _CODE_INTENTS for i in intents)
 

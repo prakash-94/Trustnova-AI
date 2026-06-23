@@ -133,6 +133,40 @@ INTENT_PROTOTYPES: dict[str, list[str]] = {
         "what does the system support",
         "features available in TrustNova",
     ],
+    "kyc": [
+        "what is the KYC status for this customer",
+        "has the customer completed identity verification",
+        "KYC documents submitted and approved",
+        "customer due diligence status",
+        "what identity documents are on file",
+        "CDD level for this customer",
+        "enhanced due diligence required",
+        "is KYC complete for this account",
+        "know your customer compliance check",
+    ],
+    "aml": [
+        "show AML alerts for this customer",
+        "any suspicious activity reports filed",
+        "SAR or CTR filing status",
+        "anti money laundering alert",
+        "AML flag on this customer",
+        "cash transaction report",
+        "structuring activity detected",
+        "AML watchlist match",
+        "currency transaction report threshold",
+    ],
+    "policy": [
+        "what is the policy for this",
+        "explain the compliance rule",
+        "what are the regulatory requirements",
+        "how does the AML policy work",
+        "what is the threshold for flagging",
+        "banking regulation and procedure",
+        "compliance workflow and guidelines",
+        "what documentation is required by policy",
+        "BSA AML compliance rule",
+        "what triggers an SAR filing",
+    ],
     "general": [
         "help me understand this",
         "explain banking policy",
@@ -184,8 +218,10 @@ def _get_intent_vectors() -> dict[str, list[float]] | None:
 def precompute_intent_vectors() -> bool:
     """
     Trigger eager precomputation of intent vectors at server startup.
+    Clears any stale cache first so prototype changes take effect on restart.
     Returns True if successful. Call from main.py startup event.
     """
+    _get_intent_vectors.cache_clear()
     return _get_intent_vectors() is not None
 
 
