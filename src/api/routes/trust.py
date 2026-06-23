@@ -114,28 +114,79 @@ async def get_trust_score(
     except Exception:
         pass  # fall through to live calculation
 
-    # --- 2. Live calculation (for customers not yet in trust_scores) ---
+    # --- 2. Live calculation — inline, using the main engine (DB-agnostic) ---
+    # TrustScoreCalculator creates its own engine and uses SQLite-specific DDL
+    # (AUTOINCREMENT) which breaks on PostgreSQL.  We reproduce the same 5-component
+    # formula directly here, using the already-initialised _engine.
     try:
-        from src.models.trust_scorer import TrustScoreCalculator
-        calculator = TrustScoreCalculator()
-        result = calculator.calculate(customer_id)
+        import datetime
+        from src.models.database import customer_pk
 
-        if "error" in result:
-            return TrustScoreResponse(
-                status="not_found",
-                customer_id=customer_id,
-                error=result.get("error", "Customer not found"),
-            )
+        pk = customer_pk()
+        WEIGHTS = {
+            "account_age": 0.20, "credit_score": 0.30,
+            "fraud_history": 0.25, "sentiment_avg": 0.15,
+            "interaction_count": 0.10,
+        }
+
+        with _engine.connect() as conn:
+            cust = conn.execute(sql_text(
+                f"SELECT * FROM customers WHERE {pk} = :cid"
+            ), {"cid": customer_id}).fetchone()
+
+            if not cust:
+                return TrustScoreResponse(
+                    status="not_found",
+                    customer_id=customer_id,
+                    error="Customer not found",
+                )
+
+            c = dict(cust._mapping)
+
+            fraud_count = conn.execute(sql_text(
+                "SELECT COUNT(*) FROM enriched_transactions WHERE customer_id = :cid AND is_fraud = 1"
+            ), {"cid": customer_id}).scalar() or 0
+
+            try:
+                int_row = conn.execute(sql_text(
+                    "SELECT COUNT(*) as cnt, AVG(sentiment_score) as avg_sent FROM interactions WHERE customer_id = :cid"
+                ), {"cid": customer_id}).fetchone()
+                interaction_count = int(int_row[0]) if int_row and int_row[0] else 0
+                avg_sentiment = float(int_row[1]) if int_row and int_row[1] is not None else 0.0
+            except Exception:
+                interaction_count = 0
+                avg_sentiment = 0.0
+
+        # Compute account age (handle both old schema account_opened and new created_at)
+        created_raw = c.get("created_at") or c.get("account_opened") or ""
+        try:
+            created_dt = datetime.datetime.fromisoformat(str(created_raw)[:10])
+            age_days = (datetime.datetime.utcnow() - created_dt).days
+        except Exception:
+            age_days = 0
+
+        credit = int(c.get("credit_score") or 650)
+
+        components = {
+            "account_age":      round(min(age_days / 3650.0, 1.0) * 100, 1),
+            "credit_score":     round(max(0.0, min(100.0, (credit - 300) / 550.0 * 100)), 1),
+            "fraud_history":    round(max(0.0, 100.0 - fraud_count * 25), 1),
+            "sentiment_avg":    round((avg_sentiment + 1.0) / 2.0 * 100, 1),
+            "interaction_count": round(min(interaction_count / 20.0, 1.0) * 100, 1),
+        }
+
+        score = round(max(0.0, min(100.0, sum(components[k] * WEIGHTS[k] for k in WEIGHTS))), 1)
+        tier = "High Risk" if score <= 40 else "Moderate" if score <= 70 else "Trusted"
 
         return TrustScoreResponse(
             status="ok",
             customer_id=customer_id,
-            score=result["score"],
-            tier=result["tier"],
-            components=result.get("components"),
-            weights=result.get("weights"),
-            fraud_incidents=result.get("fraud_incidents"),
-            total_interactions=result.get("total_interactions"),
+            score=score,
+            tier=tier,
+            components=components,
+            weights=WEIGHTS,
+            fraud_incidents=fraud_count,
+            total_interactions=interaction_count,
         )
 
     except Exception as e:
