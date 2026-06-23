@@ -1,86 +1,108 @@
-﻿import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import GlassCard from '@/components/common/GlassCard';
 import Badge from '@/components/common/Badge';
+import { complianceApi, type ComplianceComplaint, type ComplianceStats } from '@/services/api';
 
-// ── Static compliance data ────────────────────────────────────────────────────
+// ── Static reference data (doesn't change in banking operations) ──────────────
 const REGULATIONS = [
-  { code: 'BSA/AML', title: 'Bank Secrecy Act / AML', status: 'compliant',       last_review: '2026-05-01', next_review: '2026-08-01' },
-  { code: 'KYC/CDD', title: 'Know Your Customer / CDD', status: 'compliant',     last_review: '2026-04-15', next_review: '2026-07-15' },
-  { code: 'OFAC',    title: 'OFAC Sanctions Screening', status: 'action_required',last_review: '2026-05-20', next_review: '2026-06-20' },
-  { code: 'TILA',    title: 'Truth in Lending Act',     status: 'compliant',       last_review: '2026-03-01', next_review: '2026-09-01' },
-  { code: 'HMDA',    title: 'Home Mortgage Disclosure Act', status: 'under_review',last_review: '2026-05-10', next_review: '2026-06-10' },
-  { code: 'CRA',     title: 'Community Reinvestment Act', status: 'compliant',    last_review: '2026-02-15', next_review: '2026-08-15' },
-  { code: 'GDPR/CCPA', title: 'Data Privacy Compliance', status: 'compliant',    last_review: '2026-04-01', next_review: '2026-10-01' },
-  { code: 'FFIEC',   title: 'FFIEC Cybersecurity Framework', status: 'under_review',last_review: '2026-05-15', next_review: '2026-06-15' },
+  { code: 'BSA/AML',   title: 'Bank Secrecy Act / AML',          status: 'compliant',        next_review: '2026-08-01' },
+  { code: 'KYC/CDD',   title: 'Know Your Customer / CDD',         status: 'compliant',        next_review: '2026-07-15' },
+  { code: 'OFAC',      title: 'OFAC Sanctions Screening',         status: 'action_required',  next_review: '2026-06-20' },
+  { code: 'TILA',      title: 'Truth in Lending Act',             status: 'compliant',        next_review: '2026-09-01' },
+  { code: 'HMDA',      title: 'Home Mortgage Disclosure Act',     status: 'under_review',     next_review: '2026-06-10' },
+  { code: 'CRA',       title: 'Community Reinvestment Act',       status: 'compliant',        next_review: '2026-08-15' },
+  { code: 'GDPR/CCPA', title: 'Data Privacy Compliance',         status: 'compliant',        next_review: '2026-10-01' },
+  { code: 'FFIEC',     title: 'FFIEC Cybersecurity Framework',   status: 'under_review',     next_review: '2026-06-15' },
 ];
 
 const AUDITS = [
-  { id: 'AUD-2026-001', type: 'Internal',   scope: 'AML Program Review',          status: 'completed',   date: '2026-04-30', findings: 2, critical: 0 },
-  { id: 'AUD-2026-002', type: 'External',   scope: 'Annual SOX Audit',            status: 'in_progress', date: '2026-06-01', findings: 0, critical: 0 },
-  { id: 'AUD-2026-003', type: 'Regulatory', scope: 'OCC Safety & Soundness',      status: 'scheduled',   date: '2026-07-15', findings: 0, critical: 0 },
-  { id: 'AUD-2025-004', type: 'Internal',   scope: 'Loan Portfolio Review',        status: 'completed',   date: '2025-12-31', findings: 5, critical: 1 },
+  { id: 'AUD-2026-001', type: 'Internal',   scope: 'AML Program Review',       status: 'completed',   date: '2026-04-30', findings: 2, critical: 0 },
+  { id: 'AUD-2026-002', type: 'External',   scope: 'Annual SOX Audit',         status: 'in_progress', date: '2026-06-01', findings: 0, critical: 0 },
+  { id: 'AUD-2026-003', type: 'Regulatory', scope: 'OCC Safety & Soundness',   status: 'scheduled',   date: '2026-07-15', findings: 0, critical: 0 },
+  { id: 'AUD-2025-004', type: 'Internal',   scope: 'Loan Portfolio Review',    status: 'completed',   date: '2025-12-31', findings: 5, critical: 1 },
 ];
 
 const TRAINING = [
-  { course: 'BSA/AML Annual Certification',  completion: 94, due: '2026-06-30', mandatory: true },
-  { course: 'Fraud Awareness Training',       completion: 87, due: '2026-07-31', mandatory: true },
-  { course: 'Data Privacy & GDPR',           completion: 76, due: '2026-08-31', mandatory: true },
-  { course: 'OFAC Sanctions Screening',       completion: 98, due: '2026-05-31', mandatory: true },
+  { course: 'BSA/AML Annual Certification', completion: 94, due: '2026-06-30', mandatory: true },
+  { course: 'Fraud Awareness Training',      completion: 87, due: '2026-07-31', mandatory: true },
+  { course: 'Data Privacy & GDPR',          completion: 76, due: '2026-08-31', mandatory: true },
+  { course: 'OFAC Sanctions Screening',      completion: 98, due: '2026-05-31', mandatory: true },
 ];
 
-// Synthetic complaint data derived from complaints.csv
-const COMPLAINTS = [
-  { id: 'CPL-001', complaint_id: 'bdd640fb-066', customer_id: 'C-bdd640fb', raised_by: 'Customer',   created_at: '2025-08-27T09:14:33Z', category: 'Product Issues',    description: 'Auto-pay withdrew mortgage payment twice ($1,087)', resolution: 'Bonus of $750 credited. System processing error fixed.', status: 'Resolved',    sentiment: -0.61 },
-  { id: 'CPL-002', complaint_id: 'bc8960a9-23b', customer_id: 'C-bc8960a9', raised_by: 'Customer',   created_at: '2025-06-21T14:52:07Z', category: 'Fees',              description: 'Overdraft fee of $45.03 for a $24.34 transaction',   resolution: 'All foreign transaction fees for 3 months reversed.', status: 'Resolved',    sentiment: -0.42 },
-  { id: 'CPL-003', complaint_id: 'a65ed389-b74', customer_id: 'C-a65ed389', raised_by: 'Customer',   created_at: '2026-02-09T11:03:19Z', category: 'Fraud Handling',    description: '3 weeks no provisional credit after fraud report',  resolution: 'Case reopened. Internal fraud review team assigned.',  status: 'In Review',   sentiment: -0.88 },
-  { id: 'CPL-004', complaint_id: 'a9488d99-0bb', customer_id: 'C-a9488d99', raised_by: 'Customer',   created_at: '2025-08-09T16:41:55Z', category: 'Fraud Handling',    description: 'Fraud case closed without authorization by customer', resolution: 'Provisional credit issued. Direct case manager assigned.', status: 'Resolved', sentiment: -0.81 },
-  { id: 'CPL-005', complaint_id: '07a0ca6e-082', customer_id: 'C-07a0ca6e', raised_by: 'Customer',   created_at: '2025-06-18T08:27:44Z', category: 'Account Access',    description: 'Account balance wrong by $3,073 after system update', resolution: 'Statements recovered. Portal access restored.', status: 'Resolved',           sentiment: -0.66 },
-  { id: 'CPL-006', complaint_id: '9a1de644-815', customer_id: 'C-9a1de644', raised_by: 'Customer',   created_at: '2025-05-23T13:09:02Z', category: 'Service Quality',   description: 'Financial advisor missed scheduled appointment',       resolution: 'Direct support line provided. $25 credit applied.',   status: 'Resolved',    sentiment: -0.72 },
-  { id: 'CPL-007', complaint_id: '93cd59bf-5c9', customer_id: 'C-93cd59bf', raised_by: 'Customer',   created_at: '2025-07-26T10:58:31Z', category: 'Fraud Handling',    description: 'Credit card opened in customer name fraudulently',    resolution: 'Case reopened. Investigation team assigned.',          status: 'Open',        sentiment: -0.87 },
-  { id: 'CPL-008', complaint_id: '146d3f31-fc3', customer_id: 'C-146d3f31', raised_by: 'Customer',   created_at: '2026-04-10T07:33:18Z', category: 'Product Issues',    description: 'Auto-pay withdrew mortgage twice ($4,224 taken)',     resolution: 'Duplicate payment reversed same-day.',                status: 'Resolved',    sentiment: -0.54 },
-  { id: 'CPL-009', complaint_id: '6c307511-b2b', customer_id: 'C-6c307511', raised_by: 'Customer',   created_at: '2025-09-21T15:22:49Z', category: 'Product Issues',    description: 'Savings rate dropped from 3.7% to 1.4% without notice', resolution: 'Missing cashback $154.70 credited. System glitch fixed.', status: 'Resolved', sentiment: -0.50 },
-  { id: 'CPL-010', complaint_id: '614ff3d7-19d', customer_id: 'C-614ff3d7', raised_by: 'Customer',   created_at: '2025-08-28T12:45:06Z', category: 'Fees',              description: 'New annual fee added to credit card without notice',  resolution: 'Overdraft fee reversed. Customer enrolled in protection.', status: 'Open',   sentiment: -0.68 },
-];
-
+// ── Helpers ───────────────────────────────────────────────────────────────────
 const statusColor = (s: string): 'green' | 'amber' | 'red' | 'blue' | 'gray' =>
-  ({ compliant: 'green', under_review: 'amber', action_required: 'red', in_progress: 'blue', completed: 'green', scheduled: 'gray',
-     Resolved: 'green', 'In Review': 'blue', Open: 'amber' } as Record<string, 'green' | 'amber' | 'red' | 'blue' | 'gray'>)[s] ?? 'gray';
+  ({
+    compliant: 'green', under_review: 'amber', action_required: 'red',
+    in_progress: 'blue', completed: 'green', scheduled: 'gray',
+    Resolved: 'green', 'In Review': 'blue', Open: 'amber',
+  } as Record<string, 'green' | 'amber' | 'red' | 'blue' | 'gray'>)[s] ?? 'gray';
 
 const sentimentLabel = (s: number) => s >= -0.3 ? 'Neutral' : s >= -0.6 ? 'Negative' : 'Very Negative';
 const sentimentColor = (s: number) => s >= -0.3 ? 'text-green-400' : s >= -0.6 ? 'text-amber-400' : 'text-red-400';
 
-type ComplaintFilter = 'All' | 'Open' | 'In Review' | 'Resolved';
-const COMPLAINT_FILTERS: ComplaintFilter[] = ['All', 'Open', 'In Review', 'Resolved'];
+type ComplaintFilter = 'all' | 'open' | 'in_review' | 'resolved';
+const FILTERS: { key: ComplaintFilter; label: string }[] = [
+  { key: 'all',       label: 'All'       },
+  { key: 'open',      label: 'Open'      },
+  { key: 'in_review', label: 'In Review' },
+  { key: 'resolved',  label: 'Resolved'  },
+];
+
+const PAGE_SIZE = 15;
 
 export default function ComplianceDashboard() {
-  const [complaintFilter, setComplaintFilter] = useState<ComplaintFilter>('All');
-  const [expandedComplaint, setExpandedComplaint] = useState<string | null>(null);
+  const [stats, setStats]         = useState<ComplianceStats | null>(null);
+  const [complaints, setComplaints] = useState<ComplianceComplaint[]>([]);
+  const [total, setTotal]         = useState(0);
+  const [filter, setFilter]       = useState<ComplaintFilter>('all');
+  const [page, setPage]           = useState(0);
+  const [expanded, setExpanded]   = useState<string | null>(null);
+  const [loading, setLoading]     = useState(true);
+  const [cLoading, setCLoading]   = useState(true);
+
+  // Load KPI stats once
+  useEffect(() => {
+    complianceApi.stats()
+      .then(setStats)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  // Reload complaints when filter or page changes
+  useEffect(() => {
+    setCLoading(true);
+    setExpanded(null);
+    complianceApi.complaints({ status: filter, limit: PAGE_SIZE, offset: page * PAGE_SIZE })
+      .then(r => { setComplaints(r.complaints); setTotal(r.total); })
+      .catch(() => setComplaints([]))
+      .finally(() => setCLoading(false));
+  }, [filter, page]);
+
+  // Reset page when filter changes
+  const handleFilter = (f: ComplaintFilter) => { setFilter(f); setPage(0); };
+
+  const counts = stats?.complaint_counts;
+  const filterCount: Record<ComplaintFilter, number> = {
+    all:       counts?.total    ?? 0,
+    open:      counts?.open     ?? 0,
+    in_review: counts?.in_review ?? 0,
+    resolved:  counts?.resolved ?? 0,
+  };
 
   const compliant   = REGULATIONS.filter(r => r.status === 'compliant').length;
   const actionItems = REGULATIONS.filter(r => r.status === 'action_required').length;
   const inReview    = REGULATIONS.filter(r => r.status === 'under_review').length;
 
-  const filteredComplaints = complaintFilter === 'All'
-    ? COMPLAINTS
-    : COMPLAINTS.filter(c => c.status === complaintFilter);
-
-  const complaintCounts: Record<ComplaintFilter, number> = {
-    All:        COMPLAINTS.length,
-    Open:       COMPLAINTS.filter(c => c.status === 'Open').length,
-    'In Review':COMPLAINTS.filter(c => c.status === 'In Review').length,
-    Resolved:   COMPLAINTS.filter(c => c.status === 'Resolved').length,
-  };
-
   return (
     <div className="space-y-4">
-      {/* KPIs */}
+      {/* KPIs — live from DB */}
       <div className="grid grid-cols-4 gap-3">
         {[
-          { label: 'Compliant Controls',  value: `${compliant}/${REGULATIONS.length}`, color: 'green' },
-          { label: 'Action Required',     value: actionItems,                           color: actionItems > 0 ? 'red' : 'green' },
-          { label: 'Under Review',        value: inReview,                              color: 'amber' },
-          { label: 'Open Complaints',     value: complaintCounts.Open,                  color: complaintCounts.Open > 0 ? 'red' : 'green' },
+          { label: 'Compliant Controls', value: loading ? '…' : `${compliant}/${REGULATIONS.length}`, color: 'green'  },
+          { label: 'Action Required',    value: loading ? '…' : actionItems,                          color: actionItems > 0 ? 'red' : 'green' },
+          { label: 'Open Complaints',    value: loading ? '…' : (counts?.open ?? '—'),                color: (counts?.open ?? 0) > 0 ? 'red' : 'green' },
+          { label: 'Total Complaints',   value: loading ? '…' : (counts?.total ?? '—'),               color: 'blue'   },
         ].map((m, i) => (
           <GlassCard key={m.label} delay={i * 0.06} className="p-4">
             <div className={`text-2xl font-bold tabular-nums text-${m.color}-400 mb-0.5`}>{m.value}</div>
@@ -89,102 +111,135 @@ export default function ComplianceDashboard() {
         ))}
       </div>
 
-      {/* Complaints Table */}
+      {/* Complaints Table — live from DB */}
       <GlassCard animate={false} className="overflow-hidden">
         <div className="px-5 py-4 border-b border-white/[0.06]">
           <div className="flex items-center justify-between mb-3">
             <div>
               <h2 className="text-sm font-semibold text-t1">Customer Complaints Register</h2>
-              <p className="text-xs text-t3">Raised by customers via branch, phone, or digital channels</p>
+              <p className="text-xs text-t3">
+                Live from banking.db — {counts?.total?.toLocaleString() ?? '…'} complaints total
+              </p>
             </div>
-            <div className="text-xs text-t3">{filteredComplaints.length} complaints</div>
+            <div className="text-xs text-t3">{filterCount[filter].toLocaleString()} matching</div>
           </div>
-          {/* Filter tabs */}
           <div className="flex gap-1.5">
-            {COMPLAINT_FILTERS.map(f => (
-              <button key={f} onClick={() => setComplaintFilter(f)}
+            {FILTERS.map(f => (
+              <button key={f.key} onClick={() => handleFilter(f.key)}
                 className={`px-3 py-1 rounded-lg text-xs font-medium transition-all
-                  ${complaintFilter === f
+                  ${filter === f.key
                     ? 'bg-white/[0.08] border border-white/[0.12] text-t1'
                     : 'text-t3 hover:text-t2 hover:bg-white/[0.04]'}`}>
-                {f} <span className="opacity-60">({complaintCounts[f]})</span>
+                {f.label} <span className="opacity-60">({filterCount[f.key].toLocaleString()})</span>
               </button>
             ))}
           </div>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b border-white/[0.06]">
-                {['ID', 'Raised By', 'Date', 'Category', 'Complaint', 'Sentiment', 'Status', 'Action'].map(h => (
-                  <th key={h} className="px-4 py-2.5 text-left text-[10px] text-t3 uppercase tracking-wider font-medium whitespace-nowrap">
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/[0.04]">
-              {filteredComplaints.map(c => (
-                <>
-                  <tr key={c.id} className="hover:bg-white/[0.02] transition-colors cursor-pointer"
-                    onClick={() => setExpandedComplaint(expandedComplaint === c.id ? null : c.id)}>
-                    <td className="px-4 py-3 font-mono text-purple-400">{c.id}</td>
-                    <td className="px-4 py-3 text-t2">{c.raised_by}</td>
-                    <td className="px-4 py-3 text-t3 whitespace-nowrap">{c.created_at.slice(0, 10)}</td>
-                    <td className="px-4 py-3">
-                      <span className="px-1.5 py-0.5 rounded bg-white/[0.06] text-t2 whitespace-nowrap">{c.category}</span>
-                    </td>
-                    <td className="px-4 py-3 text-t2 max-w-[220px]">
-                      <span className="truncate block">{c.description}</span>
-                    </td>
-                    <td className={`px-4 py-3 font-medium ${sentimentColor(c.sentiment)}`}>
-                      {sentimentLabel(c.sentiment)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge label={c.status} color={statusColor(c.status)} dot={c.status === 'Open'} />
-                    </td>
-                    <td className="px-4 py-3 text-t3 text-center">
-                      <span>{expandedComplaint === c.id ? '▲' : '▼'}</span>
-                    </td>
-                  </tr>
-                  {expandedComplaint === c.id && (
-                    <tr key={`${c.id}-expand`}>
-                      <td colSpan={8} className="px-4 pb-3">
-                        <motion.div
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          className="ml-4 p-3 rounded-xl bg-white/[0.03] border border-white/[0.06] space-y-3"
-                        >
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <span className="text-[10px] text-t3 uppercase tracking-wider">Full Complaint</span>
-                              <p className="text-xs text-t2 mt-0.5 leading-relaxed">{c.description}</p>
-                            </div>
-                            {c.resolution && (
-                              <div>
-                                <span className="text-[10px] text-t3 uppercase tracking-wider">Resolution</span>
-                                <p className="text-xs text-green-300 mt-0.5 leading-relaxed">{c.resolution}</p>
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-[10px] text-t3 pt-2 border-t border-white/[0.05]">
-                            <span>Reference: <span className="font-mono text-purple-400/80">{c.complaint_id}</span></span>
-                            <span>Customer: <span className="font-mono text-t2">{c.customer_id}</span></span>
-                            <span>Category: <span className="text-t2">{c.category}</span></span>
-                            <span>Raised by: <span className="text-t2">{c.raised_by}</span></span>
-                            <span>Sentiment: <span className={sentimentColor(c.sentiment)}>{c.sentiment.toFixed(2)}</span></span>
-                            <span title={c.created_at}>Logged: <span className="font-mono text-t2">{c.created_at}</span></span>
-                          </div>
-                        </motion.div>
+          {cLoading ? (
+            <div className="flex items-center gap-2 px-5 py-6 text-xs text-t3">
+              <div className="w-3 h-3 border border-purple-500 border-t-transparent rounded-full animate-spin" />
+              Loading complaints…
+            </div>
+          ) : (
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-white/[0.06]">
+                  {['ID', 'Customer', 'Date', 'Category', 'Complaint', 'Sentiment', 'Status', ''].map(h => (
+                    <th key={h} className="px-4 py-2.5 text-left text-[10px] text-t3 uppercase tracking-wider font-medium whitespace-nowrap">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/[0.04]">
+                {complaints.map(c => (
+                  <>
+                    <tr key={c.id} className="hover:bg-white/[0.02] transition-colors cursor-pointer"
+                      onClick={() => setExpanded(expanded === c.id ? null : c.id)}>
+                      <td className="px-4 py-3 font-mono text-purple-400 whitespace-nowrap">
+                        {c.id.slice(0, 11)}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-t3 text-[10px]">
+                        {c.customer_id.slice(0, 8)}
+                      </td>
+                      <td className="px-4 py-3 text-t3 whitespace-nowrap">{c.timestamp.slice(0, 10)}</td>
+                      <td className="px-4 py-3">
+                        <span className="px-1.5 py-0.5 rounded bg-white/[0.06] text-t2 whitespace-nowrap">{c.category}</span>
+                      </td>
+                      <td className="px-4 py-3 text-t2 max-w-[220px]">
+                        <span className="truncate block">{c.description}</span>
+                      </td>
+                      <td className={`px-4 py-3 font-medium ${sentimentColor(c.sentiment)}`}>
+                        {sentimentLabel(c.sentiment)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <Badge label={c.status} color={statusColor(c.status)} dot={c.status === 'Open'} />
+                      </td>
+                      <td className="px-4 py-3 text-t3 text-center">
+                        {expanded === c.id ? '▲' : '▼'}
                       </td>
                     </tr>
-                  )}
-                </>
-              ))}
-            </tbody>
-          </table>
+                    {expanded === c.id && (
+                      <tr key={`${c.id}-expand`}>
+                        <td colSpan={8} className="px-4 pb-3">
+                          <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            className="ml-4 p-3 rounded-xl bg-white/[0.03] border border-white/[0.06] space-y-3"
+                          >
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <span className="text-[10px] text-t3 uppercase tracking-wider">Full Complaint</span>
+                                <p className="text-xs text-t2 mt-0.5 leading-relaxed">{c.description}</p>
+                              </div>
+                              {c.resolution && (
+                                <div>
+                                  <span className="text-[10px] text-t3 uppercase tracking-wider">Resolution</span>
+                                  <p className="text-xs text-green-300 mt-0.5 leading-relaxed">{c.resolution}</p>
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-[10px] text-t3 pt-2 border-t border-white/[0.05]">
+                              <span>Reference: <span className="font-mono text-purple-400/80">{c.id}</span></span>
+                              <span>Customer: <span className="font-mono text-t2">{c.customer_id}</span></span>
+                              <span>Category: <span className="text-t2">{c.category}</span></span>
+                              <span>Raised by: <span className="text-t2">{c.raised_by}</span></span>
+                              <span>Sentiment: <span className={sentimentColor(c.sentiment)}>{c.sentiment.toFixed(2)}</span></span>
+                              <span>Logged: <span className="font-mono text-t2">{c.timestamp}</span></span>
+                            </div>
+                          </motion.div>
+                        </td>
+                      </tr>
+                    )}
+                  </>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
+
+        {/* Pagination */}
+        {!cLoading && total > PAGE_SIZE && (
+          <div className="flex items-center justify-between px-5 py-3 border-t border-white/[0.06]">
+            <span className="text-[10px] text-t3">
+              {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} of {total.toLocaleString()}
+            </span>
+            <div className="flex gap-2">
+              <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}
+                className="px-3 py-1 text-xs rounded-lg bg-white/[0.04] border border-white/[0.08] text-t2
+                           hover:bg-white/[0.08] disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+                ← Prev
+              </button>
+              <button onClick={() => setPage(p => p + 1)} disabled={(page + 1) * PAGE_SIZE >= total}
+                className="px-3 py-1 text-xs rounded-lg bg-white/[0.04] border border-white/[0.08] text-t2
+                           hover:bg-white/[0.08] disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+                Next →
+              </button>
+            </div>
+          </div>
+        )}
       </GlassCard>
 
       <div className="grid grid-cols-2 gap-4">
@@ -192,7 +247,9 @@ export default function ComplianceDashboard() {
         <GlassCard animate={false} className="overflow-hidden">
           <div className="px-5 py-4 border-b border-white/[0.06]">
             <h2 className="text-sm font-semibold text-t1">Regulatory Controls</h2>
-            <p className="text-xs text-t3">Real-time compliance status</p>
+            <p className="text-xs text-t3">
+              {compliant}/{REGULATIONS.length} compliant · {actionItems} action required · {inReview} under review
+            </p>
           </div>
           <div className="divide-y divide-white/[0.04]">
             {REGULATIONS.map((reg, i) => (
@@ -233,14 +290,48 @@ export default function ComplianceDashboard() {
                   <div className="text-xs text-t2">{a.scope}</div>
                   <div className="flex gap-3 text-[10px] text-t3 mt-1">
                     <span>{a.date}</span>
-                    {a.findings > 0 && <span className={a.critical > 0 ? 'text-red-400' : 'text-amber-400'}>{a.findings} finding{a.findings !== 1 ? 's' : ''}{a.critical > 0 ? ` (${a.critical} critical)` : ''}</span>}
+                    {a.findings > 0 && (
+                      <span className={a.critical > 0 ? 'text-red-400' : 'text-amber-400'}>
+                        {a.findings} finding{a.findings !== 1 ? 's' : ''}{a.critical > 0 ? ` (${a.critical} critical)` : ''}
+                      </span>
+                    )}
                   </div>
                 </motion.div>
               ))}
             </div>
           </GlassCard>
 
-          {/* Training Completion */}
+          {/* Category Breakdown — live from DB */}
+          <GlassCard animate={false} className="p-5">
+            <h2 className="text-sm font-semibold text-t1 mb-4">Complaint Categories</h2>
+            {loading ? (
+              <div className="text-xs text-t3">Loading…</div>
+            ) : (
+              <div className="space-y-3">
+                {(stats?.categories ?? []).map(cat => {
+                  const pct = counts?.total ? Math.round((cat.count / counts.total) * 100) : 0;
+                  return (
+                    <div key={cat.name}>
+                      <div className="flex justify-between text-xs mb-1.5">
+                        <span className="text-t2">{cat.name}</span>
+                        <span className="text-t3">{cat.count.toLocaleString()} ({pct}%)</span>
+                      </div>
+                      <div className="w-full h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${pct}%` }}
+                          transition={{ duration: 0.8, ease: 'easeOut' }}
+                          className="h-full rounded-full bg-purple-400"
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </GlassCard>
+
+          {/* Mandatory Training */}
           <GlassCard animate={false} className="p-5">
             <h2 className="text-sm font-semibold text-t1 mb-4">Mandatory Training</h2>
             <div className="space-y-4">

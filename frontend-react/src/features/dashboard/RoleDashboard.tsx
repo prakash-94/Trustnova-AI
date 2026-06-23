@@ -256,15 +256,22 @@ function fmtVal(key: keyof KpiStats, stats: KpiStats): string {
 export default function RoleDashboard({ role, roleLabel, onNavigate, onAddCustomer, onOpenFraud, onOpenCustomers, onOpenDocs, onOpenAITrust, refreshKey = 0 }: Props) {
   const [stats, setStats] = useState<KpiStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [kpiError, setKpiError] = useState(false);
   const cfg = getConfig(role);
   const [recentItems, setRecentItems] = useState<Array<{id: string; title: string; sub: string; badge?: string; badgeColor?: string; onClick?: () => void}>>([]);
   const [recentLoading, setRecentLoading] = useState(true);
   const [recentLabel, setRecentLabel] = useState('Recent Activity');
 
-  useEffect(() => {
+  const loadKpi = () => {
     setLoading(true);
-    kpiApi.stats().then(setStats).catch(() => {}).finally(() => setLoading(false));
-  }, [refreshKey]);
+    setKpiError(false);
+    kpiApi.stats()
+      .then(data => { setStats(data); setKpiError(false); })
+      .catch(() => setKpiError(true))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { loadKpi(); }, [refreshKey]);
 
   useEffect(() => {
     setRecentLoading(true);
@@ -367,7 +374,11 @@ export default function RoleDashboard({ role, roleLabel, onNavigate, onAddCustom
                   )}
                 </div>
                 <div className={`text-2xl font-bold tabular-nums mb-1 ${kpi.color}`}>
-                  {loading ? '—' : stats ? fmtVal(kpi.key, stats) : '—'}
+                  {loading ? (
+                    <span className="inline-block w-12 h-6 rounded bg-white/[0.06] animate-pulse" />
+                  ) : kpiError ? (
+                    <button onClick={loadKpi} className="text-xs text-red-400/70 hover:text-red-400 transition-colors">retry ↺</button>
+                  ) : stats ? fmtVal(kpi.key, stats) : '—'}
                 </div>
                 <div className="text-[10px] text-t3 uppercase tracking-wider leading-tight">{kpi.label}</div>
                 {handler && (

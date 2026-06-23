@@ -824,6 +824,38 @@ export const adminUsersApi = {
     request<{ status: string; username: string }>(`/admin/users/${username}`, { method: 'DELETE' }),
 };
 
+// ── Compliance ────────────────────────────────────────────────────────────────
+export interface ComplianceStats {
+  complaint_counts: { total: number; open: number; in_review: number; resolved: number };
+  categories: { name: string; count: number }[];
+  avg_sentiment: number;
+}
+
+export interface ComplianceComplaint {
+  id: string;
+  customer_id: string;
+  category: string;
+  description: string;
+  resolution: string;
+  sentiment: number;
+  timestamp: string;
+  status: 'Open' | 'In Review' | 'Resolved';
+  raised_by: string;
+}
+
+export const complianceApi = {
+  stats: () => request<ComplianceStats>('/compliance/stats'),
+  complaints: (params?: { status?: string; limit?: number; offset?: number }) => {
+    const p = new URLSearchParams();
+    if (params?.status) p.set('status', params.status);
+    p.set('limit', String(params?.limit ?? 20));
+    p.set('offset', String(params?.offset ?? 0));
+    return request<{ complaints: ComplianceComplaint[]; total: number }>(
+      `/compliance/complaints?${p}`
+    );
+  },
+};
+
 /**
  * Fire all heavy read endpoints in parallel right after login.
  * Results land in localStorage SWR cache so every section loads instantly

@@ -41,6 +41,7 @@ from src.api.routes import admin_users as admin_users_module
 # Executive & Banker features
 from src.api.routes import appointments as appointments_module
 from src.api.routes import credit_cards as credit_cards_module
+from src.api.routes import compliance as compliance_module
 
 
 # ── Lifespan (startup / shutdown) ─────────────────────────────
@@ -189,6 +190,7 @@ app.include_router(bug_reports_module.router,     prefix="/bug-reports",     tag
 app.include_router(admin_users_module.router,     prefix="/admin",           tags=["Admin"])
 app.include_router(appointments_module.router,    prefix="/appointments",    tags=["Appointments"])
 app.include_router(credit_cards_module.router,    prefix="/credit-cards",    tags=["Credit Cards"])
+app.include_router(compliance_module.router,      prefix="/compliance",      tags=["Compliance"])
 
 
 # ── Health Check (no auth) ─────────────────────────────────────
