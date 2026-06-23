@@ -64,6 +64,13 @@ async def lifespan(app: FastAPI):
     # Seed auth tables and demo users
     auth_module.ensure_users_table()
 
+    # Pre-compute semantic router intent vectors (runs once, cached for server lifetime)
+    try:
+        from src.rag.semantic_router import precompute_intent_vectors
+        precompute_intent_vectors()
+    except Exception as _e:
+        print(f"  [SemanticRouter] Precompute skipped: {_e}")
+
     print(f"  Dashboard: http://localhost:8000/login")
     print("=" * 60)
     yield

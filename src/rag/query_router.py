@@ -12,7 +12,8 @@ import re
 from dataclasses import dataclass, field
 from typing import List, Optional, Set
 
-from src.rag.intent_classifier import classify_intents, needs_db_data
+from src.rag.intent_classifier import needs_db_data
+from src.rag.semantic_router import semantic_route
 
 # ── Intent → SQL tables needed ────────────────────────────────────────────────
 
@@ -72,7 +73,9 @@ def build_retrieval_manifest(
     Classify query → resolve sources → RBAC pre-filter → return manifest.
     Called once at the top of every chat request before retrieval starts.
     """
-    intents = classify_intents(query, max_intents=3)
+    # Semantic router is primary — understands meaning, not just keywords.
+    # Falls back to regex inside semantic_route() if embeddings unavailable.
+    intents = semantic_route(query, top_k=3)
 
     # Union of all SQL tables needed
     sql_tables: list[str] = list({
