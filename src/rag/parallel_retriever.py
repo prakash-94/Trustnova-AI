@@ -228,22 +228,99 @@ async def _retrieve_vector(manifest: RetrievalManifest) -> SourceResult:
 
 # ── Codebase / feature store retrieval ───────────────────────────────────────
 
+# Authoritative TrustNova feature reference used when vector store has no
+# codebase-tagged documents yet.  Update this as the platform evolves.
+_CODEBASE_FALLBACK = """[TRUSTNOVA FEATURE REFERENCE — Built-in Knowledge Base]
+
+TRUST SCORE (3-layer system):
+  • Risk Score  (0–100)  : 100 − weighted trust components; higher = riskier
+  • Trust Score (85–99)  : 99 − (risk/100 × 14); always in 85-99 range
+  • Confidence  (0–100)  : retrieval quality × verification quality
+  • Tiers: Premium ≥97, Preferred ≥92, Standard otherwise
+
+FRAUD DETECTION:
+  • Model: XGBoost with SHAP explanations
+  • Decision threshold: 0.65 (scores above = flagged)
+  • Real-time transaction scoring on enriched_transactions table
+  • Severity tiers: Critical ≥0.85, High ≥0.70, Medium ≥0.55, Low <0.55
+
+RAG PIPELINE (6-layer hybrid):
+  Query → Entity Memory → Query Rewriter → Semantic Router →
+  Parallel Retrieval (SQL + Risk + Fraud + Vector/HyDE) →
+  Context Fusion → LLM Generation → Verification → 3-Layer Trust Score
+
+INTENT ROUTING (13 intents):
+  risk, fraud, customer, transaction, account, loan, trust_score,
+  kyc, aml, policy, stats, trustnova_features, general
+
+AML / KYC:
+  • AML alerts tracked in fraud_alerts table (status: open/resolved)
+  • KYC fields: identity_verified, kyc_status, cdd_level in customers table
+  • SAR/CTR thresholds: configurable; structuring detection enabled
+  • CDD levels: standard, enhanced, simplified
+
+ACCESS CONTROL (RBAC):
+  • 13 roles with intent-level permission gates
+  • Field-level restrictions: fraud:read, risk:read, loans:read, aml:read
+  • All queries RBAC-filtered before any data is retrieved
+
+SUPPORTED QUERY TYPES:
+  Customer intelligence, loan portfolio, fraud investigation,
+  AML compliance, KYC verification, risk assessment,
+  transaction analysis, portfolio statistics, platform features
+"""
+
+
 async def _retrieve_codebase(manifest: RetrievalManifest) -> SourceResult:
+    """
+    Retrieve TrustNova feature/methodology knowledge.
+
+    Strategy:
+      1. Try vector store with source_type=codebase filter (real uploaded docs)
+      2. Fall back to built-in _CODEBASE_FALLBACK if vector store returns nothing
+    """
     t0 = asyncio.get_event_loop().time()
-    content = (
-        "[TRUSTNOVA FEATURE REFERENCE]\n"
-        "Trust Score: 3-layer system — Risk Score (0-100), Trust Score (85-99), Confidence (0-100)\n"
-        "Fraud Detection: XGBoost + SHAP. Decision threshold: 0.65\n"
-        "RAG Pipeline: Multi-source parallel retrieval with post-generation verification\n"
-        "RBAC: 13 roles with intent-level + field-level access control\n"
-        "Supported Intents: risk, fraud, customer, transaction, account, loan, trust_score, stats, general\n"
-    )
+    query = manifest.entity_refs.get("original_query", "")
+
+    def _sync_fetch() -> tuple[str, list[dict]]:
+        try:
+            from src.rag.hyde import hybrid_hyde_search
+            docs = hybrid_hyde_search(
+                query, k=4,
+                metadata_filter={"source_type": "codebase"},
+            )
+            chunks = [
+                f"[score:{score:.2f}][{doc.metadata.get('source', 'feature_ref')}]\n"
+                f"{doc.page_content}"
+                for doc, score in docs
+                if score > 0.20
+            ]
+            if chunks:
+                content = "[TRUSTNOVA FEATURE REFERENCE]\n\n" + "\n\n".join(chunks)
+                meta = [
+                    {
+                        "document": doc.metadata.get("source", "feature_ref"),
+                        "score": round(score, 4),
+                        "source_type": "codebase",
+                    }
+                    for doc, score in docs if score > 0.20
+                ]
+                return content, meta
+        except Exception:
+            pass
+
+        # Vector store empty or unavailable — use built-in reference
+        return _CODEBASE_FALLBACK, [
+            {"document": "TrustNova Built-in Reference", "source_type": "codebase"}
+        ]
+
+    content, meta = await asyncio.to_thread(_sync_fetch)
     latency = int((asyncio.get_event_loop().time() - t0) * 1000)
     return SourceResult(
         source_type="codebase",
         content=content,
         raw_text=content,
-        metadata=[{"document": "TrustNova Feature Reference", "source_type": "codebase"}],
+        metadata=meta,
         freshness_score=1.0,
         retrieval_latency_ms=latency,
     )

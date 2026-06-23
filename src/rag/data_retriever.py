@@ -28,7 +28,7 @@ def _now_iso() -> str:
 
 # ── Risk Profiles ─────────────────────────────────────────────────────────────
 
-def get_risk_profiles(query: str, limit: int = 30) -> tuple[str, list[dict]]:
+def get_risk_profiles(query: str, limit: int = 10) -> tuple[str, list[dict]]:
     """
     Return customer risk profiles from DB.
     Detects 'high'/'medium'/'low'/'critical' in the query to filter.
@@ -54,6 +54,12 @@ def get_risk_profiles(query: str, limit: int = 30) -> tuple[str, list[dict]]:
         if risk_filter:
             placeholders = ", ".join(f":r{i}" for i in range(len(risk_filter)))
             params = {f"r{i}": v for i, v in enumerate(risk_filter)}
+
+            total_matching = conn.execute(text(f"""
+                SELECT COUNT(*) FROM customers
+                WHERE  LOWER(aml_risk_rating) IN ({placeholders})
+            """), {f"r{i}": v for i, v in enumerate(risk_filter)}).scalar() or 0
+
             params["lim"] = limit
             rows = conn.execute(text(f"""
                 SELECT {pk} AS cid, first_name, last_name, email,
@@ -65,6 +71,7 @@ def get_risk_profiles(query: str, limit: int = 30) -> tuple[str, list[dict]]:
                 LIMIT  :lim
             """), params).fetchall()
         else:
+            total_matching = conn.execute(text("SELECT COUNT(*) FROM customers")).scalar() or 0
             rows = conn.execute(text(f"""
                 SELECT {pk} AS cid, first_name, last_name, email,
                        credit_score, aml_risk_rating,
@@ -103,9 +110,13 @@ def get_risk_profiles(query: str, limit: int = 30) -> tuple[str, list[dict]]:
     if not rows:
         return f"No customers found matching the risk filter '{label}'.\n", []
 
+    shown = len(rows)
+    truncated = total_matching - shown
+    trunc_note = f" (showing top {shown} of {total_matching} total)" if truncated > 0 else ""
+
     lines = [
         f"=== {label.upper()} ===",
-        f"Retrieved: {_now_iso()} | Total shown: {len(rows)}",
+        f"Total matching: {total_matching:,}{trunc_note} | As of {_now_iso()}",
         "",
         f"{'#':<4} {'Name':<22} {'ID':<12} {'Risk Level':<12} {'Credit':<8} "
         f"{'Fraud Alerts':<14} {'Trust Score':<13} {'PEP':<5} {'Income':>12}",
@@ -127,13 +138,15 @@ def get_risk_profiles(query: str, limit: int = 30) -> tuple[str, list[dict]]:
             f"{fraud_cnt:<14} {ts:<13} {pep:<5} {income:>12}"
         )
 
+    if truncated > 0:
+        lines.append(f"\n… {truncated} more records not shown. Refine your query to narrow results.")
     lines += ["", f"Data source: customers + fraud_alerts + trust_scores tables | As of {_now_iso()}"]
-    return "\n".join(lines), [_db_source(label, "customers", len(rows))]
+    return "\n".join(lines), [_db_source(label, "customers", total_matching)]
 
 
 # ── Fraud Alerts ──────────────────────────────────────────────────────────────
 
-def get_fraud_data(query: str, customer_id: Optional[str] = None, limit: int = 20) -> tuple[str, list[dict]]:
+def get_fraud_data(query: str, customer_id: Optional[str] = None, limit: int = 10) -> tuple[str, list[dict]]:
     q = query.lower()
     status_filter = None
     if "open" in q:
@@ -143,16 +156,25 @@ def get_fraud_data(query: str, customer_id: Optional[str] = None, limit: int = 2
 
     with engine.connect() as conn:
         pk = customer_pk()
-        params: dict = {"lim": limit}
+        count_params: dict = {}
         filters = []
         if customer_id:
             filters.append("fa.customer_id = :cid")
-            params["cid"] = customer_id
+            count_params["cid"] = customer_id
         if status_filter:
             filters.append("fa.status = :status")
-            params["status"] = status_filter
+            count_params["status"] = status_filter
         where = ("WHERE " + " AND ".join(filters)) if filters else ""
 
+        total_matching = conn.execute(text(
+            f"SELECT COUNT(*) FROM fraud_alerts fa {where}"
+        ), count_params).scalar() or 0
+
+        total_open = conn.execute(text(
+            "SELECT COUNT(*) FROM fraud_alerts WHERE status = 'open'"
+        )).scalar() or 0
+
+        params = {**count_params, "lim": limit}
         rows = conn.execute(text(f"""
             SELECT fa.alert_id, fa.customer_id, fa.risk_score, fa.reason,
                    fa.status, fa.timestamp,
@@ -164,17 +186,17 @@ def get_fraud_data(query: str, customer_id: Optional[str] = None, limit: int = 2
             LIMIT  :lim
         """), params).fetchall()
 
-        total_open = conn.execute(text(
-            "SELECT COUNT(*) FROM fraud_alerts WHERE status = 'open'"
-        )).scalar() or 0
-
     if not rows:
         return "No fraud alerts found matching the query.\n", []
+
+    shown = len(rows)
+    truncated = total_matching - shown
+    trunc_note = f" (top {shown} of {total_matching})" if truncated > 0 else f" ({shown} total)"
 
     label = f"{'Customer ' + customer_id[:8] if customer_id else 'Institution-wide'} Fraud Alerts"
     lines = [
         f"=== FRAUD ALERTS — {label.upper()} ===",
-        f"Total open alerts: {total_open} | Retrieved: {_now_iso()}",
+        f"Matching alerts: {total_matching:,}{trunc_note} | Institution open alerts: {total_open:,} | As of {_now_iso()}",
         "",
         f"{'Alert ID':<16} {'Customer':<22} {'Score':>6} {'Severity':<10} {'Status':<14} {'Reason':<40} {'Date'}",
         "-" * 120,
@@ -193,8 +215,10 @@ def get_fraud_data(query: str, customer_id: Optional[str] = None, limit: int = 2
             f"{alert_id:<16} {name:<22} {score*100:>5.0f}% {sev:<10} {status:<14} {reason:<40} {date}"
         )
 
+    if truncated > 0:
+        lines.append(f"\n… {truncated} more alerts not shown. Filter by status=open or by customer ID.")
     lines += ["", f"Data source: fraud_alerts table | As of {_now_iso()}"]
-    return "\n".join(lines), [_db_source(label, "fraud_alerts", len(rows))]
+    return "\n".join(lines), [_db_source(label, "fraud_alerts", total_matching)]
 
 
 # ── Customer 360 ──────────────────────────────────────────────────────────────
@@ -249,18 +273,28 @@ def get_customer_360(
 
 # ── Transactions ──────────────────────────────────────────────────────────────
 
-def get_transactions(query: str, customer_id: Optional[str] = None, limit: int = 25) -> tuple[str, list[dict]]:
+def get_transactions(query: str, customer_id: Optional[str] = None, limit: int = 10) -> tuple[str, list[dict]]:
     with engine.connect() as conn:
-        params: dict = {"lim": limit}
+        count_params: dict = {}
         filters = []
         if customer_id:
             filters.append("customer_id = :cid")
-            params["cid"] = customer_id
+            count_params["cid"] = customer_id
         q = query.lower()
         if "fraud" in q or "flagged" in q:
             filters.append("is_fraud = 1")
         where = ("WHERE " + " AND ".join(filters)) if filters else ""
 
+        total_matching = conn.execute(text(
+            f"SELECT COUNT(*) FROM enriched_transactions {where}"
+        ), count_params).scalar() or 0
+
+        fraud_count = conn.execute(text(
+            f"SELECT COUNT(*) FROM enriched_transactions {where} {'AND' if filters else 'WHERE'} is_fraud = 1"
+            if filters else "SELECT COUNT(*) FROM enriched_transactions WHERE is_fraud = 1"
+        ), count_params).scalar() or 0
+
+        params = {**count_params, "lim": limit}
         rows = conn.execute(text(f"""
             SELECT transaction_id, customer_id, amount, merchant, category,
                    location, timestamp, is_fraud, merchant_risk
@@ -273,10 +307,14 @@ def get_transactions(query: str, customer_id: Optional[str] = None, limit: int =
     if not rows:
         return "No transactions found.\n", []
 
+    shown = len(rows)
+    truncated = total_matching - shown
+    trunc_note = f" (showing latest {shown} of {total_matching:,} total)" if truncated > 0 else f" ({shown} total)"
+
     label = f"{'Customer ' + customer_id[:8] if customer_id else 'Recent'} Transactions"
     lines = [
         f"=== {label.upper()} ===",
-        f"Retrieved: {_now_iso()} | Count: {len(rows)}",
+        f"Total transactions: {total_matching:,}{trunc_note} | Flagged as fraud: {fraud_count:,} | As of {_now_iso()}",
         "",
         f"{'Date':<12} {'Customer':<12} {'Merchant':<28} {'Category':<18} {'Amount':>10} {'Flag':<8} {'Location'}",
         "-" * 110,
@@ -294,19 +332,21 @@ def get_transactions(query: str, customer_id: Optional[str] = None, limit: int =
             f"{flag:<8} "
             f"{str(d.get('location', ''))[:20]}"
         )
+    if truncated > 0:
+        lines.append(f"\n… {truncated:,} older transactions not shown. Use date range filter to narrow results.")
     lines += ["", f"Data source: enriched_transactions table | As of {_now_iso()}"]
-    return "\n".join(lines), [_db_source(label, "enriched_transactions", len(rows))]
+    return "\n".join(lines), [_db_source(label, "enriched_transactions", total_matching)]
 
 
 # ── Loans ─────────────────────────────────────────────────────────────────────
 
-def get_loans(query: str, customer_id: Optional[str] = None, limit: int = 25) -> tuple[str, list[dict]]:
+def get_loans(query: str, customer_id: Optional[str] = None, limit: int = 10) -> tuple[str, list[dict]]:
     with engine.connect() as conn:
-        params: dict = {"lim": limit}
+        count_params: dict = {}
         filters = []
         if customer_id:
             filters.append("l.customer_id = :cid")
-            params["cid"] = customer_id
+            count_params["cid"] = customer_id
         q_lower = query.lower()
         if "pending" in q_lower:
             filters.append("l.status = 'pending'")
@@ -316,11 +356,25 @@ def get_loans(query: str, customer_id: Optional[str] = None, limit: int = 25) ->
             filters.append("l.status IN ('delinquent','defaulted','past_due')")
         where = ("WHERE " + " AND ".join(filters)) if filters else ""
 
+        pk = customer_pk()
+
+        total_matching = conn.execute(text(
+            f"SELECT COUNT(*) FROM loans l {where}"
+        ), count_params).scalar() or 0
+
+        total_loans   = conn.execute(text("SELECT COUNT(*) FROM loans")).scalar() or 0
+        active        = conn.execute(text("SELECT COUNT(*) FROM loans WHERE status='active'")).scalar() or 0
+        pending       = conn.execute(text("SELECT COUNT(*) FROM loans WHERE status='pending'")).scalar() or 0
+        delinquent    = conn.execute(text(
+            "SELECT COUNT(*) FROM loans WHERE status IN ('delinquent','defaulted','past_due')"
+        )).scalar() or 0
+
         highest_terms = ("highest", "largest", "biggest", "maximum", "max ", "top ")
         lowest_terms = ("lowest", "smallest", "minimum", "min ")
         is_highest = any(term in q_lower for term in highest_terms)
         is_lowest = any(term in q_lower for term in lowest_terms)
         amount_field = "l.outstanding_balance_cents" if "outstanding" in q_lower else "l.amount_cents"
+        params = {**count_params, "lim": limit}
         if is_highest:
             order_by = f"{amount_field} DESC"
             params["lim"] = 1
@@ -330,7 +384,6 @@ def get_loans(query: str, customer_id: Optional[str] = None, limit: int = 25) ->
         else:
             order_by = "l.origination_date DESC"
 
-        pk = customer_pk()
         rows = conn.execute(text(f"""
             SELECT l.id, l.customer_id, l.loan_type, l.status,
                    l.amount_cents, l.outstanding_balance_cents,
@@ -343,16 +396,17 @@ def get_loans(query: str, customer_id: Optional[str] = None, limit: int = 25) ->
             LIMIT  :lim
         """), params).fetchall()
 
-        total_loans = conn.execute(text("SELECT COUNT(*) FROM loans")).scalar() or 0
-        active = conn.execute(text("SELECT COUNT(*) FROM loans WHERE status='active'")).scalar() or 0
-
     if not rows:
         return "No loans found.\n", []
+
+    shown = len(rows)
+    truncated = total_matching - shown
+    trunc_note = f" (showing {shown} of {total_matching:,} matching)" if truncated > 0 else ""
 
     label = f"{'Customer ' + customer_id[:8] if customer_id else 'Loan Portfolio'}"
     lines = [
         f"=== LOAN PORTFOLIO — {label.upper()} ===",
-        f"Total loans: {total_loans} | Active: {active} | Retrieved: {_now_iso()}",
+        f"Portfolio totals — All: {total_loans:,} | Active: {active:,} | Pending: {pending:,} | Delinquent/NPL: {delinquent:,}{trunc_note} | As of {_now_iso()}",
         "",
         f"{'Customer':<22} {'Type':<12} {'Status':<14} {'Amount':>12} {'Outstanding':>13} {'Rate':>6} {'Term':>6} {'Date'}",
         "-" * 110,
@@ -379,21 +433,33 @@ def get_loans(query: str, customer_id: Optional[str] = None, limit: int = 25) ->
             f"{name:<22} {str(d.get('loan_type', '')):<12} {str(d.get('status', '')):<14} "
             f"${amt:>11,.0f} ${outstanding:>12,.0f} {rate:>6} {term:>6} {str(d.get('origination_date', ''))[:10]}"
         )
+    if truncated > 0:
+        lines.append(f"\n… {truncated:,} more loans not shown. Filter by status (active/pending/delinquent) to narrow.")
     lines += ["", f"Data source: loans table | As of {_now_iso()}"]
-    return "\n".join(lines), [_db_source(label, "loans", len(rows))]
+    return "\n".join(lines), [_db_source(label, "loans", total_matching)]
 
 
 # ── Accounts ──────────────────────────────────────────────────────────────────
 
-def get_accounts(query: str, customer_id: Optional[str] = None, limit: int = 25) -> tuple[str, list[dict]]:
+def get_accounts(query: str, customer_id: Optional[str] = None, limit: int = 10) -> tuple[str, list[dict]]:
     with engine.connect() as conn:
-        params: dict = {"lim": limit}
+        count_params: dict = {}
         filters = []
         if customer_id:
             filters.append("a.customer_id = :cid")
-            params["cid"] = customer_id
+            count_params["cid"] = customer_id
         where = ("WHERE " + " AND ".join(filters)) if filters else ""
         pk = customer_pk()
+
+        total_matching = conn.execute(text(
+            f"SELECT COUNT(*) FROM accounts a {where}"
+        ), count_params).scalar() or 0
+
+        total_balance = conn.execute(text(
+            f"SELECT COALESCE(SUM(a.balance_cents), 0) FROM accounts a {where}"
+        ), count_params).scalar() or 0
+
+        params = {**count_params, "lim": limit}
         rows = conn.execute(text(f"""
             SELECT a.id, a.customer_id, a.account_number, a.account_type,
                    a.status, a.balance_cents, a.opened_date,
@@ -408,10 +474,15 @@ def get_accounts(query: str, customer_id: Optional[str] = None, limit: int = 25)
     if not rows:
         return "No accounts found.\n", []
 
+    shown = len(rows)
+    truncated = total_matching - shown
+    trunc_note = f" (top {shown} of {total_matching:,} by balance)" if truncated > 0 else f" ({shown} total)"
+    total_bal_str = f"${float(total_balance) / 100:,.2f}"
+
     label = f"{'Customer ' + customer_id[:8] if customer_id else 'Account Portfolio'}"
     lines = [
         f"=== ACCOUNTS — {label.upper()} ===",
-        f"Retrieved: {_now_iso()} | Count: {len(rows)}",
+        f"Accounts: {total_matching:,}{trunc_note} | Total balance: {total_bal_str} | As of {_now_iso()}",
         "",
         f"{'Customer':<22} {'Account #':<16} {'Type':<14} {'Status':<10} {'Balance':>14} {'Opened'}",
         "-" * 95,
@@ -424,16 +495,24 @@ def get_accounts(query: str, customer_id: Optional[str] = None, limit: int = 25)
             f"{name:<22} {str(d.get('account_number', '')):<16} {str(d.get('account_type', '')):<14} "
             f"{str(d.get('status', '')):<10} ${bal:>13,.2f} {str(d.get('opened_date', ''))[:10]}"
         )
+    if truncated > 0:
+        lines.append(f"\n… {truncated:,} more accounts not shown. Filter by account type or customer ID.")
     lines += ["", f"Data source: accounts table | As of {_now_iso()}"]
-    return "\n".join(lines), [_db_source(label, "accounts", len(rows))]
+    return "\n".join(lines), [_db_source(label, "accounts", total_matching)]
 
 
 # ── Trust Scores ──────────────────────────────────────────────────────────────
 
-def get_trust_scores(query: str, customer_id: Optional[str] = None, limit: int = 20) -> tuple[str, list[dict]]:
+def get_trust_scores(query: str, customer_id: Optional[str] = None, limit: int = 10) -> tuple[str, list[dict]]:
     pk = customer_pk()
     with engine.connect() as conn:
         if customer_id:
+            total_matching = conn.execute(text(
+                "SELECT COUNT(*) FROM trust_scores WHERE customer_id = :cid"
+            ), {"cid": customer_id}).scalar() or 0
+            avg_score = conn.execute(text(
+                "SELECT AVG(score) FROM trust_scores WHERE customer_id = :cid"
+            ), {"cid": customer_id}).scalar() or 0
             rows = conn.execute(text(f"""
                 SELECT ts.customer_id, ts.score, ts.tier, ts.timestamp,
                        c.first_name, c.last_name, c.aml_risk_rating
@@ -443,6 +522,10 @@ def get_trust_scores(query: str, customer_id: Optional[str] = None, limit: int =
                 ORDER  BY ts.timestamp DESC LIMIT :lim
             """), {"cid": customer_id, "lim": limit}).fetchall()
         else:
+            total_matching = conn.execute(text(
+                "SELECT COUNT(DISTINCT customer_id) FROM trust_scores"
+            )).scalar() or 0
+            avg_score = conn.execute(text("SELECT AVG(score) FROM trust_scores")).scalar() or 0
             rows = conn.execute(text(f"""
                 SELECT ts.customer_id, ts.score, ts.tier, ts.timestamp,
                        c.first_name, c.last_name, c.aml_risk_rating
@@ -459,10 +542,14 @@ def get_trust_scores(query: str, customer_id: Optional[str] = None, limit: int =
     if not rows:
         return "No trust scores found.\n", []
 
+    shown = len(rows)
+    truncated = total_matching - shown
+    trunc_note = f" (top {shown} of {total_matching:,})" if truncated > 0 else f" ({shown})"
+
     label = f"{'Customer ' + customer_id[:8] if customer_id else 'Trust Score Summary'}"
     lines = [
         f"=== TRUST SCORES — {label.upper()} ===",
-        f"Retrieved: {_now_iso()} | Count: {len(rows)}",
+        f"Customers scored: {total_matching:,}{trunc_note} | Average score: {float(avg_score):.1f}/100 | As of {_now_iso()}",
         "",
         f"{'Customer':<22} {'ID':<12} {'Score':>7} {'Tier':<12} {'AML Risk':<12} {'Last Updated'}",
         "-" * 80,
@@ -476,8 +563,10 @@ def get_trust_scores(query: str, customer_id: Optional[str] = None, limit: int =
         risk = str(d.get("aml_risk_rating") or "")
         updated = str(d.get("timestamp") or "")[:10]
         lines.append(f"{name:<22} {cid:<12} {score:>6.1f} {tier:<12} {risk:<12} {updated}")
+    if truncated > 0:
+        lines.append(f"\n… {truncated:,} more customers not shown. Sort by score tier to narrow results.")
     lines += ["", f"Data source: trust_scores table | As of {_now_iso()}"]
-    return "\n".join(lines), [_db_source(label, "trust_scores", len(rows))]
+    return "\n".join(lines), [_db_source(label, "trust_scores", total_matching)]
 
 
 # ── Portfolio Summary (risk dashboard) ───────────────────────────────────────
