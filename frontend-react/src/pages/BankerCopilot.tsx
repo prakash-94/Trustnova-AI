@@ -200,9 +200,27 @@ export default function BankerCopilot({ user, onLogout }: BankerCopilotProps) {
       setCustomersLoading(true);
       try {
         const r = await customersApi.search(q.trim(), 100);
-        setCustomersSearchResults((r.results ?? []) as Customer[]);
-      } catch {
-        setCustomersSearchResults([]);
+        const apiResults = (r.results ?? []) as Customer[];
+        if (apiResults.length > 0) {
+          setCustomersSearchResults(apiResults);
+        } else {
+          // API returned empty — fall back to filtering the pre-loaded list locally
+          const qLower = q.trim().toLowerCase();
+          const local = customersList.filter(c =>
+            c.first_name?.toLowerCase().includes(qLower) ||
+            c.last_name?.toLowerCase().includes(qLower)
+          );
+          setCustomersSearchResults(local);
+        }
+      } catch (err) {
+        console.error('[CustomerSearch] API search failed, falling back to local filter:', err);
+        // Fall back to client-side filtering of the pre-loaded list
+        const qLower = q.trim().toLowerCase();
+        const local = customersList.filter(c =>
+          c.first_name?.toLowerCase().includes(qLower) ||
+          c.last_name?.toLowerCase().includes(qLower)
+        );
+        setCustomersSearchResults(local);
       } finally {
         setCustomersLoading(false);
       }
