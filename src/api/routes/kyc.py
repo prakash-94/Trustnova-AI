@@ -71,7 +71,8 @@ def _row_to_kyc(row: dict) -> dict:
     # Compute age from created_at since there's no account_age_days column
     age_days = _age_days(row.get("created_at"))
     credit = int(row.get("credit_score") or 650)
-    status = _kyc_status(risk, age_days)
+    stored = (row.get("kyc_status") or "").lower().strip()
+    status = stored if stored in ("verified", "in_review") else _kyc_status(risk, age_days)
     docs = _build_docs(risk, status, cid)
     missing = [d["type"] for d in docs if d["status"] in ("pending", "not_submitted")]
     flags = []
