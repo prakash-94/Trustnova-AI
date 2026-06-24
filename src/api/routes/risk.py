@@ -23,10 +23,24 @@ async def get_portfolio_risk(
     with engine.connect() as conn:
         total = conn.execute(text("SELECT COUNT(*) FROM customers")).scalar() or 0
 
-        # aml_risk_rating is the actual column (not risk_level)
-        by_risk = conn.execute(text(
-            "SELECT LOWER(aml_risk_rating), COUNT(*) FROM customers GROUP BY LOWER(aml_risk_rating)"
-        )).fetchall()
+        # Compute risk band per customer using the same logic as _risk_band():
+        #   low AML           → low
+        #   medium AML        → medium
+        #   high / very high  → critical
+        #   medium + credit < 580 → high  (edge case)
+        band_rows = conn.execute(text("""
+            SELECT
+                CASE
+                    WHEN LOWER(aml_risk_rating) = 'low'    THEN 'low'
+                    WHEN LOWER(aml_risk_rating) = 'medium'
+                         AND CAST(COALESCE(credit_score, 650) AS INTEGER) < 580 THEN 'high'
+                    WHEN LOWER(aml_risk_rating) = 'medium' THEN 'medium'
+                    ELSE 'critical'
+                END AS band,
+                COUNT(*) AS cnt
+            FROM customers
+            GROUP BY band
+        """)).fetchall()
 
         avg_credit = conn.execute(text(
             "SELECT AVG(CAST(credit_score AS REAL)) FROM customers WHERE credit_score IS NOT NULL"
@@ -35,18 +49,16 @@ async def get_portfolio_risk(
         fraud_total = conn.execute(text("SELECT COUNT(*) FROM fraud_alerts")).scalar() or 0
         fraud_open  = conn.execute(text("SELECT COUNT(*) FROM fraud_alerts WHERE status='open'")).scalar() or 0
 
-        # NPL: loans that are delinquent or past due
         npls = conn.execute(text(
             "SELECT COUNT(*) FROM loans WHERE status IN ('delinquent','defaulted','past_due')"
         )).scalar() or 0
         total_loans = conn.execute(text("SELECT COUNT(*) FROM loans")).scalar() or 1
 
-    risk_map = {r[0]: r[1] for r in by_risk}
-    low      = risk_map.get("low", 0)
-    med      = risk_map.get("medium", 0)
-    high     = risk_map.get("high", 0)
-    critical = risk_map.get("very high", risk_map.get("very_high", 0))
-
+    band_map = {r[0]: r[1] for r in band_rows}
+    low      = band_map.get("low",      0)
+    med      = band_map.get("medium",   0)
+    high     = band_map.get("high",     0)
+    critical = band_map.get("critical", 0)
     npl_pct  = round(npls / max(total_loans, 1) * 100, 1)
 
     return {
@@ -71,27 +83,37 @@ async def get_risk_segment_customers(
     offset: int = Query(0),
     current_user: CurrentUser = Depends(require_permission("risk:read")),
 ):
-    """Drill-down: customers in a risk band — aml_risk_rating column."""
-    band_map = {
-        "low":      ["low"],
-        "medium":   ["medium"],
-        "high":     ["high"],
-        "critical": ["very high", "very_high"],
-    }
-    levels = band_map.get(band.lower(), [band.lower()])
-    placeholders = ", ".join(f":lvl{i}" for i in range(len(levels)))
+    """Drill-down: customers in a risk band — matches portfolio band logic."""
+    from src.models.database import customer_pk
+    pk = customer_pk()
+
+    # Build WHERE clause matching the same band → AML mapping used in /portfolio
+    band_lower = band.lower()
+    if band_lower == "low":
+        band_where = "LOWER(aml_risk_rating) = 'low'"
+    elif band_lower == "medium":
+        band_where = (
+            "LOWER(aml_risk_rating) = 'medium' "
+            "AND CAST(COALESCE(credit_score, 650) AS INTEGER) >= 580"
+        )
+    elif band_lower == "high":
+        band_where = (
+            "LOWER(aml_risk_rating) = 'medium' "
+            "AND CAST(COALESCE(credit_score, 650) AS INTEGER) < 580"
+        )
+    else:  # critical
+        band_where = "LOWER(aml_risk_rating) IN ('high', 'very high', 'very_high')"
+
     params: dict = {"limit": limit, "offset": offset}
-    for i, lvl in enumerate(levels):
-        params[f"lvl{i}"] = lvl
 
     with engine.connect() as conn:
         total = conn.execute(text(
-            f"SELECT COUNT(*) FROM customers WHERE LOWER(aml_risk_rating) IN ({placeholders})"
+            f"SELECT COUNT(*) FROM customers WHERE {band_where}"
         ), params).scalar() or 0
 
         rows = conn.execute(text(f"""
             SELECT
-                c.id            AS customer_id,
+                c.{pk}          AS customer_id,
                 c.first_name || ' ' || c.last_name AS name,
                 c.email,
                 c.credit_score,
@@ -106,12 +128,12 @@ async def get_risk_segment_customers(
                        MIN(account_type) AS account_type,
                        SUM(balance_cents) AS balance_cents
                 FROM accounts GROUP BY customer_id
-            ) a ON a.customer_id = c.id
+            ) a ON a.customer_id = c.{pk}
             LEFT JOIN (
                 SELECT customer_id, COUNT(*) AS fraud_count
                 FROM fraud_alerts GROUP BY customer_id
-            ) f ON f.customer_id = c.id
-            WHERE LOWER(c.aml_risk_rating) IN ({placeholders})
+            ) f ON f.customer_id = c.{pk}
+            WHERE {band_where}
             ORDER BY c.credit_score ASC NULLS LAST
             LIMIT :limit OFFSET :offset
         """), params).fetchall()

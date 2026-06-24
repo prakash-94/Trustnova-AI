@@ -78,10 +78,10 @@ export default function RiskCenter({ customer: _customer, onSelectCustomer, onNa
   const dist = (portfolio?.risk_distribution as Record<string, { count: number; pct: number }>) ?? {};
 
   const BAND_META: Record<string, { color: string; label: string; desc: string; tooltip: string }> = {
-    low:      { color: 'green',  label: 'Low',      desc: 'Score 80–100', tooltip: 'Excellent credit profile. Standard monitoring, no additional controls.' },
-    medium:   { color: 'blue',   label: 'Medium',   desc: 'Score 60–79',  tooltip: 'Acceptable risk. Standard procedures. Quarterly review.' },
-    high:     { color: 'amber',  label: 'High',     desc: 'Score 40–59',  tooltip: 'Elevated risk. Enhanced monitoring. Monthly review + manager sign-off.' },
-    critical: { color: 'red',    label: 'Critical', desc: 'Score 0–39',   tooltip: 'Significant risk. EDD required. Immediate escalation to Compliance.' },
+    low:      { color: 'green',  label: 'Low',      desc: 'AML: Low',           tooltip: 'Excellent credit profile. Standard monitoring, no additional controls.' },
+    medium:   { color: 'blue',   label: 'Medium',   desc: 'AML: Medium',        tooltip: 'Acceptable risk. Standard procedures. Quarterly review.' },
+    high:     { color: 'amber',  label: 'High',     desc: 'AML: Medium + poor credit', tooltip: 'Elevated risk. Enhanced monitoring. Monthly review + manager sign-off.' },
+    critical: { color: 'red',    label: 'Critical', desc: 'AML: High / Very High', tooltip: 'Significant risk. EDD required. Immediate escalation to Compliance.' },
   };
 
   return (
