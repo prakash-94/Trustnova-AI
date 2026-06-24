@@ -373,6 +373,9 @@ export default function KYCCenter({ customer }: Props) {
     return true;
   });
 
+  const totalCustomers = (counts.verified ?? 0) + (counts.in_review ?? 0) + (counts.pending ?? 0);
+  const verifiedPct = totalCustomers > 0 ? Math.round(((counts.verified ?? 0) / totalCustomers) * 100) : 0;
+
   const tabCounts: Record<StatusTab, number> = {
     all:             totalCustomers,
     verified:        counts.verified    ?? 0,
@@ -380,9 +383,6 @@ export default function KYCCenter({ customer }: Props) {
     pending:         counts.pending     ?? 0,
     action_required: counts.action_required ?? 0,
   };
-
-  const totalCustomers = (counts.verified ?? 0) + (counts.in_review ?? 0) + (counts.pending ?? 0);
-  const verifiedPct = totalCustomers > 0 ? Math.round(((counts.verified ?? 0) / totalCustomers) * 100) : 0;
 
   return (
     <div className="space-y-4 pb-6">
