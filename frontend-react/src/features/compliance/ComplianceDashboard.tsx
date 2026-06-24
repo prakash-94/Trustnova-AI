@@ -111,6 +111,46 @@ export default function ComplianceDashboard() {
         ))}
       </div>
 
+      {/* Regulatory Controls — compact tiles */}
+      <GlassCard animate={false} className="p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h2 className="text-sm font-semibold text-t1">Regulatory Controls</h2>
+            <p className="text-[10px] text-t3">
+              {compliant}/{REGULATIONS.length} compliant · {actionItems} action required · {inReview} under review
+            </p>
+          </div>
+        </div>
+        <div className="grid grid-cols-4 gap-2">
+          {REGULATIONS.map((reg, i) => {
+            const colorMap: Record<string, string> = {
+              compliant:       'border-green-500/30 bg-green-500/[0.06]',
+              under_review:    'border-amber-500/30 bg-amber-500/[0.06]',
+              action_required: 'border-red-500/30   bg-red-500/[0.06]',
+            };
+            const textMap: Record<string, string> = {
+              compliant:       'text-green-400',
+              under_review:    'text-amber-400',
+              action_required: 'text-red-400',
+            };
+            return (
+              <motion.div key={reg.code}
+                initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
+                className={`rounded-xl border p-3 ${colorMap[reg.status] ?? 'border-white/[0.08] bg-white/[0.03]'}`}>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-mono font-bold text-purple-400">{reg.code}</span>
+                  <Badge label={reg.status.replace(/_/g, ' ')} color={statusColor(reg.status)} />
+                </div>
+                <div className="text-[10px] text-t3 leading-relaxed mb-1.5">{reg.title}</div>
+                <div className={`text-[10px] font-medium ${textMap[reg.status] ?? 'text-t3'}`}>
+                  Next: {reg.next_review}
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+      </GlassCard>
+
       {/* Charts row — Complaint Categories + Mandatory Training */}
       <div className="grid grid-cols-2 gap-4">
         {/* Category Breakdown — live from DB */}
@@ -303,64 +343,35 @@ export default function ComplianceDashboard() {
         )}
       </GlassCard>
 
-      <div className="grid grid-cols-2 gap-4">
-        {/* Regulatory Controls */}
-        <GlassCard animate={false} className="overflow-hidden">
-          <div className="px-5 py-4 border-b border-white/[0.06]">
-            <h2 className="text-sm font-semibold text-t1">Regulatory Controls</h2>
-            <p className="text-xs text-t3">
-              {compliant}/{REGULATIONS.length} compliant · {actionItems} action required · {inReview} under review
-            </p>
-          </div>
-          <div className="divide-y divide-white/[0.04]">
-            {REGULATIONS.map((reg, i) => (
-              <motion.div key={reg.code} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.04 }}
-                className="px-5 py-3 flex items-center justify-between">
-                <div>
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <span className="text-xs font-mono font-semibold text-purple-400">{reg.code}</span>
-                    <Badge label={reg.status.replace('_', ' ')} color={statusColor(reg.status)} />
-                  </div>
-                  <div className="text-[11px] text-t3">{reg.title}</div>
+      {/* Audit Schedule */}
+      <GlassCard animate={false} className="overflow-hidden">
+        <div className="px-5 py-4 border-b border-white/[0.06]">
+          <h2 className="text-sm font-semibold text-t1">Audit Schedule</h2>
+        </div>
+        <div className="divide-y divide-white/[0.04]">
+          {AUDITS.map((a, i) => (
+            <motion.div key={a.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.05 }}
+              className="px-5 py-3">
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-mono text-t3">{a.id}</span>
+                  <Badge label={a.type} color="gray" />
                 </div>
-                <div className="text-right text-[10px] text-t3">
-                  <div>Next: {reg.next_review}</div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </GlassCard>
-
-          {/* Audit Schedule */}
-          <GlassCard animate={false} className="overflow-hidden">
-            <div className="px-5 py-4 border-b border-white/[0.06]">
-              <h2 className="text-sm font-semibold text-t1">Audit Schedule</h2>
-            </div>
-            <div className="divide-y divide-white/[0.04]">
-              {AUDITS.map((a, i) => (
-                <motion.div key={a.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.05 }}
-                  className="px-5 py-3">
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-mono text-t3">{a.id}</span>
-                      <Badge label={a.type} color="gray" />
-                    </div>
-                    <Badge label={a.status.replace('_', ' ')} color={statusColor(a.status)} />
-                  </div>
-                  <div className="text-xs text-t2">{a.scope}</div>
-                  <div className="flex gap-3 text-[10px] text-t3 mt-1">
-                    <span>{a.date}</span>
-                    {a.findings > 0 && (
-                      <span className={a.critical > 0 ? 'text-red-400' : 'text-amber-400'}>
-                        {a.findings} finding{a.findings !== 1 ? 's' : ''}{a.critical > 0 ? ` (${a.critical} critical)` : ''}
-                      </span>
-                    )}
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          </GlassCard>
-      </div>
+                <Badge label={a.status.replace('_', ' ')} color={statusColor(a.status)} />
+              </div>
+              <div className="text-xs text-t2">{a.scope}</div>
+              <div className="flex gap-3 text-[10px] text-t3 mt-1">
+                <span>{a.date}</span>
+                {a.findings > 0 && (
+                  <span className={a.critical > 0 ? 'text-red-400' : 'text-amber-400'}>
+                    {a.findings} finding{a.findings !== 1 ? 's' : ''}{a.critical > 0 ? ` (${a.critical} critical)` : ''}
+                  </span>
+                )}
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      </GlassCard>
     </div>
   );
 }
