@@ -7,6 +7,7 @@ Endpoints:
 """
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.api.auth import CurrentUser, require_permission
 from src.models.database import engine
@@ -32,28 +33,35 @@ async def compliance_stats(
     current_user: CurrentUser = Depends(require_permission("chat")),
 ):
     """Live complaint counts + category breakdown from the complaints table."""
-    with engine.connect() as conn:
-        total = conn.execute(text("SELECT COUNT(*) FROM complaints")).scalar() or 0
+    try:
+        with engine.connect() as conn:
+            total = conn.execute(text("SELECT COUNT(*) FROM complaints")).scalar() or 0
 
-        open_count = conn.execute(text(
-            "SELECT COUNT(*) FROM complaints WHERE timestamp >= :cutoff"
-        ), {"cutoff": _OPEN_CUTOFF}).scalar() or 0
+            open_count = conn.execute(text(
+                "SELECT COUNT(*) FROM complaints WHERE timestamp >= :cutoff"
+            ), {"cutoff": _OPEN_CUTOFF}).scalar() or 0
 
-        in_review = conn.execute(text(
-            "SELECT COUNT(*) FROM complaints "
-            "WHERE timestamp >= :lo AND timestamp < :hi"
-        ), {"lo": _IN_REVIEW_CUTOFF, "hi": _OPEN_CUTOFF}).scalar() or 0
+            in_review = conn.execute(text(
+                "SELECT COUNT(*) FROM complaints "
+                "WHERE timestamp >= :lo AND timestamp < :hi"
+            ), {"lo": _IN_REVIEW_CUTOFF, "hi": _OPEN_CUTOFF}).scalar() or 0
 
-        resolved = total - open_count - in_review
+            resolved = total - open_count - in_review
 
-        category_rows = conn.execute(text(
-            "SELECT category, COUNT(*) AS cnt "
-            "FROM complaints GROUP BY category ORDER BY cnt DESC"
-        )).fetchall()
+            category_rows = conn.execute(text(
+                "SELECT category, COUNT(*) AS cnt "
+                "FROM complaints GROUP BY category ORDER BY cnt DESC"
+            )).fetchall()
 
-        avg_sentiment = conn.execute(
-            text("SELECT AVG(sentiment_score) FROM complaints")
-        ).scalar() or -0.5
+            avg_sentiment = conn.execute(
+                text("SELECT AVG(sentiment_score) FROM complaints")
+            ).scalar() or -0.5
+    except SQLAlchemyError:
+        return {
+            "complaint_counts": {"total": 0, "open": 0, "in_review": 0, "resolved": 0},
+            "categories": [],
+            "avg_sentiment": 0.0,
+        }
 
     return {
         "complaint_counts": {
@@ -85,20 +93,23 @@ async def complaints_list(
     }
     where = where_map.get(status.lower(), "1=1")
 
-    with engine.connect() as conn:
-        total = conn.execute(
-            text(f"SELECT COUNT(*) FROM complaints WHERE {where}")
-        ).scalar() or 0
+    try:
+        with engine.connect() as conn:
+            total = conn.execute(
+                text(f"SELECT COUNT(*) FROM complaints WHERE {where}")
+            ).scalar() or 0
 
-        rows = conn.execute(text(f"""
-            SELECT complaint_id, customer_id, category,
-                   transcript_text, resolution_text,
-                   sentiment_score, timestamp
-            FROM complaints
-            WHERE {where}
-            ORDER BY timestamp DESC
-            LIMIT :limit OFFSET :offset
-        """), {"limit": limit, "offset": offset}).fetchall()
+            rows = conn.execute(text(f"""
+                SELECT complaint_id, customer_id, category,
+                       transcript_text, resolution_text,
+                       sentiment_score, timestamp
+                FROM complaints
+                WHERE {where}
+                ORDER BY timestamp DESC
+                LIMIT :limit OFFSET :offset
+            """), {"limit": limit, "offset": offset}).fetchall()
+    except SQLAlchemyError:
+        return {"complaints": [], "total": 0}
 
     complaints = []
     for r in rows:

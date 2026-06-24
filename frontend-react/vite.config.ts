@@ -10,7 +10,7 @@ export default defineConfig(({ mode }) => {
     '/risk', '/treasury', '/documents', '/feedback', '/trust', '/health',
     '/access-requests', '/accounts', '/transactions', '/kpi', '/customer',
     '/notifications', '/announcements', '/bug-reports', '/admin',
-    '/appointments', '/credit-cards',
+    '/appointments', '/credit-cards', '/compliance',
   ].reduce<Record<string, { target: string; changeOrigin: boolean }>>(
     (routes, path) => ({ ...routes, [path]: { target: apiTarget, changeOrigin: true } }),
     {},
