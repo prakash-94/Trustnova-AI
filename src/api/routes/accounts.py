@@ -153,7 +153,7 @@ async def list_accounts(
             text(f"""
                 SELECT COUNT(*)
                 FROM accounts a
-                LEFT JOIN customers c ON a.customer_id = c.id
+                LEFT JOIN customers c ON a.customer_id = c.customer_id
                 {where}
             """), params
         ).scalar() or 0
@@ -163,7 +163,7 @@ async def list_accounts(
                    (c.first_name || ' ' || c.last_name) AS customer_name,
                    c.email, c.credit_score, c.aml_risk_rating
             FROM accounts a
-            LEFT JOIN customers c ON a.customer_id = c.id
+            LEFT JOIN customers c ON a.customer_id = c.customer_id
             {where}
             ORDER BY a.balance_cents DESC
             LIMIT :limit OFFSET :offset
