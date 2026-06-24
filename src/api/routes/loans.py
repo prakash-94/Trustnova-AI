@@ -140,7 +140,7 @@ async def get_loan_detail(
         if cust_row:
             c = dict(cust_row._mapping)
             customer = {
-                "customer_id":    c["id"],
+                "customer_id":    c[c_pk],
                 "name":           f"{c.get('first_name', '')} {c.get('last_name', '')}".strip(),
                 "email":          c.get("email", ""),
                 "age":            None,
