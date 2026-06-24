@@ -360,7 +360,6 @@ export default function ComplianceDashboard() {
               ))}
             </div>
           </GlassCard>
-        </div>
       </div>
     </div>
   );
