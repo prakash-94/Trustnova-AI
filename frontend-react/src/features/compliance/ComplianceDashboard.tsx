@@ -96,19 +96,80 @@ export default function ComplianceDashboard() {
 
   return (
     <div className="space-y-4">
-      {/* KPIs — live from DB */}
+      {/* KPIs */}
       <div className="grid grid-cols-4 gap-3">
         {[
-          { label: 'Compliant Controls', value: loading ? '…' : `${compliant}/${REGULATIONS.length}`, color: 'green'  },
-          { label: 'Action Required',    value: loading ? '…' : actionItems,                          color: actionItems > 0 ? 'red' : 'green' },
-          { label: 'Open Complaints',    value: loading ? '…' : (counts?.open ?? '—'),                color: (counts?.open ?? 0) > 0 ? 'red' : 'green' },
-          { label: 'Total Complaints',   value: loading ? '…' : (counts?.total ?? '—'),               color: 'blue'   },
+          { label: 'Compliant Controls', value: loading ? '…' : `${compliant}/${REGULATIONS.length}`,  color: 'green'  },
+          { label: 'Action Required',    value: loading ? '…' : actionItems,                           color: actionItems > 0 ? 'red' : 'green' },
+          { label: 'Under Review',       value: loading ? '…' : inReview,                              color: inReview > 0 ? 'amber' : 'green' },
+          { label: 'Open Complaints',    value: loading ? '…' : (counts?.open ?? '—'),                 color: (counts?.open ?? 0) > 0 ? 'red' : 'green' },
         ].map((m, i) => (
           <GlassCard key={m.label} delay={i * 0.06} className="p-4">
             <div className={`text-2xl font-bold tabular-nums text-${m.color}-400 mb-0.5`}>{m.value}</div>
             <div className="text-xs text-t3 uppercase tracking-wider">{m.label}</div>
           </GlassCard>
         ))}
+      </div>
+
+      {/* Charts row — Complaint Categories + Mandatory Training */}
+      <div className="grid grid-cols-2 gap-4">
+        {/* Category Breakdown — live from DB */}
+        <GlassCard animate={false} className="p-5">
+          <h2 className="text-sm font-semibold text-t1 mb-1">Complaint Categories</h2>
+          <p className="text-[10px] text-t3 mb-4">
+            {counts?.total?.toLocaleString() ?? '…'} total complaints
+          </p>
+          {loading ? (
+            <div className="text-xs text-t3">Loading…</div>
+          ) : (
+            <div className="space-y-3">
+              {(stats?.categories ?? []).map(cat => {
+                const pct = counts?.total ? Math.round((cat.count / counts.total) * 100) : 0;
+                return (
+                  <div key={cat.name}>
+                    <div className="flex justify-between text-xs mb-1.5">
+                      <span className="text-t2">{cat.name}</span>
+                      <span className="text-t3">{cat.count.toLocaleString()} ({pct}%)</span>
+                    </div>
+                    <div className="w-full h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: `${pct}%` }}
+                        transition={{ duration: 0.8, ease: 'easeOut' }}
+                        className="h-full rounded-full bg-purple-400"
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </GlassCard>
+
+        {/* Mandatory Training */}
+        <GlassCard animate={false} className="p-5">
+          <h2 className="text-sm font-semibold text-t1 mb-1">Mandatory Training</h2>
+          <p className="text-[10px] text-t3 mb-4">Staff completion rates</p>
+          <div className="space-y-4">
+            {TRAINING.map(t => (
+              <div key={t.course}>
+                <div className="flex justify-between text-xs mb-1.5">
+                  <span className="text-t2">{t.course}</span>
+                  <span className={t.completion >= 90 ? 'text-green-400' : 'text-amber-400'}>{t.completion}%</span>
+                </div>
+                <div className="w-full h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${t.completion}%` }}
+                    transition={{ duration: 0.8, ease: 'easeOut' }}
+                    className={`h-full rounded-full ${t.completion >= 90 ? 'bg-green-400' : 'bg-amber-400'}`}
+                  />
+                </div>
+                <div className="text-[10px] text-t3 mt-0.5">Due: {t.due}</div>
+              </div>
+            ))}
+          </div>
+        </GlassCard>
       </div>
 
       {/* Complaints Table — live from DB */}
@@ -270,7 +331,6 @@ export default function ComplianceDashboard() {
           </div>
         </GlassCard>
 
-        <div className="space-y-4">
           {/* Audit Schedule */}
           <GlassCard animate={false} className="overflow-hidden">
             <div className="px-5 py-4 border-b border-white/[0.06]">
@@ -297,60 +357,6 @@ export default function ComplianceDashboard() {
                     )}
                   </div>
                 </motion.div>
-              ))}
-            </div>
-          </GlassCard>
-
-          {/* Category Breakdown — live from DB */}
-          <GlassCard animate={false} className="p-5">
-            <h2 className="text-sm font-semibold text-t1 mb-4">Complaint Categories</h2>
-            {loading ? (
-              <div className="text-xs text-t3">Loading…</div>
-            ) : (
-              <div className="space-y-3">
-                {(stats?.categories ?? []).map(cat => {
-                  const pct = counts?.total ? Math.round((cat.count / counts.total) * 100) : 0;
-                  return (
-                    <div key={cat.name}>
-                      <div className="flex justify-between text-xs mb-1.5">
-                        <span className="text-t2">{cat.name}</span>
-                        <span className="text-t3">{cat.count.toLocaleString()} ({pct}%)</span>
-                      </div>
-                      <div className="w-full h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
-                        <motion.div
-                          initial={{ width: 0 }}
-                          animate={{ width: `${pct}%` }}
-                          transition={{ duration: 0.8, ease: 'easeOut' }}
-                          className="h-full rounded-full bg-purple-400"
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </GlassCard>
-
-          {/* Mandatory Training */}
-          <GlassCard animate={false} className="p-5">
-            <h2 className="text-sm font-semibold text-t1 mb-4">Mandatory Training</h2>
-            <div className="space-y-4">
-              {TRAINING.map(t => (
-                <div key={t.course}>
-                  <div className="flex justify-between text-xs mb-1.5">
-                    <span className="text-t2">{t.course}</span>
-                    <span className={t.completion >= 90 ? 'text-green-400' : 'text-amber-400'}>{t.completion}%</span>
-                  </div>
-                  <div className="w-full h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${t.completion}%` }}
-                      transition={{ duration: 0.8, ease: 'easeOut' }}
-                      className={`h-full rounded-full ${t.completion >= 90 ? 'bg-green-400' : 'bg-amber-400'}`}
-                    />
-                  </div>
-                  <div className="text-[10px] text-t3 mt-0.5">Due: {t.due}</div>
-                </div>
               ))}
             </div>
           </GlassCard>
