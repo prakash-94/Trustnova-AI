@@ -7,13 +7,12 @@ from src.models.database import engine
 router = APIRouter()
 
 
-def _risk_band(aml_risk: str, credit: int) -> str:
+def _risk_band(aml_risk: str, credit: int = 650) -> str:
     r = aml_risk.lower().strip()
-    if r == "low" and credit >= 720: return "low"
-    if r == "low": return "low"
+    if r == "low":    return "low"
     if r == "medium": return "medium"
-    if credit < 580 or r in ("high", "very high"): return "critical"
-    return "high"
+    if r == "high":   return "high"
+    return "critical"  # very high / very_high
 
 
 @router.get("/portfolio")
@@ -23,18 +22,13 @@ async def get_portfolio_risk(
     with engine.connect() as conn:
         total = conn.execute(text("SELECT COUNT(*) FROM customers")).scalar() or 0
 
-        # Compute risk band per customer using the same logic as _risk_band():
-        #   low AML           → low
-        #   medium AML        → medium
-        #   high / very high  → critical
-        #   medium + credit < 580 → high  (edge case)
+        # Compute risk band — direct 4-level AML mapping
         band_rows = conn.execute(text("""
             SELECT
                 CASE
                     WHEN LOWER(aml_risk_rating) = 'low'    THEN 'low'
-                    WHEN LOWER(aml_risk_rating) = 'medium'
-                         AND CAST(COALESCE(credit_score, 650) AS INTEGER) < 580 THEN 'high'
                     WHEN LOWER(aml_risk_rating) = 'medium' THEN 'medium'
+                    WHEN LOWER(aml_risk_rating) = 'high'   THEN 'high'
                     ELSE 'critical'
                 END AS band,
                 COUNT(*) AS cnt
@@ -87,22 +81,16 @@ async def get_risk_segment_customers(
     from src.models.database import customer_pk
     pk = customer_pk()
 
-    # Build WHERE clause matching the same band → AML mapping used in /portfolio
+    # Direct 4-level mapping — mirrors the portfolio CASE
     band_lower = band.lower()
     if band_lower == "low":
         band_where = "LOWER(aml_risk_rating) = 'low'"
     elif band_lower == "medium":
-        band_where = (
-            "LOWER(aml_risk_rating) = 'medium' "
-            "AND CAST(COALESCE(credit_score, 650) AS INTEGER) >= 580"
-        )
+        band_where = "LOWER(aml_risk_rating) = 'medium'"
     elif band_lower == "high":
-        band_where = (
-            "LOWER(aml_risk_rating) = 'medium' "
-            "AND CAST(COALESCE(credit_score, 650) AS INTEGER) < 580"
-        )
+        band_where = "LOWER(aml_risk_rating) = 'high'"
     else:  # critical
-        band_where = "LOWER(aml_risk_rating) IN ('high', 'very high', 'very_high')"
+        band_where = "LOWER(aml_risk_rating) IN ('very high', 'very_high')"
 
     params: dict = {"limit": limit, "offset": offset}
 
