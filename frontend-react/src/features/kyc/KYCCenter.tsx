@@ -308,7 +308,7 @@ export default function KYCCenter({ customer }: Props) {
     try {
       const res = await kycApi.records({
         ...(customer?.customer_id ? { q: customer.customer_id } : q ? { q } : {}),
-        limit: customer?.customer_id ? 10 : 200,
+        limit: customer?.customer_id ? 10 : 500,
       });
       setRecords(res.records);
       setCounts(res.counts ?? {});
@@ -374,7 +374,7 @@ export default function KYCCenter({ customer }: Props) {
   });
 
   const tabCounts: Record<StatusTab, number> = {
-    all:             records.length,
+    all:             totalCustomers,
     verified:        counts.verified    ?? 0,
     in_review:       counts.in_review   ?? 0,
     pending:         counts.pending     ?? 0,

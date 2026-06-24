@@ -70,22 +70,24 @@ def _build_docs(risk: str, status: str, cid: str) -> list:
         expiry_date = None
 
         if doc_status == "verified":
-            # Verified 6 months–4 years ago
-            days_ago = int(rng.uniform(180, 1460))
-            v_date = today - datetime.timedelta(days=days_ago)
-            verified_at = v_date.isoformat()
-
             cfg = _EXPIRY_CFG.get(doc_type)
             if cfg:
                 valid_min, valid_max, expired_prob = cfg
                 if rng.random() < expired_prob:
-                    # Already expired — 1 to 9 months ago
+                    # Expired: 1–9 months ago
                     exp = today - datetime.timedelta(days=int(rng.uniform(30, 270)))
                 else:
-                    exp = v_date + datetime.timedelta(days=int(rng.uniform(valid_min, valid_max)))
+                    # Still valid: expires within the valid window from today
+                    exp = today + datetime.timedelta(days=int(rng.uniform(30, valid_max)))
                 expiry_date = exp.isoformat()
+                # Issue date = expiry minus random valid duration
+                issued = exp - datetime.timedelta(days=int(rng.uniform(valid_min, valid_max)))
+                verified_at = issued.isoformat()
                 if exp < today:
                     doc_status = "expired"
+            else:
+                # No expiry (SSN) — just record when it was verified
+                verified_at = (today - datetime.timedelta(days=int(rng.uniform(180, 1460)))).isoformat()
 
         docs.append({
             "type": doc_type,
