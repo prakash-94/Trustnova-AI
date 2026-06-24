@@ -274,9 +274,11 @@ export default function FraudMonitor({ customer }: Props) {
   const [selectedAlert,  setSelectedAlert]  = useState<Alert | null>(null);
   const [customer360,    setCustomer360]    = useState<Customer360 | null>(null);
   const [detailLoading,  setDetailLoading]  = useState(false);
+  const [fetchError,     setFetchError]     = useState(false);
 
   useEffect(() => {
     setLoading(true);
+    setFetchError(false);
     fraudApi.list({ limit: 300 }).then(r => {
       let list = r.alerts as unknown as Alert[];
       if (customer?.customer_id) {
@@ -292,7 +294,7 @@ export default function FraudMonitor({ customer }: Props) {
         setSummary(r.summary as unknown as Summary ?? { total: list.length, open: 0, resolved: 0, false_positive: 0 });
       }
       setAlerts(list);
-    }).catch(() => {}).finally(() => setLoading(false));
+    }).catch(() => setFetchError(true)).finally(() => setLoading(false));
   }, [customer]);
 
   const handleAlertClick = async (alert: Alert) => {
@@ -351,6 +353,8 @@ export default function FraudMonitor({ customer }: Props) {
           <div className="overflow-x-auto">
             {loading ? (
               <div className="flex items-center justify-center py-16 text-t3 text-sm">Loading alerts…</div>
+            ) : fetchError ? (
+              <div className="text-center py-16 text-red-400/70 text-xs">Failed to load fraud alerts. Check your permissions or try refreshing.</div>
             ) : visible.length === 0 ? (
               <div className="text-center py-16 text-t3 text-xs">No alerts match the current filter.</div>
             ) : (

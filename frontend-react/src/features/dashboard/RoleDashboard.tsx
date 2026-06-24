@@ -178,7 +178,7 @@ const ROLE_CONFIG: Record<string, {
     ],
     quickLinks: [
       { label: 'Customer Search', icon: '👤', tab: 'customer_search', desc: 'Full customer view' },
-      { label: 'Credit Cards', icon: '💳', tab: 'credit_cards', desc: 'Review card applications' },
+      { label: 'Fraud Center', icon: '🛡', tab: 'fraud_center', desc: 'Review fraud alerts' },
       { label: 'Loans', icon: '📋', tab: 'loans', desc: 'Loan pipeline' },
       { label: 'AI Copilot', icon: '✦', tab: 'ai_copilot', desc: 'Branch intelligence' },
     ],

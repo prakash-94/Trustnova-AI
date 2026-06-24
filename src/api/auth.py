@@ -52,10 +52,11 @@ ROLES: dict[str, dict] = {
             "loans:read",
             "kyc:read", "kyc:write",
             "risk:read",
+            "fraud:read",
             "reports:read",
             "chat:all",
         ],
-        "nav_sections": ["customer_search", "customer360", "accounts", "transactions", "loans", "credit_cards", "kyc_center", "risk_center", "ai_copilot"],
+        "nav_sections": ["customer_search", "customer360", "accounts", "transactions", "loans", "credit_cards", "kyc_center", "fraud_center", "risk_center", "ai_copilot"],
     },
     "loan_officer": {
         "label": "Loan Officer",
