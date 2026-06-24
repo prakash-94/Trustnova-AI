@@ -144,15 +144,16 @@ export default function RiskCenter({ customer: _customer, onSelectCustomer, onNa
               <div className="w-5 h-5 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
             </div>
           ) : (() => {
-            const pieData = Object.entries(dist)
-              .filter(([, s]) => s.count > 0)
-              .map(([band, s]) => ({
-                band,
-                label: BAND_META[band]?.label ?? band,
-                value: s.count,
-                pct:   s.pct,
-              }));
-            const total = pieData.reduce((a, d) => a + d.value, 0);
+            // All four bands in fixed order — matches the bottom framework cards
+            const allBands = (['low', 'medium', 'high', 'critical'] as const).map(band => ({
+              band,
+              label: BAND_META[band].label,
+              value: dist[band]?.count ?? 0,
+              pct:   dist[band]?.pct   ?? 0,
+            }));
+            // Only non-zero slices go into the donut
+            const pieData = allBands.filter(d => d.value > 0);
+            const total = allBands.reduce((a, d) => a + d.value, 0);
             return (
               <div className="flex items-center gap-6">
                 {/* Donut with center label */}
@@ -190,17 +191,22 @@ export default function RiskCenter({ customer: _customer, onSelectCustomer, onNa
                   </div>
                 </div>
 
-                {/* Legend */}
+                {/* Legend — always all four bands */}
                 <div className="flex-1 space-y-2.5">
-                  {pieData.map((entry) => {
+                  {allBands.map((entry) => {
                     const isActive = activeBand === entry.band;
                     const fill = BAND_FILL[entry.band] ?? '#888';
+                    const isEmpty = entry.value === 0;
                     return (
-                      <button key={entry.band} onClick={() => handleSegmentClick(entry.band)}
+                      <button key={entry.band}
+                        onClick={() => !isEmpty && handleSegmentClick(entry.band)}
+                        disabled={isEmpty}
                         className={`w-full group flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-left
                           ${isActive
                             ? 'border border-white/[0.12] bg-white/[0.06]'
-                            : 'border border-transparent hover:border-white/[0.06] hover:bg-white/[0.03]'}`}>
+                            : isEmpty
+                              ? 'border border-transparent opacity-40 cursor-default'
+                              : 'border border-transparent hover:border-white/[0.06] hover:bg-white/[0.03]'}`}>
                         {/* Color swatch */}
                         <div className="w-3.5 h-3.5 rounded flex-shrink-0 transition-transform group-hover:scale-110"
                           style={{ background: fill, boxShadow: isActive ? `0 0 8px ${fill}80` : undefined }} />
