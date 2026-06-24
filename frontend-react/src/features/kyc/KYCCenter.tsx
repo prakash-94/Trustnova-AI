@@ -52,6 +52,20 @@ const ChartTooltip = ({ active, payload }: { active?: boolean; payload?: { name:
   );
 };
 
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function monthsAgo(dateStr: string): string {
+  const exp = new Date(dateStr);
+  const now = new Date();
+  const days = Math.round((now.getTime() - exp.getTime()) / 86400000);
+  if (days < 30) return `${days} day${days !== 1 ? 's' : ''} ago`;
+  const months = Math.round(days / 30);
+  return `${months} month${months !== 1 ? 's' : ''} ago`;
+}
+function daysUntil(dateStr: string): number {
+  const exp = new Date(dateStr);
+  return Math.round((exp.getTime() - Date.now()) / 86400000);
+}
+
 // ── Detail Panel ─────────────────────────────────────────────────────────────
 function KYCDetail({ rec, onClose, onActionComplete }: {
   rec: KYCRecord;
@@ -61,6 +75,8 @@ function KYCDetail({ rec, onClose, onActionComplete }: {
   const docsDone = (rec.documents ?? []).filter(d => d.status === 'verified').length;
   const docsTotal = (rec.documents ?? []).length;
   const pct = docsTotal > 0 ? Math.round((docsDone / docsTotal) * 100) : 0;
+  const expiredDocs = (rec.documents ?? []).filter(d => d.status === 'expired');
+  const hasIssues = expiredDocs.length > 0 || (rec.missing_documents ?? []).length > 0;
 
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [actionResult, setActionResult] = useState<{ ok: boolean; msg: string } | null>(null);
@@ -147,32 +163,99 @@ function KYCDetail({ rec, onClose, onActionComplete }: {
           </div>
         )}
 
+        {/* Urgent alert banner if any docs need action */}
+        {hasIssues && (
+          <div className="flex items-start gap-2.5 px-3 py-3 rounded-xl bg-red-500/[0.08] border border-red-500/25">
+            <span className="text-red-400 mt-0.5 shrink-0">⚠</span>
+            <div className="text-xs text-red-300 leading-relaxed">
+              <span className="font-semibold">Action required:</span>{' '}
+              {expiredDocs.length > 0 && `${expiredDocs.length} document${expiredDocs.length > 1 ? 's' : ''} expired`}
+              {expiredDocs.length > 0 && (rec.missing_documents ?? []).filter(d => !expiredDocs.find(e => e.type === d)).length > 0 && ' · '}
+              {(rec.missing_documents ?? []).filter(d => !expiredDocs.find(e => e.type === d)).length > 0 &&
+                `${(rec.missing_documents ?? []).filter(d => !expiredDocs.find(e => e.type === d)).length} document${(rec.missing_documents ?? []).filter(d => !expiredDocs.find(e => e.type === d)).length > 1 ? 's' : ''} missing`}
+              {' — contact the customer and request resubmission below.'}
+            </div>
+          </div>
+        )}
+
         {/* Documents */}
         <div>
           <div className="text-[10px] text-t3 uppercase tracking-wider mb-2">Documents</div>
           <div className="space-y-1.5">
-            {(rec.documents ?? []).map((doc, i) => (
-              <div key={i} className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.06]">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm">{doc.status === 'verified' ? '✅' : doc.status === 'pending' ? '⏳' : '📄'}</span>
-                  <div>
-                    <div className="text-xs font-medium text-t1 capitalize">{doc.type.replace(/_/g, ' ')}</div>
-                    {doc.verified_at && <div className="text-[10px] text-green-400/70">Verified {String(doc.verified_at).slice(0, 10)}</div>}
-                    {doc.expiry_date && <div className="text-[10px] text-amber-400/70">Expires {doc.expiry_date}</div>}
+            {(rec.documents ?? []).map((doc, i) => {
+              const isExpired = doc.status === 'expired';
+              const isSoonExpiring = doc.expiry_date && !isExpired && daysUntil(doc.expiry_date) <= 90;
+              return (
+                <div key={i} className={`rounded-xl border transition-all ${
+                  isExpired ? 'bg-red-500/[0.07] border-red-500/25' :
+                  isSoonExpiring ? 'bg-amber-500/[0.06] border-amber-500/20' :
+                  'bg-white/[0.03] border-white/[0.06]'
+                }`}>
+                  <div className="flex items-center justify-between px-3 py-2.5">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-sm shrink-0">
+                        {isExpired ? '🔴' : doc.status === 'verified' ? '✅' : doc.status === 'pending' ? '⏳' : '📄'}
+                      </span>
+                      <div className="min-w-0">
+                        <div className={`text-xs font-medium capitalize ${isExpired ? 'text-red-300' : 'text-t1'}`}>
+                          {doc.type.replace(/_/g, ' ')}
+                        </div>
+                        {isExpired && doc.expiry_date && (
+                          <div className="text-[10px] text-red-400 font-medium">
+                            Expired {monthsAgo(doc.expiry_date)} — resubmission required
+                          </div>
+                        )}
+                        {!isExpired && isSoonExpiring && doc.expiry_date && (
+                          <div className="text-[10px] text-amber-400">
+                            Expires in {daysUntil(doc.expiry_date)} days
+                          </div>
+                        )}
+                        {!isExpired && !isSoonExpiring && doc.verified_at && (
+                          <div className="text-[10px] text-green-400/70">Verified {String(doc.verified_at).slice(0, 10)}</div>
+                        )}
+                        {doc.expiry_date && !isExpired && !isSoonExpiring && (
+                          <div className="text-[10px] text-t3/60">Expires {doc.expiry_date}</div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Badge label={isExpired ? 'Expired' : doc.status} color={isExpired ? 'red' : statusBadge(doc.status)} />
+                      {(isExpired || doc.status === 'pending' || doc.status === 'not_submitted') && canAct && (
+                        <button className="text-[9px] px-2 py-1 rounded-lg bg-amber-500/10 border border-amber-500/25 text-amber-300 hover:bg-amber-500/20 transition-colors whitespace-nowrap">
+                          Request Resubmission
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
-                <Badge label={doc.status} color={statusBadge(doc.status)} />
-              </div>
-            ))}
-            {(rec.missing_documents ?? []).map((d, i) => (
-              <div key={i} className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-red-500/[0.06] border border-red-500/20">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm">❌</span>
-                  <span className="text-xs font-medium text-red-300 capitalize">{d.replace(/_/g, ' ')}</span>
-                </div>
-                <Badge label="Missing" color="red" />
-              </div>
-            ))}
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Contact Customer */}
+        <div>
+          <div className="text-[10px] text-t3 uppercase tracking-wider mb-2">Contact Customer</div>
+          <div className="flex gap-2">
+            {rec.email && (
+              <a
+                href={`mailto:${rec.email}?subject=KYC Document Resubmission Required&body=Dear ${rec.name},%0A%0AYour KYC documents require attention. Please log in to your account and resubmit the following:%0A${(rec.missing_documents ?? []).map(d => `- ${d.replace(/_/g, ' ')}`).join('%0A')}%0A%0AThank you.`}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-500/10 border border-blue-500/25 text-xs text-blue-300 hover:bg-blue-500/20 transition-colors"
+              >
+                <span>✉</span> Email Customer
+              </a>
+            )}
+            {rec.phone && (
+              <a
+                href={`tel:${rec.phone}`}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-green-500/10 border border-green-500/25 text-xs text-green-300 hover:bg-green-500/20 transition-colors"
+              >
+                <span>📞</span> {rec.phone}
+              </a>
+            )}
+            {!rec.phone && (
+              <span className="px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.06] text-xs text-t3">No phone on file</span>
+            )}
           </div>
         </div>
 

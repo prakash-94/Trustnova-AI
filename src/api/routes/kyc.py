@@ -18,6 +18,15 @@ _DOC_SETS = {
 
 _NEXT_REVIEW_DAYS = {"low": 365, "medium": 180, "high": 90, "very high": 90}
 
+# (valid_range_days_min, valid_range_days_max, expired_probability)
+_EXPIRY_CFG = {
+    "government_id":                 (730,  3650, 0.12),
+    "proof_of_address":              (30,   180,  0.30),
+    "ssn":                           None,
+    "source_of_funds":               (180,  730,  0.18),
+    "enhanced_due_diligence_report": (90,   365,  0.22),
+}
+
 
 def _age_days(created_at: str | None) -> int:
     if not created_at:
@@ -41,12 +50,14 @@ def _kyc_status(risk: str, age_days: int) -> str:
 
 
 def _build_docs(risk: str, status: str, cid: str) -> list:
+    import hashlib, random
     risk_l = risk.lower()
     key = risk_l if risk_l in _DOC_SETS else "low"
     required = _DOC_SETS[key]
     docs = []
-    import hashlib, random
     rng = random.Random(hashlib.md5(cid.encode()).hexdigest())
+    today = datetime.date.today()
+
     for doc_type in required:
         if status == "verified":
             doc_status = "verified"
@@ -54,11 +65,33 @@ def _build_docs(risk: str, status: str, cid: str) -> list:
             doc_status = "verified" if rng.random() > 0.35 else "pending"
         else:
             doc_status = "pending" if rng.random() > 0.5 else "not_submitted"
+
+        verified_at = None
+        expiry_date = None
+
+        if doc_status == "verified":
+            # Verified 6 months–4 years ago
+            days_ago = int(rng.uniform(180, 1460))
+            v_date = today - datetime.timedelta(days=days_ago)
+            verified_at = v_date.isoformat()
+
+            cfg = _EXPIRY_CFG.get(doc_type)
+            if cfg:
+                valid_min, valid_max, expired_prob = cfg
+                if rng.random() < expired_prob:
+                    # Already expired — 1 to 9 months ago
+                    exp = today - datetime.timedelta(days=int(rng.uniform(30, 270)))
+                else:
+                    exp = v_date + datetime.timedelta(days=int(rng.uniform(valid_min, valid_max)))
+                expiry_date = exp.isoformat()
+                if exp < today:
+                    doc_status = "expired"
+
         docs.append({
             "type": doc_type,
             "status": doc_status,
-            "verified_at": "2025-06-01" if doc_status == "verified" else None,
-            "expiry_date": None,
+            "verified_at": verified_at,
+            "expiry_date": expiry_date,
         })
     return docs
 
@@ -74,14 +107,26 @@ def _row_to_kyc(row: dict) -> dict:
     stored = (row.get("kyc_status") or "").lower().strip()
     status = stored if stored in ("verified", "in_review") else _kyc_status(risk, age_days)
     docs = _build_docs(risk, status, cid)
-    missing = [d["type"] for d in docs if d["status"] in ("pending", "not_submitted")]
+    missing = [d["type"] for d in docs if d["status"] in ("pending", "not_submitted", "expired")]
     flags = []
     if risk in ("high", "very high"):
         flags.append("Enhanced Due Diligence required — high risk customer")
-    if missing:
-        flags.append(f"Missing documents: {', '.join(missing)}")
     if age_days < 90:
         flags.append("New account — initial KYC verification pending")
+
+    # Expired document flags with specific messaging
+    today_str = datetime.date.today().isoformat()
+    for doc in docs:
+        if doc["status"] == "expired" and doc.get("expiry_date"):
+            exp = datetime.date.fromisoformat(doc["expiry_date"])
+            months_ago = round((datetime.date.today() - exp).days / 30)
+            label = doc["type"].replace("_", " ").title()
+            flags.append(f"{label} expired {months_ago} month{'s' if months_ago != 1 else ''} ago — resubmission required")
+
+    # Missing (non-expired) docs flag
+    truly_missing = [d["type"] for d in docs if d["status"] in ("pending", "not_submitted")]
+    if truly_missing:
+        flags.append(f"Missing documents: {', '.join(d.replace('_', ' ') for d in truly_missing)}")
 
     # Full name from first_name + last_name
     name = f"{row.get('first_name', '')} {row.get('last_name', '')}".strip()
@@ -91,6 +136,7 @@ def _row_to_kyc(row: dict) -> dict:
         "customer_id": cid,
         "name": name,
         "email": row.get("email") or "",
+        "phone": row.get("phone") or None,
         "risk_level": risk,
         "account_type": row.get("account_type") or "checking",
         "credit_score": credit,

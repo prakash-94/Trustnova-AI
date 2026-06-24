@@ -163,6 +163,7 @@ export interface KYCRecord {
   customer_id: string;
   name?: string;
   email?: string;
+  phone?: string | null;
   overall_status: string;
   last_review_date?: string | null;
   next_review_date?: string | null;
