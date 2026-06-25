@@ -23,7 +23,7 @@ router = APIRouter()
 
 _TABLE_CREATED = False
 
-REVIEW_ROLES = {"admin", "branch_manager"}
+REVIEW_ROLES = {"branch_manager"}   # admin retains access via wildcard "*" permission
 SUBMIT_ROLES = {"admin", "personal_banker", "branch_manager", "executive"}
 
 

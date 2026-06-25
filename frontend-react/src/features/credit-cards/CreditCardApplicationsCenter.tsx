@@ -32,7 +32,7 @@ const CARD_ICONS: Record<string, string> = {
   rewards:  '⭐',
 };
 
-const REVIEW_ROLES = new Set(['admin', 'branch_manager']);
+const REVIEW_ROLES = new Set(['branch_manager']);
 const SUBMIT_ROLES = new Set(['admin', 'personal_banker', 'branch_manager', 'executive']);
 
 function fmt(cents: number) {
