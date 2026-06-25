@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import GlassCard from '@/components/common/GlassCard';
 import Badge from '@/components/common/Badge';
@@ -255,8 +255,8 @@ export default function ComplianceDashboard() {
               </thead>
               <tbody className="divide-y divide-white/[0.04]">
                 {complaints.map(c => (
-                  <>
-                    <tr key={c.id} className="hover:bg-white/[0.02] transition-colors cursor-pointer"
+                  <React.Fragment key={c.id}>
+                    <tr className="hover:bg-white/[0.02] transition-colors cursor-pointer"
                       onClick={() => setExpanded(expanded === c.id ? null : c.id)}>
                       <td className="px-4 py-3 font-mono text-purple-400 whitespace-nowrap">
                         {c.id.slice(0, 11)}
@@ -282,7 +282,7 @@ export default function ComplianceDashboard() {
                       </td>
                     </tr>
                     {expanded === c.id && (
-                      <tr key={`${c.id}-expand`}>
+                      <tr>
                         <td colSpan={8} className="px-4 pb-3">
                           <motion.div
                             initial={{ opacity: 0 }}
@@ -313,7 +313,7 @@ export default function ComplianceDashboard() {
                         </td>
                       </tr>
                     )}
-                  </>
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>
