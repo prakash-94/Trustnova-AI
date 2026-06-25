@@ -38,6 +38,17 @@ const statusColor = (s: string): 'green' | 'amber' | 'red' | 'blue' | 'gray' =>
     Resolved: 'green', 'In Review': 'blue', Open: 'amber',
   } as Record<string, 'green' | 'amber' | 'red' | 'blue' | 'gray'>)[s] ?? 'gray';
 
+const REG_TILE_BORDER: Record<string, string> = {
+  compliant:       'border-green-500/30 bg-green-500/[0.06]',
+  under_review:    'border-amber-500/30 bg-amber-500/[0.06]',
+  action_required: 'border-red-500/30 bg-red-500/[0.06]',
+};
+const REG_TILE_TEXT: Record<string, string> = {
+  compliant:       'text-green-400',
+  under_review:    'text-amber-400',
+  action_required: 'text-red-400',
+};
+
 const sentimentLabel = (s: number) => s >= -0.3 ? 'Neutral' : s >= -0.6 ? 'Negative' : 'Very Negative';
 const sentimentColor = (s: number) => s >= -0.3 ? 'text-green-400' : s >= -0.6 ? 'text-amber-400' : 'text-red-400';
 
@@ -122,32 +133,20 @@ export default function ComplianceDashboard() {
           </div>
         </div>
         <div className="grid grid-cols-4 gap-2">
-          {REGULATIONS.map((reg, i) => {
-            const colorMap: Record<string, string> = {
-              compliant:       'border-green-500/30 bg-green-500/[0.06]',
-              under_review:    'border-amber-500/30 bg-amber-500/[0.06]',
-              action_required: 'border-red-500/30   bg-red-500/[0.06]',
-            };
-            const textMap: Record<string, string> = {
-              compliant:       'text-green-400',
-              under_review:    'text-amber-400',
-              action_required: 'text-red-400',
-            };
-            return (
-              <motion.div key={reg.code}
-                initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
-                className={`rounded-xl border p-3 ${colorMap[reg.status] ?? 'border-white/[0.08] bg-white/[0.03]'}`}>
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs font-mono font-bold text-purple-400">{reg.code}</span>
-                  <Badge label={reg.status.replace(/_/g, ' ')} color={statusColor(reg.status)} />
-                </div>
-                <div className="text-[10px] text-t3 leading-relaxed mb-1.5">{reg.title}</div>
-                <div className={`text-[10px] font-medium ${textMap[reg.status] ?? 'text-t3'}`}>
-                  Next: {reg.next_review}
-                </div>
-              </motion.div>
-            );
-          })}
+          {REGULATIONS.map((reg, i) => (
+            <motion.div key={reg.code}
+              initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
+              className={`rounded-xl border p-3 ${REG_TILE_BORDER[reg.status] ?? 'border-white/[0.08] bg-white/[0.03]'}`}>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs font-mono font-bold text-purple-400">{reg.code}</span>
+                <Badge label={reg.status.replace(/_/g, ' ')} color={statusColor(reg.status)} />
+              </div>
+              <div className="text-[10px] text-t3 leading-relaxed mb-1.5">{reg.title}</div>
+              <div className={`text-[10px] font-medium ${REG_TILE_TEXT[reg.status] ?? 'text-t3'}`}>
+                Next: {reg.next_review}
+              </div>
+            </motion.div>
+          ))}
         </div>
       </GlassCard>
 
