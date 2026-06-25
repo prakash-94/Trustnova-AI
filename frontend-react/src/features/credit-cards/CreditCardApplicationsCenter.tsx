@@ -297,16 +297,22 @@ export default function CreditCardApplicationsCenter() {
       {stats && (
         <div className="grid grid-cols-5 gap-2">
           {([
-            { label: 'Total',       count: stats.total,       color: 'text-t1' },
-            { label: 'Submitted',   count: stats.submitted,   color: 'text-blue-400' },
-            { label: 'Under Review',count: stats.under_review,color: 'text-amber-400' },
-            { label: 'Approved',    count: stats.approved,    color: 'text-green-400' },
-            { label: 'Rejected',    count: stats.rejected,    color: 'text-red-400' },
-          ] as const).map(s => (
-            <div key={s.label} className="bg-white/[0.02] border border-white/[0.06] rounded-xl px-3 py-3 text-center">
+            { label: 'Total',        count: stats.total,       color: 'text-t1',        filter: 'all'          as Status },
+            { label: 'Submitted',    count: stats.submitted,   color: 'text-blue-400',  filter: 'submitted'    as Status },
+            { label: 'Under Review', count: stats.under_review,color: 'text-amber-400', filter: 'under_review' as Status },
+            { label: 'Approved',     count: stats.approved,    color: 'text-green-400', filter: 'approved'     as Status },
+            { label: 'Rejected',     count: stats.rejected,    color: 'text-red-400',   filter: 'rejected'     as Status },
+          ]).map(s => (
+            <motion.button key={s.label} whileTap={{ scale: 0.96 }}
+              onClick={() => setStatusFilter(s.filter)}
+              className={`rounded-xl px-3 py-3 text-center border transition-all ${
+                statusFilter === s.filter
+                  ? 'bg-purple-500/10 border-purple-500/30'
+                  : 'bg-white/[0.02] border-white/[0.06] hover:border-white/[0.14] hover:bg-white/[0.04]'
+              }`}>
               <div className={`text-xl font-bold tabular-nums ${s.color}`}>{s.count}</div>
               <div className="text-[9px] text-t3 uppercase tracking-wider mt-0.5">{s.label}</div>
-            </div>
+            </motion.button>
           ))}
         </div>
       )}
