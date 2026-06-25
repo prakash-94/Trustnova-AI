@@ -153,16 +153,148 @@ function DetailModal({ app, onClose, onUpdated }: {
             </div>
           )}
 
-          {/* Reviewer notes (if any) */}
-          {app.review_notes && app.status !== 'submitted' && (
-            <div className="p-3 rounded-xl bg-amber-500/[0.06] border border-amber-500/20">
-              <span className="text-[9px] text-amber-400 uppercase tracking-wider block mb-1">Reviewer Notes</span>
-              <p className="text-xs text-amber-200/80 leading-relaxed">{app.review_notes}</p>
-              {app.approved_limit_cents && (
-                <p className="text-xs text-green-400 mt-1.5 font-medium">
-                  Approved limit: {fmt(app.approved_limit_cents)}
-                </p>
-              )}
+          {/* ── Decision Report ─────────────────────────────────────── */}
+          {app.status === 'approved' && (
+            <div className="rounded-xl border border-green-500/25 bg-green-500/[0.06] overflow-hidden">
+              <div className="flex items-center gap-2 px-4 py-2.5 bg-green-500/10 border-b border-green-500/20">
+                <span className="text-base">✅</span>
+                <span className="text-xs font-semibold text-green-400 uppercase tracking-wide">Application Approved</span>
+              </div>
+              <div className="p-4 grid grid-cols-2 gap-x-6 gap-y-3 text-xs">
+                <div className="col-span-2 flex items-end gap-4">
+                  <div>
+                    <span className="text-[9px] text-t3 uppercase tracking-wider block mb-0.5">Approved Limit</span>
+                    <span className="text-2xl font-bold text-green-400 tabular-nums">
+                      {app.approved_limit_cents ? fmt(app.approved_limit_cents) : '—'}
+                    </span>
+                  </div>
+                  <div className="pb-1">
+                    <span className="text-[9px] text-t3 uppercase tracking-wider block mb-0.5">Requested</span>
+                    <span className="text-sm text-t3 tabular-nums line-through">{fmt(app.requested_limit_cents)}</span>
+                  </div>
+                  {app.approved_limit_cents && app.approved_limit_cents < app.requested_limit_cents && (
+                    <div className="pb-1">
+                      <span className="text-[9px] text-t3 uppercase tracking-wider block mb-0.5">Adjustment</span>
+                      <span className="text-sm text-amber-400 tabular-nums">
+                        {Math.round((app.approved_limit_cents / app.requested_limit_cents) * 100)}% of requested
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <span className="text-[9px] text-t3 uppercase tracking-wider block mb-0.5">Approved By</span>
+                  <span className="text-t1 font-medium">{app.reviewed_by || '—'}</span>
+                </div>
+                <div>
+                  <span className="text-[9px] text-t3 uppercase tracking-wider block mb-0.5">Approved On</span>
+                  <span className="text-t1 font-medium">{app.reviewed_at ? fmtDate(app.reviewed_at) : '—'}</span>
+                </div>
+                {app.review_notes && (
+                  <div className="col-span-2">
+                    <span className="text-[9px] text-t3 uppercase tracking-wider block mb-0.5">Approval Notes</span>
+                    <p className="text-t2 leading-relaxed">{app.review_notes}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {app.status === 'rejected' && (
+            <div className="rounded-xl border border-red-500/25 bg-red-500/[0.06] overflow-hidden">
+              <div className="flex items-center gap-2 px-4 py-2.5 bg-red-500/10 border-b border-red-500/20">
+                <span className="text-base">❌</span>
+                <span className="text-xs font-semibold text-red-400 uppercase tracking-wide">Application Rejected</span>
+              </div>
+              <div className="p-4 space-y-3 text-xs">
+                {app.rejection_reason && (
+                  <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20">
+                    <span className="text-[9px] text-red-400 uppercase tracking-wider block mb-1">Rejection Reason</span>
+                    <p className="text-red-200/80 leading-relaxed font-medium">{app.rejection_reason}</p>
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+                  <div>
+                    <span className="text-[9px] text-t3 uppercase tracking-wider block mb-0.5">Rejected By</span>
+                    <span className="text-t1 font-medium">{app.reviewed_by || '—'}</span>
+                  </div>
+                  <div>
+                    <span className="text-[9px] text-t3 uppercase tracking-wider block mb-0.5">Rejected On</span>
+                    <span className="text-t1 font-medium">{app.reviewed_at ? fmtDate(app.reviewed_at) : '—'}</span>
+                  </div>
+                  <div>
+                    <span className="text-[9px] text-t3 uppercase tracking-wider block mb-0.5">Requested Limit</span>
+                    <span className="text-t1 font-medium">{fmt(app.requested_limit_cents)}</span>
+                  </div>
+                  <div>
+                    <span className="text-[9px] text-t3 uppercase tracking-wider block mb-0.5">Annual Income</span>
+                    <span className="text-t1 font-medium">{fmt(app.annual_income_cents)}</span>
+                  </div>
+                  {app.review_notes && app.review_notes !== app.rejection_reason && (
+                    <div className="col-span-2">
+                      <span className="text-[9px] text-t3 uppercase tracking-wider block mb-0.5">Reviewer Notes</span>
+                      <p className="text-t2 leading-relaxed">{app.review_notes}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {app.status === 'withdrawn' && (
+            <div className="rounded-xl border border-white/[0.10] bg-white/[0.03] overflow-hidden">
+              <div className="flex items-center gap-2 px-4 py-2.5 bg-white/[0.04] border-b border-white/[0.08]">
+                <span className="text-base">↩</span>
+                <span className="text-xs font-semibold text-t3 uppercase tracking-wide">Application Withdrawn</span>
+              </div>
+              <div className="p-4 grid grid-cols-2 gap-x-6 gap-y-3 text-xs">
+                <div>
+                  <span className="text-[9px] text-t3 uppercase tracking-wider block mb-0.5">Submitted By</span>
+                  <span className="text-t1 font-medium">{app.banker_name || app.banker_username}</span>
+                </div>
+                <div>
+                  <span className="text-[9px] text-t3 uppercase tracking-wider block mb-0.5">Withdrawn On</span>
+                  <span className="text-t1 font-medium">{app.updated_at ? fmtDate(app.updated_at) : '—'}</span>
+                </div>
+                <div>
+                  <span className="text-[9px] text-t3 uppercase tracking-wider block mb-0.5">Card Type Requested</span>
+                  <span className="text-t1 font-medium capitalize">{app.card_type}</span>
+                </div>
+                <div>
+                  <span className="text-[9px] text-t3 uppercase tracking-wider block mb-0.5">Limit Requested</span>
+                  <span className="text-t1 font-medium">{fmt(app.requested_limit_cents)}</span>
+                </div>
+                {app.review_notes && (
+                  <div className="col-span-2">
+                    <span className="text-[9px] text-t3 uppercase tracking-wider block mb-0.5">Notes</span>
+                    <p className="text-t2 leading-relaxed">{app.review_notes}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {app.status === 'under_review' && (
+            <div className="rounded-xl border border-amber-500/25 bg-amber-500/[0.05] overflow-hidden">
+              <div className="flex items-center gap-2 px-4 py-2.5 bg-amber-500/10 border-b border-amber-500/20">
+                <span className="text-base">⏳</span>
+                <span className="text-xs font-semibold text-amber-400 uppercase tracking-wide">Under Review</span>
+              </div>
+              <div className="p-4 grid grid-cols-2 gap-x-6 gap-y-3 text-xs">
+                <div>
+                  <span className="text-[9px] text-t3 uppercase tracking-wider block mb-0.5">Assigned Reviewer</span>
+                  <span className="text-t1 font-medium">{app.reviewed_by || 'Pending assignment'}</span>
+                </div>
+                <div>
+                  <span className="text-[9px] text-t3 uppercase tracking-wider block mb-0.5">Under Review Since</span>
+                  <span className="text-t1 font-medium">{app.updated_at ? fmtDate(app.updated_at) : fmtDate(app.created_at)}</span>
+                </div>
+                {app.review_notes && (
+                  <div className="col-span-2">
+                    <span className="text-[9px] text-t3 uppercase tracking-wider block mb-0.5">Reviewer Notes</span>
+                    <p className="text-t2 leading-relaxed">{app.review_notes}</p>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
