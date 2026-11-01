@@ -316,6 +316,36 @@ GenAI isn't used anywhere in this phase. Everything runs as Databricks Jobs in t
 - **Online.** A **Databricks Model Serving** endpoint (serverless, scales to zero off-peak) serves M2 and M3 so the copilot can re-score an account on demand when an analyst opens an investigation. Features are looked up from the online feature table. *(revised)* If Free Edition doesn't allow a custom-model endpoint, the copilot reads the latest batch score from `ml.ml_scores` instead and states the score's age in the evidence.
 - **Every score records its `model_name@version`**, so any case can be traced to the exact model that raised it.
 
+**Phase 2B as built so far (1 Nov 2026):**
+- **Code.**
+  - `trustnova_ml/`: `features.py` (82 point-in-time features), `baseline.py` (rules), `metrics.py` (from binned counts), `train.py` (LightGBM M1 and M3, calibration, reasons, gate) and `jobs.py`.
+  - Three bundle jobs: `ml_train` (features → train), `ml_promote` (the manual approval) and `ml_score`.
+  - 17 more local tests, so 61 in `tests/lake`.
+- **Changes from the steps above:**
+
+  | Planned | Done instead | Why |
+  |---|---|---|
+  | M2 trained as its own model | Version 1 is the highest calibrated M1 score of the account's transactions that day | A trained M2 is added only if it beats that. |
+  | SHAP reason codes | LightGBM's built-in per-feature contributions | Same tree-path attributions as tree SHAP, without the extra library. |
+  | 2-hop counterparty-risk feature | Deferred | It needs scores from an earlier run. |
+  | Multi-GNN challenger | Deferred | It needs GPUs, which Free Edition doesn't have. |
+  | Online feature store and Model Serving | Not built yet | Scoring is batch-only for now. |
+- **First staging run (HI-Small + LI-Small, 7 minutes).**
+  - Training used 210,144 rows (4,110 laundering, plus normal rows sampled at about 50 per laundering transaction).
+  - The test split is the last 20% of each simulation: 2,400,934 rows, 2,723 laundering.
+
+  | Test split | M1 PR-AUC | Rule baseline PR-AUC | M1 recall, top 0.5% | Baseline recall, top 0.5% |
+  |---|---|---|---|---|
+  | Both | 0.447 | 0.0016 | 67.3% | 0.6% |
+  | HI-Small | 0.595 | 0.0029 | 74.6% | 0.6% |
+  | LI-Small | 0.228 | 0.0006 | 50.7% | 0.6% |
+
+  - **Alert threshold** (chosen on validation): precision 68%, recall 35%, 1,418 rows flagged.
+  - **Recall by pattern:** 50–71% for the eight labelled patterns, but **1.7% for "OTHER"** (laundering outside any labelled attempt, 38% of test positives). That's the main gap to work on.
+  - **M3:** macro-F1 0.335, against 0.061 for always guessing the most common pattern.
+  - **Gate:** passed. `trustnova_staging.ml.m1_transaction_risk` v1 is `@candidate`, and promotion to `@champion` waits for your approval.
+  - **The baseline is weak:** the copied rule thresholds barely fire on this data. A stronger, tuned rule set should be added before production, so the gate means more.
+
 **6. Governance and monitoring** (in the style of SR 11-7 model risk management).
 - **Documentation:** a model card and validation report for each registered version, covering data, features, metrics per variant and pattern, limitations and the known effects of combining all six files into one bank.
 - **Promotion:** UC Model Registry aliases `@champion` and `@challenger`. Promotion needs the evaluation gate plus a manual approval.

@@ -64,6 +64,86 @@ resources:
             python_file: jobs/lake_quality.py
             parameters: ["--catalog", "${var.catalog}", "--variants", "{{job.parameters.variants}}"]
 
+    # Phase 2B: ML detection. Train never promotes on its own: a model that passes the gate becomes @candidate,
+    # and a person runs ml_promote after reading the evaluation in MLflow (the manual approval).
+    ml_train:
+      name: trustnova-ml-train-${bundle.target}
+      description: Point-in-time features, then M1 (transaction risk) and M3 (pattern type) with LightGBM, evaluated against the rule baseline.
+      max_concurrent_runs: 1
+      timeout_seconds: 21600
+      parameters:
+        - name: variants
+          default: ${var.variants}
+      environments:
+        - environment_key: ml
+          spec:
+            environment_version: "2"
+            dependencies:
+              - ./.wheel/*.whl
+              - lightgbm>=4.5,<5
+              - scikit-learn>=1.4,<2
+              - mlflow>=3.1,<4
+      tasks:
+        - task_key: features
+          environment_key: ml
+          spark_python_task:
+            python_file: jobs/ml_features.py
+            parameters: ["--catalog", "${var.catalog}", "--variants", "{{job.parameters.variants}}"]
+        - task_key: train
+          depends_on: [{ task_key: features }]
+          environment_key: ml
+          spark_python_task:
+            python_file: jobs/ml_train.py
+            parameters: ["--catalog", "${var.catalog}", "--variants", "{{job.parameters.variants}}"]
+
+    ml_promote:
+      name: trustnova-ml-promote-${bundle.target}
+      description: The manual approval. Moves a model's @candidate to @champion. Run by a person after reading the evaluation.
+      max_concurrent_runs: 1
+      parameters:
+        - name: model
+          default: m1
+      environments:
+        - environment_key: ml
+          spec:
+            environment_version: "2"
+            dependencies:
+              - ./.wheel/*.whl
+              - mlflow>=3.1,<4
+      tasks:
+        - task_key: promote
+          environment_key: ml
+          spark_python_task:
+            python_file: jobs/ml_promote.py
+            parameters: ["--catalog", "${var.catalog}", "--model", "{{job.parameters.model}}"]
+
+    ml_score:
+      name: trustnova-ml-score-${bundle.target}
+      description: The @champion model scores every transaction, then account-day scores and daily alerts with reason codes.
+      max_concurrent_runs: 1
+      timeout_seconds: 21600
+      parameters:
+        - name: variants
+          default: ${var.variants}
+        - name: budget
+          default: "25"
+      environments:
+        - environment_key: ml
+          spec:
+            environment_version: "2"
+            dependencies:
+              - ./.wheel/*.whl
+              - lightgbm>=4.5,<5
+              - scikit-learn>=1.4,<2
+              - mlflow>=3.1,<4
+      tasks:
+        - task_key: score
+          environment_key: ml
+          spark_python_task:
+            python_file: jobs/ml_score.py
+            parameters: ["--catalog", "${var.catalog}", "--variants", "{{job.parameters.variants}}",
+                         "--budget", "{{job.parameters.budget}}"]
+
 targets:
   staging:
     default: true

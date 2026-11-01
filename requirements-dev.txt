@@ -5,3 +5,4 @@ pytest-asyncio>=1.0,<2
 ruff>=0.16,<1
 pyspark>=3.5,<5                # lakehouse transform tests (tests/lake); needs Java 17
 build>=1.2,<2                  # builds the wheel the Databricks bundle deploys
+lightgbm>=4.5,<5               # ML detection models (trustnova_ml); training runs on Databricks
