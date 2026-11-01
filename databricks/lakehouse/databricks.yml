@@ -1,0 +1,82 @@
+# Databricks Asset Bundle for the TrustNova lakehouse (Phase 2): the IBM AML dataset as one combined bank.
+#   databricks bundle deploy -t staging -p trustnova        (staging = trustnova_staging, the two Small simulations)
+#   databricks bundle run lakehouse -t staging -p trustnova
+#   prod loads one size at a time:  ... run lakehouse -t prod --params variants=HIS,LIS   then HIM,LIM   then HIL,LIL
+#
+# Separate from the AML Copilot bundle at the repo root, so deploying this never touches those jobs.
+# All logic lives in trustnova_lake (tested on a laptop with local Spark); jobs/*.py are two-line wrappers.
+bundle:
+  name: trustnova_lakehouse
+
+variables:
+  catalog:
+    description: Unity Catalog catalog the lakehouse reads from and writes to
+  variants:
+    description: Simulations to load (HIS, HIM, HIL, LIS, LIM, LIL), comma-separated
+    default: "HIS,LIS"
+
+artifacts:
+  lake_wheel:
+    type: whl
+    path: ../..   # the repo root's pyproject.toml packages aml_copilot and trustnova_lake
+    build: python -m build --wheel --outdir databricks/lakehouse/.wheel
+    files:
+      - source: ./.wheel/*.whl
+
+resources:
+  jobs:
+    lakehouse:
+      name: trustnova-lakehouse-${bundle.target}
+      description: IBM AML files -> Bronze -> Silver (+ restricted ground truth) -> Gold, then the quality gate.
+      max_concurrent_runs: 1
+      timeout_seconds: 21600
+      parameters:
+        - name: variants
+          default: ${var.variants}
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "2"
+            dependencies:
+              - ./.wheel/*.whl
+      tasks:
+        - task_key: bronze
+          environment_key: default
+          spark_python_task:
+            python_file: jobs/lake_bronze.py
+            parameters: ["--catalog", "${var.catalog}", "--variants", "{{job.parameters.variants}}"]
+        - task_key: silver
+          depends_on: [{ task_key: bronze }]
+          environment_key: default
+          spark_python_task:
+            python_file: jobs/lake_silver.py
+            parameters: ["--catalog", "${var.catalog}", "--variants", "{{job.parameters.variants}}"]
+        - task_key: gold
+          depends_on: [{ task_key: silver }]
+          environment_key: default
+          spark_python_task:
+            python_file: jobs/lake_gold.py
+            parameters: ["--catalog", "${var.catalog}", "--variants", "{{job.parameters.variants}}"]
+        - task_key: quality
+          depends_on: [{ task_key: gold }]
+          environment_key: default
+          spark_python_task:
+            python_file: jobs/lake_quality.py
+            parameters: ["--catalog", "${var.catalog}", "--variants", "{{job.parameters.variants}}"]
+
+targets:
+  staging:
+    default: true
+    mode: production
+    variables:
+      catalog: trustnova_staging
+      variants: "HIS,LIS"
+    workspace:
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/staging
+  prod:
+    mode: production
+    variables:
+      catalog: trustnova_prod
+      variants: "HIS,LIS"
+    workspace:
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/prod

@@ -237,6 +237,36 @@ These are Databricks Jobs in the merged `databricks/` bundle, on **serverless** 
 5. **Moved to Phase 3:** the sync to Supabase, because the Supabase schema is created there.
 6. **Costs:** Free Edition compute is free but has a daily quota. The SQL warehouse auto-stops after 10 minutes idle.
 
+**Phase 2 as built (1 Nov 2026):**
+- **Code layout.**
+  - `trustnova_lake/`: `ibm.py` (file names, id rules, patterns parser, plain Python), `transforms.py` (Spark, DataFrame in → out), `quality.py` (the gate) and `jobs.py` (task entry points).
+  - The bundle is `databricks/lakehouse/`, separate from AML Copilot's bundle, with targets `staging` and `prod` and one job `trustnova-lakehouse-<target>` with four tasks: bronze → silver → gold → quality.
+- **Changes from the steps above:**
+
+  | Planned | Done instead | Why |
+  |---|---|---|
+  | Auto Loader | Plain batch reads | The files never change. Each task replaces only the simulations it is given, so re-runs and size-by-size loading are safe. |
+  | `{variant}-{row_number}` ids | `{variant}-{24 hex of sha256(all fields)}-{n}` | A row number needs one global sort per simulation (180M rows). With the hash, `n` only numbers exact duplicates. |
+  | Timestamps as plain `TIMESTAMP` | `TIMESTAMP_NTZ` | The files carry wall-clock times with no time zone. |
+  | Casts that fail on a bad value | `try_cast` / `try_to_timestamp` | A bad value becomes a null that the quality gate counts, instead of crashing the job. |
+  | Pattern matches only in `aml_patterns` | Also `restricted.pattern_line_matches` | The gate needs the per-line match counts. |
+- **Grants:** restricted-schema grants wait until the API and evaluation service principals exist (Phase 6). Until then only the owner can read the ground truth.
+- **Tests:** 44 local Spark tests (`tests/lake`, with Java 17 and pyspark) run on a small bank in the exact IBM formats; the whole repo has 912 tests passing.
+- **Staging run:** HI-Small + LI-Small loaded in about 5 minutes, and all 26 quality checks passed.
+
+  | | HIS | LIS |
+  |---|---|---|
+  | Transactions | 5,078,345 | 6,924,049 |
+  | Laundering | 5,177 | 3,565 |
+  | Pattern lines matched | 3,209 / 3,209 | 1,023 / 1,023 |
+  | Edges | 10,156,690 | 13,848,098 |
+  | Owners | 166,207 | 224,931 |
+  | Accounts | 518,581 | 712,688 |
+
+  - Every currency's USD rate was measured from at least 44 conversions, with spreads under 1%.
+  - A single-account lookup on the edges table takes about 3 seconds end to end.
+- **Note for Phase 3:** a few "Country" and "Direct" entities own thousands of accounts (up to 8,899). They behave like system or central-bank accounts, not ordinary customers, so the customer load should mark or exclude them.
+
 ### Phase 2B — ML detection: training and production scoring (Databricks)
 GenAI isn't used anywhere in this phase. Everything runs as Databricks Jobs in the `databricks/` bundle, tracked in MLflow, with models registered in the Unity Catalog Model Registry.
 

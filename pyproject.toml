@@ -2,8 +2,8 @@
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
-# The installable package is the AML Copilot library (built as the wheel the Databricks jobs install).
-# TrustNova's backend in src/ runs from the repo and is not packaged.
+# The installable packages are the AML Copilot library and the lakehouse transforms (one wheel the Databricks
+# jobs install). TrustNova's backend in src/ runs from the repo and is not packaged.
 [project]
 name = "aml-copilot"
 version = "0.2.0"
@@ -13,7 +13,7 @@ requires-python = ">=3.11"
 dependencies = []
 
 [tool.setuptools.packages.find]
-include = ["aml_copilot*"]
+include = ["aml_copilot*", "trustnova_lake*"]
 
 [tool.pytest.ini_options]
 # "." for src/ and aml_copilot/; scripts/aml for the seed script's tests.

@@ -43,6 +43,13 @@ jobs:
           key: hf-${{ runner.os }}-all-minilm-l6-v2
           restore-keys: hf-${{ runner.os }}-
 
+      # pyspark (tests/lake) needs a Java runtime
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: microsoft
+          java-version: "17"
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
