@@ -1,19 +1,20 @@
 # TrustNova AI + AML Copilot: Merge and Integration Plan
 
-**Status:** Plan only. Nothing here has been built yet.
-**Deliverable once approved:** save this document as `docs/AML_INTEGRATION_PLAN.md` in the TrustNova AI repo, then commit and push it (per the project's GitHub sync rule). No code changes are part of that step.
+**Status:** Phase 1 done (1 Nov 2026). Phase 0 cloud setup done for GCP and Databricks (1 Nov 2026); Supabase is still to do. Phase 2 next.
+
+**Revision, 1 Nov 2026.** Databricks on GCP needs a paid Google billing account, so transactions and ML now run on the **existing Databricks workspace** (Free Edition on AWS, `us-east-2`, workspace `7474648796792570`). Everything else stays on GCP. The changes are marked *(revised)* below. Moving to Databricks on GCP later only changes the bundle target and the storage path.
 
 ## Decisions taken
 | Topic | Decision |
 |---|---|
 | Codebase | **Merge** AML Copilot into the TrustNova AI repo as one product. It runs inside the same backend process. |
-| Data | The **entire IBM AML dataset**: all six files loaded as **one combined bank**, about 9.5M accounts and 430M transactions. |
-| Transactions | **Databricks on GCP** (Delta tables in Unity Catalog). |
+| Data | The **entire IBM AML dataset**: all six simulations loaded as **one combined bank**, about 9.5M accounts and 430M transactions. Customers are the dataset's own **account owners** (the `*_accounts.csv` files map every account to an Entity ID). |
+| Transactions *(revised)* | The **existing Databricks workspace** (Free Edition, AWS `us-east-2`): Unity Catalog catalogs `trustnova_staging` (the two Small simulations) and `trustnova_prod` (all six). Raw files sit in Unity Catalog volumes inside the workspace, not in Google Cloud Storage. |
 | Customers and all app data | **Supabase** (Postgres). Salesforce is retired because it can't hold millions of customers. Cloud SQL and SQLite are retired too. |
 | Vector search | **Vertex AI Vector Search**, a dedicated, separately scalable GCP service, with Vertex AI embeddings. |
-| AML detection | **Trained machine-learning models** decide what is suspicious. The champion is a **LightGBM** model on transaction and graph features; the challenger is a **graph neural network (Multi-GNN)**. They are trained, registered and served on Databricks (MLflow). GenAI doesn't do detection. |
-| GenAI | **Agents only:** the evidence summary, the typology explanation, the SAR narrative, the faithfulness check and chat. The agents explain and document the model's alerts. They never raise or clear an alert themselves. |
-| Production | **GCP**: Cloud Run, Cloud Tasks, Vertex AI, Secret Manager and Firebase Hosting. This replaces Render and Vercel. |
+| AML detection | **Trained machine-learning models** decide what is suspicious. The champion is a **LightGBM** model on transaction and graph features; the challenger is a **graph neural network (Multi-GNN)**. They are trained, registered and served on Databricks (MLflow). GenAI doesn't do detection. *(revised)* Free Edition has no GPU compute, so the Multi-GNN challenger waits until GPU compute is available; LightGBM runs on serverless CPU. |
+| GenAI *(revised)* | **Agents only:** the evidence summary, the typology explanation, the SAR narrative, the faithfulness check and chat. The agents explain and document the model's alerts. They never raise or clear an alert themselves. The AML agents default to **Gemini on Vertex AI**: AML Copilot's evaluated setup (97% of sentences supported), and a Google first-party model that doesn't need a paid billing account. Claude on Vertex is a partner model sold through Marketplace, so it waits for a paid account; Claude through the Anthropic API stays an option. |
+| Production | **GCP**: Cloud Run, Cloud Tasks, Vertex AI, Secret Manager and Firebase Hosting. This replaces Render and Vercel. Production is `aml-co-pilot` and staging is `trustnova-staging-5619`, both in `us-east4`. |
 
 ---
 
@@ -45,11 +46,21 @@ Every run ends in one of four outcomes: `draft_ready`, `no_action`, `incomplete`
 
 ### The IBM dataset (CDLA-Sharing-1.0)
 The dataset is six simulations: HI and LI (higher / lower laundering share) × Small, Medium and Large.
-- **Size:** 41.6 GB in total, 12 files (a `*_Trans.csv` and a `*_Patterns.txt` for each simulation).
+- **Size:** about 39 GB in 18 files: for each simulation, a `*_Trans.csv`, a `*_Patterns.txt` and a `*_accounts.csv`. The Kaggle page lists only the first two.
 - **Transaction columns:** `Timestamp, From Bank, Account, To Bank, Account.1, Amount Received, Receiving Currency, Amount Paid, Payment Currency, Payment Format, Is Laundering`.
+- **Accounts columns:** `Bank Name, Bank ID, Account Number, Entity ID, Entity Name`. Entity types are Partnership, Corporation, Sole Proprietorship, Country, Individual and Direct. Bank names mostly carry a country (`Germany Bank #4815`).
 - **Laundering patterns:** the patterns files label attempts as fan-out, fan-in, cycle, gather-scatter, scatter-gather, stack, bipartite or random.
 - **Why it fits:** both sides of every transfer are recorded, which AML Copilot needs to follow money between accounts and detect layering.
-- **What it lacks:** customer profiles, KYC, PEP status, merchants, locations, devices and sentiment.
+- **What it lacks:** KYC, PEP status, demographics, merchants, devices and sentiment.
+
+**Measured on HI-Small before writing any transforms** (5,078,345 rows):
+- **Formats:** every timestamp is `yyyy/MM/dd HH:mm`, from 2022/09/01 to 2022/09/18 (later than the 10 days Kaggle states). Every account number is a 9-character uppercase hex string.
+- **Bank IDs** are zero-padded in transactions (`010`, `03208`) but not in the accounts file. Once leading zeros are stripped, all 515,088 accounts that appear in transactions match the accounts file exactly.
+- **Account numbers** collide across banks 8 times, so account ids must include the bank.
+- **Owners:** 518,581 accounts belong to 166,207 entities. 102,689 entities own one account; the rest own between 2 and dozens.
+- **Currencies:** 15. 72,170 rows convert currency, at a near-fixed rate per pair (about ±0.3%), so the USD rates are derived from the data. Bitcoin has no direct Bitcoin→USD sample, so it uses the inverse of USD→Bitcoin. Same-currency rows always have paid = received.
+- **Patterns:** 370 attempts, 3,209 lines. Every line matches exactly one transaction row, and no line belongs to two attempts. 5,177 transactions are laundering, of which 3,209 (62%) are in a labelled attempt; the rest form an "other" class.
+- **Rows:** 9 exact duplicates, which stay as separate transactions, and 591,212 self-transfers (same bank and account, mostly reinvestment and currency conversion).
 
 **Known effects of combining all six into one bank** (accepted, and documented in the UI and README):
 - The six files never pay each other, so the bank is six unconnected groups of accounts and money-tracing never crosses between them.
@@ -80,11 +91,12 @@ Firebase Hosting (React)  ──/api/**──►  Cloud Run: trustnova-api (merg
                                           │
               ┌───────────────────────────┼───────────────────────────────┐
               ▼                           ▼                               ▼
-   Supabase Postgres              Databricks on GCP                Vertex AI
-   customers (~9.5M), KYC,        Unity Catalog (GCS):             Vector Search index
-   users, aml_cases, alerts,      bronze → silver → gold           (banking_docs + typology_docs)
-   investigations, audit,         account_txn_edges (430M×2)       text embeddings
-   rag_chunks, account_summary    aml_labels (restricted)          Claude models (GenAI agents only)
+   Supabase Postgres              Databricks (Free Edition,        Vertex AI
+   (AWS us-east-2)                AWS us-east-2) — revised         Vector Search index
+   customers (owners), KYC,       UC volumes → bronze → silver     (banking_docs + typology_docs)
+   users, aml_cases, alerts,      → gold; account_txn_edges        text embeddings
+   investigations, audit,         (430M×2); restricted ground      Gemini models (GenAI agents only)
+   rag_chunks, account_summary    truth
                                   ML: feature tables → MLflow
                                   → UC Model Registry → batch scoring
                                   + Model Serving endpoint
@@ -94,12 +106,12 @@ Firebase Hosting (React)  ──/api/**──►  Cloud Run: trustnova-api (merg
 
 **Who does what:**
 - **ML models (Databricks)** decide risk: transaction scores, account scores and the predicted laundering pattern.
-- **GenAI agents (Claude on Vertex)** investigate and explain those alerts and draft the SAR, but never change a score.
+- **GenAI agents (Gemini on Vertex AI; Claude when a paid account allows)** investigate and explain those alerts and draft the SAR, but never change a score.
 - **Chat (Groq)** answers analysts' questions.
 
 **Local development** uses the same code with:
 - the Supabase CLI's local Postgres in Docker
-- a Databricks dev catalog with a small sampled slice
+- the `trustnova_staging` catalog (the two Small simulations) in the same Databricks workspace
 - Chroma (`VECTOR_BACKEND=chroma`) instead of Vector Search
 
 Postgres runs in every environment, so there are no SQLite/Postgres SQL differences to manage.
@@ -108,17 +120,27 @@ Postgres runs in every environment, so there are no SQLite/Postgres SQL differen
 
 ## 3. Work plan
 
-### Phase 0 — Prerequisites
-1. **Accounts and services.**
-   - Create GCP projects `trustnova-staging` and `trustnova-prod`.
-   - Enable these APIs: Run, Cloud Tasks, Vertex AI, Secret Manager, Artifact Registry, Cloud Storage, Firebase.
-   - Request access to the Claude models in Vertex AI Model Garden.
-2. **Databricks on GCP.** Create a workspace from the GCP Marketplace with a Unity Catalog metastore on a GCS bucket. Create catalogs `trustnova_dev`, `trustnova_staging` and `trustnova_prod`, and a serverless SQL warehouse for each environment.
-3. **Supabase.**
-   - Create a Pro project for production (plus one for staging), in the AWS region closest to the GCP region (for example `us-east-1` ↔ GCP `us-east4`).
-   - Size it for about 9.5M customers plus indexes, around 20–30 GB with a larger compute add-on.
-   - Allow connections only from the Cloud Run egress IP (fixed through Cloud NAT) and the Databricks egress range.
-4. **Dataset.** The user downloads all 12 files from Kaggle with their own login, then uploads them to `gs://trustnova-prod-raw/ibm_aml/` with `gcloud storage cp` (resumable). Raw files never go into git.
+### Phase 0 — Prerequisites *(revised, mostly done 1 Nov 2026)*
+1. **GCP — done.**
+
+   | Item | Production | Staging |
+   |---|---|---|
+   | Project | `aml-co-pilot` (billing linked to `0142DD-782E9F-1BCB59`) | `trustnova-staging-5619` (new) |
+   | APIs | 17 enabled: Compute, IAM, IAM Credentials, STS, Resource Manager, Service Usage, Storage, Vertex AI, Run, Cloud Tasks, Secret Manager, Artifact Registry, Billing Budgets, Firebase, Firebase Hosting, Logging, Monitoring | same |
+   | Budget alert | $50/month at 50/90/100% | $50/month at 50/90/100% |
+   | Region | `us-east4` | `us-east4` |
+
+   - **Unused buckets:** `gs://aml-co-pilot-ibm-raw` and `gs://aml-co-pilot-uc-managed` (production), `gs://trustnova-staging-5619-ibm-raw` and `gs://trustnova-staging-5619-uc-managed` (staging). They were created for Databricks on GCP. They are private, in `us-east4`, and stay empty or hold only the first uploads until Databricks moves to GCP; delete them if that won't happen.
+   - **Model access:** Gemini on Vertex AI needs no extra access. Claude on Vertex AI would need a paid billing account.
+2. **Databricks *(revised)* — done.** The existing workspace `7474648796792570` (Free Edition, AWS `us-east-2`), with CLI profile `trustnova` signed in as `prakash.jvj@gmail.com` (OAuth).
+   - **Catalogs:** `trustnova_staging` and `trustnova_prod`, each with the schemas `raw`, `bronze`, `silver`, `restricted`, `gold` and `ml`, and the volume `raw.ibm_aml`.
+   - **How they were created:** Free Edition creates catalogs only with SQL (`CREATE CATALOG`, using default storage), not through the catalogs API.
+   - **SQL warehouse:** the workspace's `Serverless Starter Warehouse` (2X-Small, auto-stops after 10 minutes).
+   - **Existing work kept:** AML Copilot's tables and jobs in `workspace.aml_copilot` stay untouched until Phase 5.
+3. **Supabase — to do.** Create a Pro project in **AWS `us-east-2`**, next to the Databricks workspace (plus one for staging).
+   - Size it for the owner profiles plus indexes.
+   - Allow connections only from the Cloud Run egress IP (fixed through Cloud NAT) and the Databricks serverless egress.
+4. **Dataset *(revised)* — uploading.** All 18 files from `Downloads\archive` go into the volume `trustnova_prod.raw.ibm_aml`, and the six Small files into `trustnova_staging.raw.ibm_aml`, using `databricks fs cp`. Files already uploaded at the same size are skipped. Raw files never go into git.
 
 ### Phase 1 — Merge the repositories
 1. **Bring in AML Copilot with its history.** Run `git subtree add --prefix=_aml_import <AML repo> main` in the TrustNova repo. In the next commit, reorganise with `git mv`:
@@ -172,27 +194,45 @@ Postgres runs in every environment, so there are no SQLite/Postgres SQL differen
 
 **Environment variables:** AML model settings are read only from `AML_LLM_PROVIDER`, `AML_LLM_MODEL` (or the older `ANTHROPIC_MODEL`), `AML_TYPOLOGY_MODEL`, `AML_NARRATIVE_MODEL` and `AML_FAITHFULNESS_MODEL`.
 
-### Phase 2 — Transaction data platform (Databricks on GCP)
-These are Databricks Jobs in the merged `databricks/` bundle, deployed with `databricks bundle deploy -t <env>`.
+### Phase 2 — Transaction data platform *(revised: existing Databricks workspace)*
+These are Databricks Jobs in the merged `databricks/` bundle, on **serverless** compute (Free Edition has no classic clusters).
+- **Targets:** bundle target `staging` (catalog `trustnova_staging`, the two Small simulations) and `prod` (catalog `trustnova_prod`, all six), deployed with `databricks bundle deploy -t <target>` using the CLI profile `trustnova`.
+- **Order:** staging runs first and must pass every quality check before prod is loaded.
+- **Prod volume:** prod is loaded one simulation at a time (Small, then Medium, then Large), so a Free Edition compute quota stops at a clean boundary instead of mid-load.
 
-1. **Bronze.** Auto Loader reads all 12 files from GCS into `bronze.ibm_transactions` and `bronze.ibm_patterns`, adding `variant` (`HIS`, `HIM`, `HIL`, `LIS`, `LIM` or `LIL`) and the source file name.
-2. **Silver.**
+1. **Bronze** (`<catalog>.bronze`). Auto Loader (`cloudFiles`) reads the volume `<catalog>.raw.ibm_aml`:
+   - `bronze.ibm_transactions`: the `*_Trans.csv` files, every column as text, plus `variant` (`HIS`, `HIM`, `HIL`, `LIS`, `LIM` or `LIL`, from the file name), the source file and the ingest time.
+   - `bronze.ibm_accounts`: the `*_accounts.csv` files.
+   - `bronze.ibm_pattern_lines`: the `*_Patterns.txt` files, one row per line with its line number.
+2. **Silver** (`<catalog>.silver`, with ground truth in `<catalog>.restricted`).
+   - **Identifiers.** `bank_id` drops leading zeros (`010` → `10`), which is what makes transactions match the accounts file. Account ids become `{variant}:{bank_id}:{account}`, because account numbers collide across banks and across simulations. Entity ids become `{variant}:{entity_id}`.
    - **`silver.transactions`:** one typed row per transaction.
-     - `txn_id`, built as `{variant}-{row_number}`
-     - `timestamp`
-     - `from_account` / `to_account`, namespaced as `{variant}:{bank}:{account}` so overlapping numbers never collide
-     - `amount_paid`, `paid_currency`, `amount_received`, `received_currency`
-     - `amount_usd`, converted with a fixed FX table stored in `silver.fx_rates` and documented
-     - `payment_format`
-     - `variant`
-   - **`silver.aml_labels`:** `txn_id` and `is_laundering`. This table is **restricted in Unity Catalog** to the evaluation service principal. The API and copilot principals can't read it.
-   - **`silver.aml_patterns`:** `attempt_id`, `pattern_type`, `txn_id`, `variant`. Also restricted, because it is ground truth.
-3. **Gold.**
-   - **`gold.account_txn_edges`:** one row per (account, transaction, direction), about 860M rows, with liquid clustering on `account_id` and `timestamp`. One clustered lookup returns all money in and out of an account. This is what AML link expansion and TrustNova's transaction views query.
-   - **`gold.account_summary`:** per-account counts, totals, distinct counterparties, first and last activity, payment-format mix, and daily balances proxy.
-   - **Feature tables for the ML models (Phase 2B).** These are Unity Catalog feature tables, computed **point-in-time**: each transaction's features use only activity up to its own timestamp.
-4. **Nightly sync job.** Pushes `gold.account_summary` and new ML alerts (`gold.ml_alerts`, Phase 2B) into Supabase (`account_summary` and `aml_alerts`). Supabase therefore holds what screens need instantly, and Databricks holds the bulk.
-5. **Cost controls.** Run the one-time backfill on a job cluster sized for it, then switch to incremental runs. The SQL warehouse auto-stops after 10 minutes idle.
+     - `txn_id`: `{variant}-{n}`, where `n` is a row number ordered by every column. It is deterministic; the 9 exact duplicates get consecutive numbers.
+     - `ts`: parsed from `yyyy/MM/dd HH:mm`.
+     - `from_account`, `to_account`, `from_bank`, `to_bank`, `is_self_transfer`.
+     - `amount_paid`, `paid_currency`, `amount_received`, `received_currency`, `payment_format`.
+     - `amount_paid_usd`, `amount_received_usd`.
+     - `variant`. The label is **not** in this table.
+   - **`silver.fx_rates`:** per variant and currency, the USD rate measured from the data's own conversions. It is the median of `received / paid` for X→USD rows, otherwise the inverse of the USD→X median (as for Bitcoin). The table keeps the sample size and spread, so the rates are documented, not invented.
+   - **`silver.accounts`:** `account_id`, `entity_id`, `entity_name`, `entity_type` (Partnership, Corporation, Sole Proprietorship, Country, Individual, Direct), `bank_name`, `bank_country` (from names like `Germany Bank #4815`; null otherwise), `variant`.
+   - **`restricted.aml_labels`** (`txn_id`, `is_laundering`, `variant`) and **`restricted.aml_patterns`** (`attempt_id`, `pattern_type`, `pattern_detail`, `txn_id`, `variant`). Patterns are parsed from the BEGIN/END blocks and joined to transactions on all fields. The schema grant is limited to the evaluation principal, so the API and copilot principals can't read ground truth.
+3. **Gold** (`<catalog>.gold`).
+   - **`gold.account_txn_edges`:** one row per (account, transaction, direction), about 860M rows in prod. Columns: `account_id`, `counterparty_id`, `direction`, `ts`, `amount_usd`, `currency`, `payment_format`, `is_self_transfer` and `txn_id`, with liquid clustering on `account_id, ts`. One clustered lookup returns all money in and out of an account. AML link expansion and TrustNova's transaction views both query it.
+   - **`gold.account_summary`:** per account, counts and USD totals in and out, distinct counterparties, first and last activity, payment-format and currency mix, and the self-transfer share.
+   - **`gold.entity_summary`:** the same per owner. These rows become Supabase customers in Phase 3.
+   - ML feature tables follow in Phase 2B.
+4. **Quality gate.** A job task that fails the run on any of these:
+   - an unparsed timestamp or amount
+   - a duplicate `txn_id`
+   - a transaction account missing from `silver.accounts`
+   - a pattern line that matches no transaction, or more than one
+   - an edge count that isn't exactly twice the transaction count
+   - per-variant row counts that differ from the source files
+   - a currency without a USD rate
+
+   Results go to `gold.quality_runs`.
+5. **Moved to Phase 3:** the sync to Supabase, because the Supabase schema is created there.
+6. **Costs:** Free Edition compute is free but has a daily quota. The SQL warehouse auto-stops after 10 minutes idle.
 
 ### Phase 2B — ML detection: training and production scoring (Databricks)
 GenAI isn't used anywhere in this phase. Everything runs as Databricks Jobs in the `databricks/` bundle, tracked in MLflow, with models registered in the Unity Catalog Model Registry.
@@ -225,7 +265,7 @@ GenAI isn't used anywhere in this phase. Everything runs as Databricks Jobs in t
   - It trains quickly on Spark, using distributed LightGBM (SynapseML) or `xgboost.spark` as a fallback.
   - Scoring is cheap and needs only a CPU.
   - **SHAP** explanations give per-alert reason codes, which the SAR narrative and model validation both need.
-- **Challenger: Multi-GNN.** This is IBM's open-source PNA-based graph neural network for directed multigraphs, with edge updates, reverse message passing, ego IDs and port numbering. It is trained for M1 on Databricks GPU job clusters.
+- **Challenger: Multi-GNN.** This is IBM's open-source PNA-based graph neural network for directed multigraphs, with edge updates, reverse message passing, ego IDs and port numbering. It is trained for M1 on GPU compute. *(revised)* Free Edition has no GPUs, so the challenger is built once GPU compute is available: a paid Databricks workspace, or a GPU job elsewhere reading the same gold tables. Until then the champion is compared with the rule baseline only.
   - It is promoted only if it beats the champion on the held-out test set (minority-class F1 and recall at the alert budget) **and** its alerts can be explained well enough (GNNExplainer reason codes reviewed by a person).
   - Until then it runs in shadow mode: scored and logged, never alerting.
 - **Baseline:** the rule-only detector, kept to prove each model adds value.
@@ -240,7 +280,7 @@ GenAI isn't used anywhere in this phase. Everything runs as Databricks Jobs in t
 
 **5. Production scoring.**
 - **Batch.** An hourly or nightly job scores new transactions with M1, rolls them up with M2 to `gold.ml_scores`, keeps accounts above the budget threshold in `gold.ml_alerts` (score, top 5 SHAP reasons, cited `txn_id`s, model version), runs M3 on those accounts, and syncs everything to Supabase `aml_alerts` → `aml_cases`.
-- **Online.** A **Databricks Model Serving** endpoint (serverless, scales to zero off-peak) serves M2 and M3 so the copilot can re-score an account on demand when an analyst opens an investigation. Features are looked up from the online feature table.
+- **Online.** A **Databricks Model Serving** endpoint (serverless, scales to zero off-peak) serves M2 and M3 so the copilot can re-score an account on demand when an analyst opens an investigation. Features are looked up from the online feature table. *(revised)* If Free Edition doesn't allow a custom-model endpoint, the copilot reads the latest batch score from `ml.ml_scores` instead and states the score's age in the evidence.
 - **Every score records its `model_name@version`**, so any case can be traced to the exact model that raised it.
 
 **6. Governance and monitoring** (in the style of SR 11-7 model risk management).
@@ -260,10 +300,10 @@ GenAI isn't used anywhere in this phase. Everything runs as Databricks Jobs in t
      - address fields, `created_at`
    - **`customer_accounts`:** `customer_id`, `account_id`, `bank_id`, `variant`.
    - **Indexes:** a `pg_trgm` index on name (fuzzy search over 9.5M rows) and B-tree indexes on email, risk rating and KYC status.
-2. **Customers from accounts.** If the download includes an account-to-entity mapping file, group accounts into customers with it. Otherwise create **one customer per account** (about 9.5M). Accounts are never grouped arbitrarily, because that would invent links between accounts and mislead link analysis.
+2. **Customers from accounts.** The download includes the account-to-owner mapping (`*_accounts.csv`), so **customers are the IBM entities** (`gold.entity_summary`) and `customer_accounts` maps their accounts; HI-Small alone has 166K owners for 519K accounts. `customer_type` comes from the entity type (Corporation, Partnership, Sole Proprietorship, Individual and so on), and the country from the bank. Accounts are never grouped any other way, because that would invent links between accounts and mislead link analysis.
 3. **Synthetic profiles at scale.**
-   - Generate them in Databricks with a pandas UDF and Faker, seeded by a hash of `account_id`, so every profile can be reproduced with no stored state.
-   - `customer_type` comes from observable activity, such as volume and counterparty count.
+   - Generate the missing fields (contact details, KYC dates, PEP flags and the like) in Databricks with a pandas UDF and Faker, seeded by a hash of the entity id, so every profile can be reproduced with no stored state.
+   - `customer_type` and country come from the dataset itself, as above.
    - **No profile field may be derived from laundering labels or patterns.** `aml_risk_rating` comes from the synthetic attributes and observable activity only. A test enforces this.
    - Bulk-load with Postgres `COPY` over Supabase's direct connection (port 5432, not the pooler), in batches of 500K or fewer.
 4. **Move the remaining TrustNova tables to Supabase:** `users`, `audit_log`, `kyc_records`, `aml_cases`, `aml_alerts`, `access_requests`, `notifications`, `announcements`, `trust_scores`, `ai_trust_scores`, `feedback`, `ai_feedback`, `llm_usage`, `sessions`, `credit_card_applications` and `loans`, plus the new `aml_investigations`, `aml_investigation_audit`, `rag_chunks` and `account_summary`.
@@ -311,7 +351,8 @@ GenAI isn't used anywhere in this phase. Everything runs as Databricks Jobs in t
    - Cost stays capped with `BudgetMeter`.
    - It runs as a Databricks Job, plus a small canary in CI.
 8. **LLM provider (agents only).**
-   - The pipeline uses Claude on Vertex (`AML_LLM_PROVIDER=vertex`, `GCP_AUTH=adc`): `claude-haiku-4-5` for summaries and `claude-sonnet-5` for typology, narrative and faithfulness.
+   - *(revised)* The pipeline uses Gemini on Vertex AI (`AML_LLM_PROVIDER=gemini`, `GCP_AUTH=adc`, project `aml-co-pilot`): a Flash model for summaries and a Pro model for typology, narrative and faithfulness, as AML Copilot's bundle already configures.
+   - Claude on Vertex (`claude-haiku-4-5` and `claude-sonnet-5`) is a one-setting switch once a paid billing account allows partner models.
    - Local development can use the `anthropic` provider with a key in `.env`.
    - TrustNova chat stays on Groq.
 
@@ -400,22 +441,24 @@ Commit and push at the end of each phase.
 ### 5.1 Environments
 | Environment | App | Transactions | App database | Vector search | Investigation runs |
 |---|---|---|---|---|---|
-| Local | `uvicorn` + Vite | Databricks `trustnova_dev` (sampled slice) | Supabase CLI local Postgres | Chroma | `thread` |
-| Staging | Cloud Run (`trustnova-staging`) | Databricks `trustnova_staging` | Supabase staging project | Vertex Vector Search (small) | Cloud Tasks |
-| **Production** | Cloud Run (`trustnova-prod`) | Databricks `trustnova_prod` (full 430M) | Supabase production project | Vertex Vector Search (autoscaling) | Cloud Tasks |
+| Local | `uvicorn` + Vite | Databricks `trustnova_staging` (Small simulations) | Supabase CLI local Postgres | Chroma | `thread` |
+| Staging | Cloud Run in `trustnova-staging-5619` | Databricks `trustnova_staging` | Supabase staging project | Vertex Vector Search (small) | Cloud Tasks |
+| **Production** | Cloud Run in `aml-co-pilot` | Databricks `trustnova_prod` (all six simulations) | Supabase production project | Vertex Vector Search (autoscaling) | Cloud Tasks |
+
+*(revised)* Both Databricks catalogs live in the one existing workspace (`7474648796792570`, Free Edition, AWS `us-east-2`), so staging and production are separated by catalog rather than by workspace.
 
 ### 5.2 Services
 | Concern | Service | Notes |
 |---|---|---|
 | Backend and AML pipeline | **Cloud Run** `trustnova-api` | One image with no torch, so it is small. Roughly 1–2 vCPU and 2 GiB, minimum 1 instance, request timeout 15 min. Fixed egress IP through Serverless VPC Access and Cloud NAT, so Supabase can allow-list it. |
 | Investigation runs | **Cloud Tasks** queue `aml-investigations` | `max_concurrent_dispatches` starts at 1 and can be raised later. At most 2 retries; duplicate runs are blocked by `investigate(...)`. Calls the OIDC-only internal endpoint. |
-| Transactions and analytics | **Databricks on GCP** | Unity Catalog on GCS, a serverless SQL warehouse for API and copilot queries, and job clusters for ingestion, profile generation, sync and evaluation. |
-| ML training and serving | **Databricks ML on GCP** | Feature tables plus an online feature store, MLflow tracking, the UC Model Registry (`@champion`, `@challenger`), CPU job clusters for LightGBM, GPU job clusters for Multi-GNN, a serverless **Model Serving** endpoint for on-demand scoring, and Lakehouse Monitoring for drift. |
+| Transactions and analytics *(revised)* | **Databricks**, the existing Free Edition workspace on AWS `us-east-2` | Unity Catalog with default storage. The raw files sit in volumes. The 2X-Small serverless SQL warehouse serves API and copilot queries, and serverless jobs do ingestion, profiles, sync and evaluation. Free Edition has a daily compute quota. |
+| ML training and serving *(revised)* | **Databricks ML** (same workspace) | MLflow tracking, the UC Model Registry (`@champion`, `@challenger`), serverless CPU jobs for LightGBM, batch scoring, Model Serving if Free Edition allows custom models (otherwise the batch scores), and Lakehouse Monitoring. There is no GPU, so the Multi-GNN challenger waits for GPU compute. |
 | Customers and app data | **Supabase** (Postgres, external to GCP) | Pro plan with a compute add-on, point-in-time recovery, daily backups, network allow-list, and a least-privilege role for the API. |
 | Vector search | **Vertex AI Vector Search** | Dedicated index endpoint with replica autoscaling. Filter tags on collection and `doc_type`. |
-| Embeddings and AML LLMs | **Vertex AI** | Text-embedding model and Claude models. The Vertex region is chosen where the Claude models are offered. |
-| Raw data and docs | **Cloud Storage** | `trustnova-prod-raw` (IBM files) and the Unity Catalog storage bucket, both private. |
-| Secrets | **Secret Manager** | `JWT_SECRET_KEY`, `GROQ_API_KEY`, the Supabase DB URL, and the Databricks credential (if Google ID-token auth isn't used). |
+| Embeddings and AML LLMs *(revised)* | **Vertex AI** | Text-embedding model and Gemini models, both Google first-party. Claude models later, with a paid account. |
+| Raw data *(revised)* | **Databricks volumes** | `trustnova_prod.raw.ibm_aml` and `trustnova_staging.raw.ibm_aml`. The GCS buckets from Phase 0 aren't used while Databricks is on AWS. |
+| Secrets | **Secret Manager** | `JWT_SECRET_KEY`, `GROQ_API_KEY`, the Supabase DB URL and the Databricks service principal's OAuth secret. |
 | Frontend | **Firebase Hosting** | Rewrites `/api/**` to Cloud Run, so frontend and API share one origin and no CORS setup is needed. |
 | Images | **Artifact Registry** | Docker images tagged with the git SHA. |
 | Observability | **Cloud Logging, Monitoring, Error Reporting** | Alerts on 5xx rate, task failures, investigation latency and Databricks job failures. Budget alerts on Vertex AI, Databricks and Supabase. |
@@ -427,9 +470,10 @@ Commit and push at the end of each phase.
   - `cloudtasks.enqueuer`
   - `run.invoker` on itself, so Cloud Tasks can call the internal endpoint
   - `storage.objectViewer` (docs bucket only)
-- **Databricks access.** Prefer letting the Cloud Run service account sign in to Databricks with a Google ID token. If that isn't available, use a Databricks OAuth service principal stored in Secret Manager; its secret expires every 90 days, so add a rotation reminder. Unity Catalog grants:
-  - the API principal: `SELECT` on `gold.*` only
-  - the evaluation principal: `SELECT` on `silver.aml_labels` and `silver.aml_patterns`
+- **Databricks access** *(revised)*. The workspace is on AWS, so Cloud Run can't sign in with a Google identity. It uses a Databricks OAuth service principal (machine-to-machine) whose secret lives in Secret Manager. Secrets expire after at most 90 days, so add a rotation reminder. Unity Catalog grants, per catalog:
+  - the API principal: `USE` and `SELECT` on `gold` only
+  - the evaluation principal: also `SELECT` on `restricted`
+  - CLI deploys use your own OAuth sign-in (profile `trustnova`)
 - **CI/CD** signs in to GCP through Workload Identity Federation (already used by AML Copilot), so no key files are created.
 
 ### 5.4 Delivery pipeline (GitHub Actions)
@@ -441,14 +485,14 @@ Commit and push at the end of each phase.
    4. Deploy Cloud Run staging and Firebase staging.
    5. Run the smoke test.
 3. **Production:** after manual approval in GitHub Environments, the same image and steps go to `prod`.
-4. **Infrastructure:** Terraform in `deployment/gcp/` (Cloud Run, Tasks, Vector Search, buckets, secrets, IAM, NAT, budgets). The Databricks workspace and Unity Catalog grants are managed with the Databricks Terraform provider in the same folder.
+4. **Infrastructure:** Terraform in `deployment/gcp/` (Cloud Run, Tasks, Vector Search, buckets, secrets, IAM, NAT, budgets). *(revised)* The Databricks catalogs, schemas and volumes are created by a checked-in SQL setup script, because Free Edition creates catalogs only through SQL. Grants come from the same script.
 
 ### 5.5 Rough monthly cost drivers (to estimate before cut-over)
-- the Vector Search endpoint, which is always on
-- the Supabase Pro plan, compute add-on and storage for about 9.5M customers
-- the Databricks SQL warehouse and nightly jobs; the one-time backfill of 430M rows is the largest single cost
-- Vertex Claude per investigation: AML Copilot's evaluation measured about $0.13 per account
-- ML: feature computation over 430M transactions (the one-time backfill, then incremental runs), monthly retraining (Multi-GNN on GPU is the expensive part, so run it only on challenger cycles), batch scoring, and the Model Serving endpoint (scales to zero off-peak)
+- **The Vector Search endpoint, which is always on.** *(revised)* A deployed index keeps at least one node running at all times, which on its own can approach or pass the $50/month budget. Price it before Phase 4, and if it doesn't fit, choose between a higher budget and a cheaper store (for example `pgvector` in Supabase).
+- the Supabase Pro plan, compute add-on and storage for the owner profiles
+- *(revised)* Databricks Free Edition costs nothing but has a daily compute quota. The one-time load of 430M rows may need to run over several days, one simulation at a time.
+- *(revised)* Vertex Gemini per investigation: AML Copilot measured about $0.16 per account with Gemini ($3.36 for 21 accounts)
+- ML: feature computation over 430M transactions (the one-time backfill, then incremental runs), monthly retraining, batch scoring, and Model Serving if available
 - Cloud Run with a minimum of 1 instance
 
 ---
@@ -460,7 +504,9 @@ Commit and push at the end of each phase.
 | The combined bank is six unconnected groups with a blended laundering rate | Keep the `variant` column, report metrics per variant, and document it in the UI and README. Money-tracing stays within a variant because of the namespaced ids. |
 | Ground truth leaking into prompts, profiles or cases | Labels and patterns live in restricted Unity Catalog tables. Profiles and cases come from observable data only. Tests check that no label field reaches the evidence bundle, profiles or the API. |
 | Slow lookups across 430M rows | `gold.account_txn_edges` with liquid clustering on account; strict row limits; Supabase `account_summary` for screens; caching. |
-| Cross-cloud latency and egress (GCP ↔ Supabase on AWS) | Pick the nearest regions, use connection pooling for the API, keep Supabase queries indexed and narrow, and do bulk loads only from Databricks. |
+| Cross-cloud latency and egress (Cloud Run on GCP `us-east4` ↔ Databricks and Supabase on AWS `us-east-2`) *(revised)* | Supabase goes in the same AWS region as Databricks, so bulk loads stay inside AWS. The API uses connection pooling, narrow indexed queries and row limits. Databricks results for screens come from Supabase `account_summary`, not live warehouse queries. |
+| Free Edition limits (daily compute quota, one 2X-Small warehouse, no GPUs, no classic clusters) *(revised)* | Prove everything on `trustnova_staging` first; load prod one simulation at a time and resume where a quota stops it; keep the Multi-GNN challenger and Model Serving optional; moving to a paid workspace (on GCP or AWS) only changes the bundle target, the storage path and the grants script. |
+| The GCP billing account isn't a paid account *(revised)* | Use Google first-party services only (Gemini, embeddings, Cloud Run and the rest). Partner models (Claude on Vertex) and Databricks on GCP wait for a paid account. |
 | Bulk-loading 9.5M customers into Supabase | Batched `COPY` over the direct connection, indexes built after loading, and a resumable loader with checkpoints. |
 | Merge regressions (environment variable clash, dependency changes) | Renamed `AML_*` variables; the merge-gate test run (Phase 1.6) before anything else changes. |
 | Retrieval quality shifts with the new embedding model | Re-run evaluation; must keep typology precision/recall and ≥ 95% supported sentences, or tune chunking first. |
