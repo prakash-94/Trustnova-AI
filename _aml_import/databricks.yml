@@ -1,0 +1,252 @@
+# Databricks Asset Bundle: everything that runs on Databricks.
+#   databricks bundle validate / deploy        (scripts/dbx_deploy.py does this using your .env)
+#
+#   aml-investigate    job   one investigation per run (Gemini on Vertex AI, keyless login) (parameters: account_id)     <- the application
+#   aml-canary         job   weekly quality check, then refreshes the reports
+#   aml-refresh-reports job  daily refresh of the reporting pipeline
+#   aml-reporting      pipeline  Lakeflow declarative pipeline: materialized views for dashboards
+#   databricks/notebooks/review   the human approval step (runs as the reviewer)
+bundle:
+  name: aml_copilot
+
+variables:
+  warehouse_id:
+    description: Id of the SQL warehouse (the last part of its HTTP path); the web app gets permission to use it
+  server_hostname:
+    description: Workspace host name without https:// (the SQL connector wants the bare host)
+  warehouse_http_path:
+    description: HTTP path of the SQL warehouse that serves the transactions view
+  databricks_client_id:
+    description: Application id of the service principal that reads the transactions view
+  sf_username:
+    description: Salesforce user name (not secret; the password lives in the secret scope)
+  transactions_table:
+    default: workspace.aml_copilot.transactions_safe
+  evidence_model:
+    description: Model for the evidence summarizer (a fast, inexpensive Gemini Flash)
+    default: gemini-3.5-flash
+  judge_model:
+    description: Model for the typology judge, narrative writer and fact-checker
+    default: gemini-3.1-pro-preview
+  gcp_project:
+    description: Google Cloud project that serves Gemini on Vertex AI
+  gcp_wif_audience:
+    description: Workload identity provider that trusts this workspace's service principal
+  gcp_service_account:
+    description: Google service account (with the Vertex AI user role) the principal impersonates
+  daily_limit:
+    default: "30"
+  canary_cap_usd:
+    default: "1.6"
+
+artifacts:
+  aml_copilot_wheel:
+    type: whl
+    build: python -m build --wheel
+    path: .
+  app_package:
+    build: python scripts/build_app.py
+    path: .
+
+sync:
+  include:
+    - databricks/app/aml_copilot/**
+  exclude:
+    - tests
+    - infra
+    - docs
+    - sample_runs
+    - evaluation_results
+    - scripts
+    - "customer_profiles*.csv"
+    - "*.docx"
+
+# Every task receives the non-secret settings as --set KEY=VALUE pairs; secrets come from the secret scope `aml-copilot`.
+
+resources:
+  jobs:
+    investigate:
+      name: aml-investigate
+      description: Investigate one account and store a draft for human review. Run with account_id.
+      max_concurrent_runs: 1 # the service rules assume one run at a time (see aml_copilot/service/delta.py)
+      queue:
+        enabled: true
+      timeout_seconds: 3600
+      parameters:
+        - name: account_id
+          default: ""
+        - name: requested_by
+          default: ""
+        - name: provider
+          default: gemini # or claude - chosen per run from the web page
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "2"
+            dependencies:
+              - "-r ${workspace.file_path}/databricks/requirements.txt"
+              - ./dist/*.whl
+      tasks:
+        - task_key: investigate
+          environment_key: default
+          spark_python_task:
+            python_file: databricks/jobs/investigate.py
+            parameters:
+              - "--account-id"
+              - "{{job.parameters.account_id}}"
+              - "--requested-by"
+              - "{{job.parameters.requested_by}}"
+              - "--provider"
+              - "{{job.parameters.provider}}"
+              - "--daily-limit"
+              - ${var.daily_limit}
+              - "--set"
+              - "LLM_PROVIDER=gemini"
+              - "--set"
+              - "LLM_MODEL=${var.evidence_model}"
+              - "--set"
+              - "TYPOLOGY_MODEL=${var.judge_model}"
+              - "--set"
+              - "NARRATIVE_MODEL=${var.judge_model}"
+              - "--set"
+              - "FAITHFULNESS_MODEL=${var.judge_model}"
+              - "--set"
+              - "DATABRICKS_SERVER_HOSTNAME=${var.server_hostname}"
+              - "--set"
+              - "DATABRICKS_HTTP_PATH=${var.warehouse_http_path}"
+              - "--set"
+              - "DATABRICKS_CLIENT_ID=${var.databricks_client_id}"
+              - "--set"
+              - "DATABRICKS_TRANSACTIONS_TABLE=${var.transactions_table}"
+              - "--set"
+              - "SF_USERNAME=${var.sf_username}"
+              - "--set"
+              - "AML_TYPOLOGY_DIR=${workspace.file_path}/typology_docs"
+              - "--set"
+              - "AML_CHROMA_DIR=/tmp/aml_chroma"
+              - "--set"
+              - "GCP_PROJECT=${var.gcp_project}"
+              - "--set"
+              - "GCP_AUTH=databricks"
+              - "--set"
+              - "GCP_WIF_AUDIENCE=${var.gcp_wif_audience}"
+              - "--set"
+              - "GCP_SERVICE_ACCOUNT=${var.gcp_service_account}"
+              - "--set"
+              - "LOG_FORMAT=json"
+
+    canary:
+      name: aml-canary
+      description: Weekly quality check on 7 accounts; stores results in eval_runs and fails if quality drops.
+      max_concurrent_runs: 1
+      timeout_seconds: 7200
+      schedule:
+        quartz_cron_expression: "0 0 6 ? * MON"
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "2"
+            dependencies:
+              - "-r ${workspace.file_path}/databricks/requirements.txt"
+              - ./dist/*.whl
+      tasks:
+        - task_key: canary
+          environment_key: default
+          spark_python_task:
+            python_file: databricks/jobs/canary.py
+            parameters:
+              - "--cap"
+              - ${var.canary_cap_usd}
+              - "--set"
+              - "LLM_PROVIDER=gemini"
+              - "--set"
+              - "LLM_MODEL=${var.evidence_model}"
+              - "--set"
+              - "TYPOLOGY_MODEL=${var.judge_model}"
+              - "--set"
+              - "NARRATIVE_MODEL=${var.judge_model}"
+              - "--set"
+              - "FAITHFULNESS_MODEL=${var.judge_model}"
+              - "--set"
+              - "DATABRICKS_SERVER_HOSTNAME=${var.server_hostname}"
+              - "--set"
+              - "DATABRICKS_HTTP_PATH=${var.warehouse_http_path}"
+              - "--set"
+              - "DATABRICKS_CLIENT_ID=${var.databricks_client_id}"
+              - "--set"
+              - "DATABRICKS_TRANSACTIONS_TABLE=${var.transactions_table}"
+              - "--set"
+              - "SF_USERNAME=${var.sf_username}"
+              - "--set"
+              - "AML_TYPOLOGY_DIR=${workspace.file_path}/typology_docs"
+              - "--set"
+              - "AML_CHROMA_DIR=/tmp/aml_chroma"
+              - "--set"
+              - "GCP_PROJECT=${var.gcp_project}"
+              - "--set"
+              - "GCP_AUTH=databricks"
+              - "--set"
+              - "GCP_WIF_AUDIENCE=${var.gcp_wif_audience}"
+              - "--set"
+              - "GCP_SERVICE_ACCOUNT=${var.gcp_service_account}"
+              - "--set"
+              - "LOG_FORMAT=json"
+        - task_key: refresh_reports
+          depends_on:
+            - task_key: canary
+          run_if: ALL_DONE # refresh even when the canary reported a regression, so the dashboard shows it
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.reporting.id}
+
+    refresh_reports:
+      name: aml-refresh-reports
+      description: Daily refresh of the reporting pipeline.
+      schedule:
+        quartz_cron_expression: "0 0 7 * * ?"
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      tasks:
+        - task_key: refresh
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.reporting.id}
+
+  apps:
+    copilot:
+      name: aml-copilot
+      description: Web page for the AML Investigation Copilot - start an investigation, read the draft, approve or reject it.
+      source_code_path: ./databricks/app
+      config:
+        command: ["python", "main.py"]
+        env:
+          - name: WAREHOUSE_ID
+            value_from: warehouse
+          - name: INVESTIGATE_JOB_ID
+            value_from: investigate-job
+      resources:
+        - name: warehouse
+          sql_warehouse:
+            id: ${var.warehouse_id}
+            permission: CAN_USE
+        - name: investigate-job
+          job:
+            id: ${resources.jobs.investigate.id}
+            permission: CAN_MANAGE_RUN
+
+  pipelines:
+    reporting:
+      name: aml-reporting
+      serverless: true
+      catalog: workspace
+      schema: aml_copilot
+      libraries:
+        - file:
+            path: databricks/pipelines/reporting.sql
+
+targets:
+  prod:
+    default: true
+    mode: production
+    workspace:
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/prod
