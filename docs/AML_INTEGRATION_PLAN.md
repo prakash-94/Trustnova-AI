@@ -147,6 +147,31 @@ Postgres runs in every environment, so there are no SQLite/Postgres SQL differen
 5. **Logging.** Never call AML Copilot's global `configure_logging()` from the host app. Use TrustNova's logging setup instead, as JSON to stdout.
 6. **Gate:** both test suites (TrustNova `tests/` and `tests/aml_copilot/`) pass in the merged repo before anything else changes.
 
+**Phase 1 as built (changes from the steps above):**
+
+| Planned | Done instead | Why |
+|---|---|---|
+| Python 3.12 | **Python 3.11** (`.venv`) | 3.12 isn't installed. 3.11 is already installed, it's what AML Copilot and both CI pipelines use, and it has torch wheels. |
+| Retire `service/delta.py` and the Salesforce source now | **Deferred to Phase 5** | Evaluation and the Databricks job runtime still use `delta.py`'s SQL helpers. The Salesforce source is still how investigations get customer profiles. Removing either before its Supabase replacement exists would break working code. |
+| Raise the `fastapi<0.137` cap | **Kept** | The only reason to raise it was AML's web app, which is gone, so there's no conflict left. |
+| Move torch / sentence-transformers / chromadb to `requirements-local.txt` | **Deferred to Phase 4** | TrustNova's RAG needs them until Vertex AI replaces them. For now there is one `requirements.txt` (runtime), `requirements-dev.txt` (adds test and lint tools), and a light `requirements-aml-ci.txt` (no torch) for AML's fast CI job. |
+| `databricks.yml` inside `databricks/` | **Kept at the repo root** | The bundle uses the repo root as its base. `sync.exclude` now leaves out `src/`, `frontend-react/`, `deployment/` and the raw data folders. |
+| Adopt AML's `.gitattributes` | **Only its binary rules** | `* text=auto eol=lf` would have changed line endings across all of TrustNova. |
+
+**Also retired:**
+- the Databricks App: `dbx/webapp.py`, `dbx/appmain.py`, `dbx/static/`, `dbx/jobs_api.py`, `databricks/app/`
+- its scripts: `build_app.py`, `run_local_app.py`, `grant_app_access.py`
+- the app's bundle resource and the `warehouse_id` variable
+- `tests/test_webapp.py`
+
+**Path changes:**
+- typology corpus: `data/typology_docs/`
+- local typology index: `data/aml_chroma/`, rebuilt with `python -m aml_copilot.retrieval build`
+- evaluation output: `docs/aml/evaluation_results/`
+- AML scripts: `scripts/aml/`
+
+**Environment variables:** AML model settings are read only from `AML_LLM_PROVIDER`, `AML_LLM_MODEL` (or the older `ANTHROPIC_MODEL`), `AML_TYPOLOGY_MODEL`, `AML_NARRATIVE_MODEL` and `AML_FAITHFULNESS_MODEL`.
+
 ### Phase 2 — Transaction data platform (Databricks on GCP)
 These are Databricks Jobs in the merged `databricks/` bundle, deployed with `databricks bundle deploy -t <env>`.
 

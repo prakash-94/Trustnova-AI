@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+# The installable package is the AML Copilot library (built as the wheel the Databricks jobs install).
+# TrustNova's backend in src/ runs from the repo and is not packaged.
+[project]
+name = "aml-copilot"
+version = "0.2.0"
+description = "AML Investigation Copilot (part of TrustNova AI): evidence, typology (RAG), narrative and faithfulness agents"
+requires-python = ">=3.11"
+# Dependencies are pinned by the requirements files and the Databricks job environment, not here.
+dependencies = []
+
+[tool.setuptools.packages.find]
+include = ["aml_copilot*"]
+
+[tool.pytest.ini_options]
+# "." for src/ and aml_copilot/; scripts/aml for the seed script's tests.
+pythonpath = [".", "scripts/aml"]
+testpaths = ["tests"]
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+# First-party code roots, so imports of aml_copilot and the scripts/aml modules sort as project code.
+src = [".", "scripts/aml"]
+
+[tool.ruff.lint.per-file-ignores]
+# Databricks notebooks get `spark` and `dbutils` from the runtime and must import after adjusting sys.path.
+"databricks/notebooks/*" = ["F821", "E402", "BLE001", "I001"]

@@ -16,6 +16,28 @@
 secrets/
 .secrets
 credentials.json
+credentials*.json
+service-account*.json
+*-sa-key.json
+
+# ── Infrastructure tooling (Terraform, Firebase, Databricks) ─────────
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.auto.tfvars
+*.tfplan
+crash.log
+.firebase/
+firebase-debug.log
+.databricks/
+
+# ── Python build output ──────────────────────────────────────────────
+build/
+dist/
+*.egg-info/
+logs_tmp/
+node_modules/
 
 # ── Python Runtime ──────────────────────────────────────────────────
 __pycache__/
@@ -66,6 +88,9 @@ data/processed/*
 !data/processed/.gitkeep
 data/embeddings/*
 !data/embeddings/.gitkeep
+# AML Copilot's local typology index (rebuilt with `python -m aml_copilot.retrieval build`)
+.chroma/
+data/aml_chroma/
 
 # ── Generated Reports & Media ───────────────────────────────────────
 # Charts, dashboards, and images produced by notebooks or scripts.
@@ -77,11 +102,15 @@ reports/
 *.xlsx
 *.pptx
 *.pdf
+# The AML typology corpus includes source PDFs (e.g. the FATF hawala report)
+!data/typology_docs/**/*.pdf
 
 # ── Local Development Scripts ───────────────────────────────────────
 # One-off migration/seed/setup scripts that only make sense locally
 # and may contain hardcoded local paths or dev credentials.
-scripts/
+scripts/*
+# AML Copilot's operational scripts are part of the product
+!scripts/aml/
 
 # ── Legacy / Prototype Frontend ─────────────────────────────────────
 # The original Streamlit/static HTML prototype (pre-React).

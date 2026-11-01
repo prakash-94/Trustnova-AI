@@ -1,0 +1,132 @@
+# AML Investigation Copilot
+
+> **Merged into TrustNova AI.** This project now lives in the TrustNova AI repository. Paths in this README are
+> relative to the repo root: the package is `aml_copilot/`, tests are `tests/aml_copilot/`, the typology corpus is
+> `data/typology_docs/`, scripts are `scripts/aml/`, and the reports below are in `docs/aml/evaluation_results/`.
+> Model settings are now `AML_LLM_PROVIDER`, `AML_LLM_MODEL`, `AML_TYPOLOGY_MODEL`, `AML_NARRATIVE_MODEL` and
+> `AML_FAITHFULNESS_MODEL`. The Databricks App web page is retired. See `docs/AML_INTEGRATION_PLAN.md`.
+
+A multi-agent system that investigates a flagged bank account and drafts a Suspicious Activity Report (SAR)
+narrative **for a human to review**. It never files anything and never decides anything: every draft is
+fact-checked sentence by sentence, every action is written to a tamper-evident audit trail, and approving a
+draft needs a supervisor.
+
+All data is synthetic (100K transactions, 2,100 customer profiles, 47K case records). This is a portfolio
+project, not a compliance product.
+
+## How an investigation works
+
+```
+ account id ──► Evidence Agent ──► Typology / RAG Agent ──► Narrative Agent ──► Faithfulness check ──► human review
+                 │ 3 live sources     │ matches the evidence    │ drafts the SAR      │ the model must QUOTE the
+                 │ rule-based risk    │ to written typologies   │ narrative from the  │ evidence for every
+                 │ score (no ML)      │ (FinCEN / FATF docs)    │ evidence, nothing   │ sentence; code checks
+                 ▼                    ▼                         ▼ else                ▼ the quote exists
+        Databricks · Salesforce · Supabase     ChromaDB + local MiniLM embeddings
+```
+
+* **Evidence**: bounded queries (never `SELECT *`; the ground-truth label column is never read), network
+  expansion across counterparty accounts, and two rule-based detectors (structuring, layering) that produce a
+  0–100 risk score. A source outage is reported as *incomplete*, never as "all clear".
+* **Typology (RAG)**: retrieves red flags from the typology documents; code (not the model) drops any match
+  that cites evidence the system never retrieved.
+* **Narrative**: follows FinCEN's narrative guidance; code drops any sentence containing an amount, date or id
+  found nowhere in the evidence.
+* **Faithfulness**: a second model call fact-checks every sentence and must quote the supporting evidence;
+  plain code verifies the quote really exists.
+* Models: Google Gemini on Vertex AI. Gemini 3.5 Flash summarises the evidence; Gemini 3.1 Pro (preview) judges
+  typologies, writes the narrative and fact-checks it. (Claude through the Anthropic API or Vertex is still supported by
+  setting `AML_LLM_PROVIDER`; the earlier measurements below were made with Claude.)
+
+## Measured results (the same 21 synthetic accounts, run twice)
+
+| Measure | Claude (Haiku 4.5 + Sonnet 5) | Gemini (3.5 Flash + 3.1 Pro) |
+|---|---|---|
+| Risk tier correct | 100% | 100% |
+| Typology precision / recall | 100% / 100% | 100% / 100% |
+| False alarms on normal accounts | 0% | 0% |
+| Draft sentences supported by evidence | 99% of 236 | 97% of 203 |
+| Drafts passing the fact check outright | 80% | 67% |
+| Planted errors caught by the fact-checker | 68 of 68 (3% false alarms) | 69 of 69 (1.3% false alarms) |
+| Cost of the 21-account run | $2.63 | $3.36 |
+| Average time per account | about 30 seconds | about 150 seconds |
+
+The fact-checker comparison uses the same drafts with errors planted in them. Gemini 3.5 Flash caught every planted
+error too, but also flagged 113 of 227 true sentences, so it is the summarizer and Gemini 3.1 Pro the judge.
+The reports are in `docs/aml/evaluation_results/` (`phase5_report.md` for Claude, `gemini_report.md` for Gemini). Gemini is
+slower and dearer mainly because Gemini 3.1 Pro "thinks" before answering and those hidden tokens are billed as output.
+
+Not measured: behaviour on real bank data, agreement with human investigators, latency under load. The sample is
+small and synthetic; treat these as regression baselines, not accuracy claims.
+
+## The deployed system (Databricks)
+
+Everything runs inside one Databricks workspace as an Asset Bundle (`databricks.yml`). The only web server is a small
+Databricks App that serves the page and starts the job; it never runs an investigation itself.
+
+```
+ You ── web page (Databricks App) ─┐
+                                  ├─ Run now (account_id) ─► Job "aml-investigate"  (serverless Python, one run at a time)
+                                   │ reads   Unity Catalog view transactions_safe (no label column), Salesforce, Supabase
+                                   │ calls   Gemini on Vertex AI through a keyless Google login (Databricks token -> Google token)
+                                   │ writes  Delta: documents (job + draft), audit_objects (append-only, hash-chained)
+ You ── web page or notebook ──► list / show / approve / reject / escalate   (recorded under your Databricks login)
+ Schedule (Mon 06:00 UTC) ─────► Job "aml-canary" ─► 7-account quality check ─► Delta eval_runs ─► fails on regression
+ Schedule (daily 07:00 UTC) ───► Job "aml-refresh-reports" ─► Lakeflow pipeline "aml-reporting" (materialized views)
+```
+
+* **Jobs, not servers.** One investigation is one job run. The job validates the account id, applies the daily limit
+  and the one-open-run-per-account rule, runs the four agents, stores the draft (never the raw rows) and writes the
+  audit trail. A crash is recorded on the job and the run fails visibly.
+* **State in Delta.** `documents` holds job records with versioned, optimistic writes (`MERGE` that only succeeds if the
+  version still matches). `audit_objects` is created with `delta.appendOnly = true`, so Delta itself refuses UPDATE and
+  DELETE; each event carries the hash of the one before it.
+* **Web page.** `aml-copilot` is a Databricks App: Databricks signs the person in and tells the app who they are, the
+  `reviewers` table gives their role, and the page starts the investigate job, shows the draft, fact check and audit
+  trail, and records the decision. A drop-down picks Gemini or Claude per run, and two drafts can be opened side
+  by side to compare them. Buttons that change data also require a same-origin header (cross-site forgery guard).
+* **Human decision.** The reviewer's identity is their real Databricks login, not a typed name (page, notebook or
+  terminal). Roles come from the `reviewers` table; only a supervisor can approve. A decision
+  is final and is tied to the exact draft by its SHA-256, so approving a draft that changed is refused.
+* **Data governance.** Jobs read transactions as a service principal that can `SELECT` only the `transactions_safe`
+  view. The ground-truth label and the base table are refused (tested live).
+* **Reporting pipeline.** A Lakeflow declarative pipeline builds `investigations_flat`, `investigations_daily`,
+  `canary_trend` and `audit_chain_links` (a SQL check that every audit event points at the previous one).
+* **Quality gate.** The weekly canary fails the job if a tier or typology is wrong or fewer than 90% of draft
+  sentences are supported.
+
+Deploy and operate: [`databricks.md`](databricks.md).
+
+## Running it locally
+
+```bash
+py -3.11 -m venv .venv && .venv\Scripts\activate
+pip install -r requirements-dev.txt       # copy .env.example to .env and fill it in first
+python -m aml_copilot.retrieval build                           # build the local typology index (data/aml_chroma)
+python -m aml_copilot.agents.investigation ACC-H-00000          # one investigation on the command line
+pytest -q tests/aml_copilot                                     # AML tests, no network or API keys needed
+```
+
+## Layout
+
+| Path | What |
+|---|---|
+| `aml_copilot/ingestion`, `detection` | sources, retries, entity resolution, network expansion, rule detectors |
+| `aml_copilot/agents` | evidence, typology, narrative agents and the LangGraph orchestrator |
+| `aml_copilot/retrieval`, `data/typology_docs/` | chunking, embeddings, vector store; the typology corpus |
+| `aml_copilot/guardrails`, `evaluation` | faithfulness + consistency checks; the evaluation harness and canary |
+| `aml_copilot/service` | job rules, audit chain, `process_job`, Delta storage adapters |
+| `aml_copilot/dbx` | the Databricks job entry points, review logic, secret loading |
+| `databricks.yml`, `databricks/` | the bundle: jobs, reporting pipeline (SQL), review notebook |
+| `scripts/aml/` | `dbx_deploy.py` and `put_databricks_secrets.py`, plus data seeding |
+
+## Known limits
+
+* Only two typologies (structuring, layering) have rule-based detectors; the other five are retrieved by
+  similarity only and are marked "no detector yet".
+* Databricks Free Edition has no frontier models, so the job calls Gemini on Vertex AI. Gemini 3.1 Pro is a preview model. Claude on
+  Vertex AI is implemented and tested offline, but Google has not granted this project quota.
+* The workspace has one user, so the roles are demonstrated with a `reviewers` table rather than several logins.
+* The service principal's OAuth secret expires after 90 days and must be rotated.
+* Each investigation job installs its libraries on start-up, so a run takes several minutes before the first query.
+* Free Edition may delete an inactive workspace; the weekly canary doubles as a heartbeat.

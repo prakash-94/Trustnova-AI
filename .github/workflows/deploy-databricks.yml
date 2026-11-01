@@ -1,0 +1,71 @@
+name: Deploy Databricks bundle
+
+# Deploys the Databricks bundle (jobs, reporting pipeline, code, wheel). Manual trigger, with an approval gate.
+# One-time setup in the repository (Settings > Secrets and variables > Actions):
+#   Secrets:   DATABRICKS_HOST   e.g. https://dbc-xxxx.cloud.databricks.com
+#              DATABRICKS_TOKEN  a personal access token for the deploying user (set a short expiry, rotate it)
+#   Variables: DATABRICKS_SERVER_HOSTNAME (bare host, no https://), DATABRICKS_WAREHOUSE_HTTP_PATH, DATABRICKS_CLIENT_ID (the service principal's application id),
+#              SF_USERNAME, GCP_PROJECT, GCP_WIF_AUDIENCE, GCP_SERVICE_ACCOUNT (Gemini on Vertex AI; not secret)
+# and Settings > Environments > "production" with a required reviewer (that is the approval).
+on:
+  workflow_dispatch:
+    inputs:
+      smoke_account:
+        description: "Run one investigation after deploying (e.g. ACC-H-00000). Leave empty to skip."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency: deploy-databricks
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-aml-ci.txt
+      - run: pip install -r requirements-aml-ci.txt
+      - run: ruff check aml_copilot tests/aml_copilot scripts/aml
+      - run: pytest -q tests/aml_copilot
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    environment: production # pauses here until a required reviewer approves
+    env:
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+      BUNDLE_VAR_server_hostname: ${{ vars.DATABRICKS_SERVER_HOSTNAME }}
+      BUNDLE_VAR_warehouse_http_path: ${{ vars.DATABRICKS_WAREHOUSE_HTTP_PATH }}
+      BUNDLE_VAR_databricks_client_id: ${{ vars.DATABRICKS_CLIENT_ID }}
+      BUNDLE_VAR_gcp_project: ${{ vars.GCP_PROJECT }}
+      BUNDLE_VAR_gcp_wif_audience: ${{ vars.GCP_WIF_AUDIENCE }}
+      BUNDLE_VAR_gcp_service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      BUNDLE_VAR_sf_username: ${{ vars.SF_USERNAME }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install the build tool (the bundle builds the wheel with `python -m build`)
+        run: pip install build
+
+      - uses: databricks/setup-cli@main
+
+      - name: Validate the bundle
+        run: databricks bundle validate
+
+      - name: Deploy (jobs, pipeline, code, wheel)
+        run: databricks bundle deploy
+
+      - name: Smoke test - run one investigation and require it to finish
+        if: ${{ inputs.smoke_account != '' }}
+        run: databricks bundle run investigate --params account_id=${{ inputs.smoke_account }}

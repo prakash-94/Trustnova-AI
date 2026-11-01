@@ -1,38 +1,47 @@
-# TrustNova AI — Python Dependencies
-# Uses >= ranges to avoid pinning to hallucinated / non-existent versions.
-# Install: pip install -r requirements.txt
+# TrustNova AI (including the merged AML Copilot) - runtime dependencies
+# Target interpreter: Python 3.11 (torch / sentence-transformers wheels; matches CI and the Databricks jobs)
+#   py -3.11 -m venv .venv && .venv\Scripts\activate && pip install -r requirements-dev.txt
+# Tests and lint tools live in requirements-dev.txt. AML-only CI uses requirements-aml-ci.txt (no torch).
 
 # --- Backend API ---
 fastapi>=0.111.0,<0.137.0
 uvicorn[standard]>=0.30.0
-pydantic>=2.7.0
+pydantic>=2.13,<3
+pydantic-settings>=2.15,<3      # AML Copilot settings
 python-multipart>=0.0.9
-python-dotenv>=1.0.0
-httpx>=0.27.0
-
+python-dotenv>=1.2,<2
+httpx>=0.28,<1
 requests>=2.32.0
 
-# --- LLM / RAG ---
-langchain>=0.2.0
+# --- LLM / RAG / agents ---
+langchain>=1.4,<2
+langgraph>=1.2,<2               # AML Copilot agent graphs
 langchain-openai>=0.1.0
-langchain-groq>=0.1.0
+langchain-groq>=0.1.0           # TrustNova chat LLM
+langchain-anthropic>=1.7,<2     # AML Copilot: Claude through the Anthropic API
+anthropic[vertex]>=1.7,<2       # AML Copilot: Claude on Vertex AI, LLM-as-judge calls
+langchain-google-vertexai>=3.2,<4   # AML Copilot: Gemini on Vertex AI (imported lazily)
+google-auth>=2.30,<3            # keyless Google login (workload identity federation)
 langchain-community>=0.2.0
 langchain-text-splitters>=0.2.0
 langchain-chroma>=0.1.0
 langchain-huggingface>=0.0.3
 openai>=1.30.0
-sentence-transformers>=3.0.0
+sentence-transformers>=6.1,<7
+pypdf>=5.0,<6                   # extracts text from data/typology_docs/*.pdf
 
 # --- Vector Databases ---
-chromadb>=0.5.0
+chromadb>=1.5,<2
 pinecone>=3.0.0
 
 # --- Data ---
-pandas>=2.1.0
+pandas>=3.0,<4
 numpy>=1.26.0
 faker>=19.0.0
 sqlalchemy>=2.0.0
-psycopg2-binary>=2.9.0
+psycopg2-binary>=2.9,<3
+databricks-sql-connector>=4.5,<5    # AML Copilot transaction source
+simple-salesforce>=1.12,<2          # AML Copilot profile source (replaced by Supabase in Phase 5)
 
 # --- ML / Fraud Detection ---
 xgboost>=2.0.0
@@ -42,7 +51,7 @@ mlflow>=2.12.0
 matplotlib>=3.8.0
 seaborn>=0.13.0
 shap>=0.44.0
-# CPU-only torch — Render has no GPU; full CUDA build is 2 GB+ and will OOM/timeout
+# CPU-only torch: no GPU in deployment; the full CUDA build is 2 GB+
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch>=2.1.0
 
@@ -54,9 +63,7 @@ passlib[bcrypt]>=1.7.4
 # --- Rate Limiting ---
 slowapi>=0.1.9
 
-# --- Monitoring ---
+# --- Monitoring / logging ---
 prometheus-fastapi-instrumentator>=7.0.0
-
-# --- Testing ---
-pytest>=8.0.0
-pytest-asyncio>=0.23.0
+structlog>=26.1,<27             # AML Copilot structured logging
+tenacity>=8.5,<10               # retries around flaky source queries and LLM calls

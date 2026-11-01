@@ -91,6 +91,7 @@ TrustNova AI addresses these gaps with three converging capabilities:
 - **KYC Workflow** — Document verification lifecycle with auto-populated verification metadata
 - **Risk Assessment** — Portfolio-level and per-customer risk scoring across 4 risk dimensions
 - **Access Request Management** — Role/resource access requests with admin review workflow
+- **AML Investigation Copilot (merged in)** — The former stand-alone AML Copilot now lives in this repo as the `aml_copilot/` package: a LangGraph pipeline that gathers evidence for a flagged account, matches typologies, drafts a SAR narrative and fact-checks it sentence by sentence, with a tamper-evident audit trail. It is not yet wired into the TrustNova API and UI; see [`docs/AML_INTEGRATION_PLAN.md`](docs/AML_INTEGRATION_PLAN.md) for the integration phases and [`docs/aml/README.md`](docs/aml/README.md) for how it works.
 
 ### Platform Operations
 - **KPI Dashboard** — Real-time bank metrics: customer count, active accounts, transaction volume, loan portfolio, open AML cases, pending KYC
