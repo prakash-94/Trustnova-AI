@@ -141,6 +141,9 @@ Postgres runs in every environment, so there are no SQLite/Postgres SQL differen
    - Size it for the owner profiles plus indexes.
    - Allow connections only from the Cloud Run egress IP (fixed through Cloud NAT) and the Databricks serverless egress.
 4. **Dataset *(revised)* — uploading.** All 18 files from `Downloads\archive` go into the volume `trustnova_prod.raw.ibm_aml`, and the six Small files into `trustnova_staging.raw.ibm_aml`, using `databricks fs cp`. Files already uploaded at the same size are skipped. Raw files never go into git.
+   - **Large files are split.** The Databricks Files API takes at most 5 GiB per file, so `HI-Large_Trans.csv` and `LI-Large_Trans.csv` (about 16 GB each) are stored as `<name>.part-NNN.csv`. Every part starts with the header row and is under 4 GB.
+   - **Each split file has a manifest** (`<name>.manifest.json`) recording the source size, the total data rows and each part's rows.
+   - **Phase 2 depends on this:** Bronze maps `HI-Large_Trans*.csv` to variant `HIL`, and the quality gate checks Bronze row counts against the manifests.
 
 ### Phase 1 — Merge the repositories
 1. **Bring in AML Copilot with its history.** Run `git subtree add --prefix=_aml_import <AML repo> main` in the TrustNova repo. In the next commit, reorganise with `git mv`:
