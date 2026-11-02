@@ -33,7 +33,11 @@ HIS_TRANSACTIONS = [T_SELF, T_LAUNDER_1, T_LAUNDER_2, T_DUP, T_DUP, T_EURO_LOCAL
 L_SELF = _t("2022/09/01 00:20", "010", "8000AAA01", "010", "8000AAA01", "100.00", "US Dollar", "100.00", "US Dollar", "Reinvestment", "0")
 L_LAUNDER = _t("2022/09/05 08:00", "010", "8000AAA01", "03208", "8000AAA02", "9500.00", "US Dollar", "9500.00", "US Dollar", "Cash", "1")
 L_LAUNDER_OTHER = _t("2022/09/05 09:00", "03208", "8000AAA02", "010", "8000AAA01", "40.00", "US Dollar", "40.00", "US Dollar", "Cash", "1")
-LIS_TRANSACTIONS = [L_SELF, L_LAUNDER, L_LAUNDER_OTHER]
+# A 3-step loop: B->C at 08:30 and C->A at 08:45, so A->B at 10:00 closes A->B->C->A (labelled normal on purpose).
+L_B_TO_C = _t("2022/09/05 08:30", "03208", "8000AAA02", "077", "8000AAA07", "300.00", "US Dollar", "300.00", "US Dollar", "ACH", "0")
+L_C_TO_A = _t("2022/09/05 08:45", "077", "8000AAA07", "010", "8000AAA01", "290.00", "US Dollar", "290.00", "US Dollar", "ACH", "0")
+L_CLOSE = _t("2022/09/05 10:00", "010", "8000AAA01", "03208", "8000AAA02", "250.00", "US Dollar", "250.00", "US Dollar", "ACH", "0")
+LIS_TRANSACTIONS = [L_SELF, L_LAUNDER, L_LAUNDER_OTHER, L_B_TO_C, L_C_TO_A, L_CLOSE]
 
 HIS_ACCOUNTS = [
     ("Germany Bank #1", "10", "8000AAA01", "800E00001", "Corporation #1"),
@@ -46,6 +50,7 @@ HIS_ACCOUNTS = [
 LIS_ACCOUNTS = [
     ("Germany Bank #1", "10", "8000AAA01", "800E00001", "Corporation #1"),
     ("UK Bank #7", "3208", "8000AAA02", "800E00002", "Partnership #2"),
+    ("France Bank #3", "77", "8000AAA07", "800E00007", "Partnership #7"),
 ]
 
 

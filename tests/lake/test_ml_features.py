@@ -64,6 +64,34 @@ def test_money_coming_back_is_seen_only_after_it_happened(feats, built):
     assert (back.reverse_n_7d, back.reverse_usd_7d) == (1.0, 9500.0)
 
 
+def test_three_step_cycles_need_both_earlier_steps(feats, built):
+    closing = row_for(feats, built, sd.L_CLOSE, variant="LIS")
+    assert closing.closes_3cycle_7d == 1.0          # B->C 08:30 and C->A 08:45 happened before A->B at 10:00
+    assert row_for(feats, built, sd.L_LAUNDER, variant="LIS").closes_3cycle_7d == 0.0  # 08:00 is before the loop
+    assert row_for(feats, built, sd.L_B_TO_C, variant="LIS").closes_3cycle_7d == 0.0
+
+
+def test_pass_through_features(feats, built):
+    c = row_for(feats, built, sd.L_C_TO_A, variant="LIS")  # C received 300 at 08:30 and pays 290 at 08:45
+    assert c.s_minutes_since_in == 15.0
+    assert c.s_vs_inflow_24h == pytest.approx(290 / 301)
+    a = row_for(feats, built, sd.L_CLOSE, variant="LIS")   # A last received at 09:00 (40 from B), 290 at 08:45
+    assert a.s_minutes_since_in == 60.0
+    assert a.s_vs_inflow_24h == pytest.approx(250 / 331)
+    first = row_for(feats, built, sd.T_LAUNDER_1)         # the sender never received anything
+    assert first.s_minutes_since_in == -1.0
+
+
+def test_unusual_for_this_account_features(feats, built):
+    r = row_for(feats, built, sd.T_EURO_LOCAL)  # 8000AAA05 normally pays ~116 USD; this payment is 11.70 USD
+    assert r.s_amount_z_28d == -50.0            # far below its own normal (clipped)
+    assert r.s_burst_vs_28d == pytest.approx(0.5)  # first payment today against 28 in the last 28 days
+    assert r.s_new_cp_share_7d == pytest.approx(1 / 28)
+    assert r.s_format_first == 1.0              # its first cheque
+    wire = [row_for(feats, built, sd.EURO_TO_USD[i]).s_format_first for i in (0, 1)]
+    assert wire == [1.0, 0.0]
+
+
 def test_temporal_split_per_simulation(feats):
     by = {(r.variant, r.split): r["count"] for r in feats.groupBy("variant", "split").count().collect()}
     assert by[("HIS", "train")] > by[("HIS", "valid")] > 0 and by[("HIS", "test")] > 0

@@ -162,8 +162,10 @@ def train_main(argv: Sequence[str], spark: Any = None) -> int:
     data = labelled(spark, a.catalog, vs)
 
     fractions = negative_fractions(data, a.ratio)
-    cols = [*FEATURES, "label", "pattern", "split", "variant"]
-    pdf = sampled(data.where(F.col("split").isin("train", "valid")), fractions).select(*cols).toPandas()
+    # float32 halves the driver memory for the production sample (all laundering + `ratio` normal rows each)
+    f32 = [F.col(c).cast("float").alias(c) for c in FEATURES]
+    pdf = (sampled(data.where(F.col("split").isin("train", "valid")), fractions)
+           .select(*f32, "label", "pattern", "split", "variant").toPandas())
     train_pd, valid_pd = pdf[pdf.split == "train"], pdf[pdf.split == "valid"]
     print(f"M1 training rows: {len(train_pd):,} ({int(train_pd.label.sum()):,} laundering); "
           f"early-stopping rows: {len(valid_pd):,}; negative sample fractions {fractions}", flush=True)
@@ -177,7 +179,7 @@ def train_main(argv: Sequence[str], spark: Any = None) -> int:
     passed, reasons = tr.gate(report["model"], report["baseline"], [ALL, *vs])
     report["gate"] = {"passed": passed, "reasons": reasons}
 
-    pos = data.where(F.col("label") == 1).select(*FEATURES, "pattern", "split").toPandas()
+    pos = data.where(F.col("label") == 1).select(*f32, "pattern", "split").toPandas()
     m3 = tr.train_m3(pos[pos.split == "train"], pos[pos.split == "valid"])
     m3_report = tr.evaluate_m3(m3, pos[pos.split == "test"])
     m3_ok = m3_report["macro_f1"] > m3_report["majority_class_macro_f1"]

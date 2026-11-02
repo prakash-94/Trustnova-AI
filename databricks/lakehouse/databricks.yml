@@ -14,6 +14,12 @@ variables:
   variants:
     description: Simulations to load (HIS, HIM, HIL, LIS, LIM, LIL), comma-separated
     default: "HIS,LIS"
+  ml_variants:
+    description: Simulations the ML jobs train on and score (set per target, so runs need no comma-laden --params)
+    default: "HIS,LIS"
+  ml_ratio:
+    description: Normal rows sampled per laundering row for training
+    default: "50"
 
 artifacts:
   lake_wheel:
@@ -70,10 +76,12 @@ resources:
       name: trustnova-ml-train-${bundle.target}
       description: Point-in-time features, then M1 (transaction risk) and M3 (pattern type) with LightGBM, evaluated against the rule baseline.
       max_concurrent_runs: 1
-      timeout_seconds: 21600
+      timeout_seconds: 43200
       parameters:
         - name: variants
-          default: ${var.variants}
+          default: ${var.ml_variants}
+        - name: ratio
+          default: ${var.ml_ratio}
       environments:
         - environment_key: ml
           spec:
@@ -94,7 +102,8 @@ resources:
           environment_key: ml
           spark_python_task:
             python_file: jobs/ml_train.py
-            parameters: ["--catalog", "${var.catalog}", "--variants", "{{job.parameters.variants}}"]
+            parameters: ["--catalog", "${var.catalog}", "--variants", "{{job.parameters.variants}}",
+                         "--ratio", "{{job.parameters.ratio}}"]
 
     ml_promote:
       name: trustnova-ml-promote-${bundle.target}
@@ -124,7 +133,7 @@ resources:
       timeout_seconds: 21600
       parameters:
         - name: variants
-          default: ${var.variants}
+          default: ${var.ml_variants}
         - name: budget
           default: "25"
       environments:
@@ -158,5 +167,7 @@ targets:
     variables:
       catalog: trustnova_prod
       variants: "HIS,LIS"
+      ml_variants: "HIS,HIM,HIL,LIS,LIM,LIL"
+      ml_ratio: "10"
     workspace:
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/prod
