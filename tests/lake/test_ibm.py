@@ -88,3 +88,15 @@ def test_patterns_are_split_into_attempts():
 def test_damaged_pattern_files_fail_loudly(text, problem):
     with pytest.raises(PatternFormatError, match=problem):
         parse_patterns(text)
+
+
+def test_a_changed_schema_recreates_the_table_only_when_every_simulation_is_rewritten():
+    from trustnova_lake.jobs import schema_change_action
+
+    old = [("variant", "string"), ("a", "double")]
+    new = [*old, ("b", "double")]
+    assert schema_change_action(old, old, ["HIS", "LIS"], ["HIS"]) == "overwrite"
+    assert schema_change_action(old, new, ["HIS", "LIS"], ["HIS", "LIS"]) == "recreate"
+    assert schema_change_action(old, new, [], ["HIS"]) == "recreate"
+    with pytest.raises(ValueError, match="LIS"):
+        schema_change_action(old, new, ["HIS", "LIS"], ["HIS"])

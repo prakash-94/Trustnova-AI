@@ -76,12 +76,39 @@ def _args(argv: Sequence[str], prog: str) -> argparse.Namespace:
     return a
 
 
+def schema_change_action(table_schema: Sequence[tuple[str, str]], new_schema: Sequence[tuple[str, str]],
+                         table_variants: Sequence[str], variants: Sequence[str]) -> str:
+    """What a write must do: "overwrite" the given simulations, "recreate" the table because its columns changed
+    (allowed only when this write replaces every simulation already in it), or refuse."""
+    if list(table_schema) == list(new_schema):
+        return "overwrite"
+    others = sorted(set(table_variants) - set(variants))
+    if others:
+        raise ValueError(
+            f"the columns changed, but the table also holds {others}, which this run doesn't rewrite; run it for "
+            f"{sorted(set(table_variants) | set(variants))} so no simulation is left with the old columns")
+    return "recreate"
+
+
+def _create(spark: Any, df: DataFrame, table: str, cluster_by: Sequence[str], replace: bool) -> None:
+    w = df.limit(0).writeTo(table).using("delta")
+    w.createOrReplace() if replace else w.create()
+    if cluster_by:
+        spark.sql(f"ALTER TABLE {table} CLUSTER BY ({', '.join(cluster_by)})")
+
+
 def replace_variants(spark: Any, df: DataFrame, table: str, variants: Sequence[str], cluster_by: Sequence[str] = ()) -> None:
-    """Create the table on first use, otherwise overwrite only the rows of `variants`."""
+    """Create the table on first use, otherwise overwrite only the rows of `variants`. If the columns changed (a new
+    feature set, say) the table is recreated, which is only allowed when this write covers all its simulations."""
     if not spark.catalog.tableExists(table):
-        df.limit(0).writeTo(table).using("delta").create()
-        if cluster_by:
-            spark.sql(f"ALTER TABLE {table} CLUSTER BY ({', '.join(cluster_by)})")
+        _create(spark, df, table, cluster_by, replace=False)
+    else:
+        existing = spark.table(table)
+        as_pairs = lambda schema: [(f.name, f.dataType.simpleString()) for f in schema.fields]
+        held = [r[0] for r in existing.select("variant").distinct().collect()]
+        if schema_change_action(as_pairs(existing.schema), as_pairs(df.schema), held, variants) == "recreate":
+            print(f"{table}: columns changed; recreating it for {sorted(variants)}", flush=True)
+            _create(spark, df, table, cluster_by, replace=True)
     df.writeTo(table).overwrite(F.col("variant").isin(list(variants)))
 
 
