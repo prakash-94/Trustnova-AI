@@ -345,6 +345,36 @@ GenAI isn't used anywhere in this phase. Everything runs as Databricks Jobs in t
   - **M3:** macro-F1 0.335, against 0.061 for always guessing the most common pattern.
   - **Gate:** passed. `trustnova_staging.ml.m1_transaction_risk` v1 is `@candidate`, and promotion to `@champion` waits for your approval.
   - **The baseline is weak:** the copied rule thresholds barely fire on this data. A stronger, tuned rule set should be added before production, so the gate means more.
+- **Second staging run (v2, 119 features).** Adds account-relative features (amount vs the account's own 28-day history, bursts, new-counterparty share), money-back timing and 3-step cycles.
+  - PR-AUC 0.514 (HI-Small 0.655, LI-Small 0.274). At the threshold: precision 74%, recall 40%. Recall in the top 0.5%: 69.7%.
+  - M3 macro-F1 0.382. `OTHER` recall is unchanged at 1.5%.
+  - Gate passed; staging v2 is `@candidate`.
+- **First production run (all six simulations, 6 h 4 min; 1 h of features, 5 h of training and evaluation).**
+  - Training used 2,095,216 rows (190,369 laundering, about 10 normal rows per laundering row). Early stopping used 715,758 rows. The model has 1,538 trees.
+  - The test split is 86,187,474 rows, 113,602 of them laundering.
+
+  | Test split | M1 PR-AUC | Precision / recall at threshold | M1 recall, top 0.5% | Baseline PR-AUC |
+  |---|---|---|---|---|
+  | All six | **0.614** | 85.6% / 50.0% (F1 0.631) | 74.5% | 0.0039 |
+  | HI-Small | 0.738 | 90.2% / 57.6% | 84.3% | 0.0029 |
+  | HI-Medium | 0.768 | 93.2% / 61.7% | 86.2% | 0.0057 |
+  | HI-Large | 0.713 | 89.4% / 58.6% | 77.8% | 0.0063 |
+  | LI-Small | 0.366 | 67.7% / 28.3% | 67.2% | 0.0006 |
+  | LI-Medium | 0.412 | 76.1% / 32.1% | 69.3% | 0.0006 |
+  | LI-Large | 0.298 | 63.2% / 23.6% | 57.8% | 0.0007 |
+
+  - **Recall by pattern:**
+    - fan-out 87%, fan-in 86%, gather-scatter 86%, scatter-gather 85%
+    - cycle 73%, random 71%, bipartite 69%, stack 69%
+    - **`OTHER` 0.9%** (43,179 rows, 38% of test laundering)
+  - **M3:** macro-F1 0.463, accuracy 65.8%.
+  - **Top features by gain:** `payment_format_code` 31.8%, `first_time_pair` 12.7%, `s_d0_n_out` 9.3%, `s_p28_n_in` 4.7%, `log_amount_usd` 3.6%.
+  - **Gate passed.** `trustnova_prod.ml.m1_transaction_risk` v1 and `m3_pattern_type` v1 are `@candidate`. Nothing is `@champion`; promotion waits for a person's approval.
+  - **What the results show:**
+    - More data mostly helped. Production v1 beats staging v2 on the same HI-Small and LI-Small test rows (PR-AUC 0.738 vs 0.655 and 0.366 vs 0.274).
+    - `OTHER` is still not detected. It needs different signals, not more rows.
+    - LI simulations score about half as well as HI ones, because laundering is rarer there.
+  - **Cost to fix next:** evaluation scores the 603M valid and test rows three times, once per query, because serverless compute can't cache. That's 80–90 minutes each time. Folding the three aggregations into one pass would cut training time by about 3 hours.
 
 **6. Governance and monitoring** (in the style of SR 11-7 model risk management).
 - **Documentation:** a model card and validation report for each registered version, covering data, features, metrics per variant and pattern, limitations and the known effects of combining all six files into one bank.
