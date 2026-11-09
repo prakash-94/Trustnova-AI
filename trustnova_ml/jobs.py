@@ -54,7 +54,8 @@ def features_main(argv: Sequence[str], spark: Any = None) -> int:
     a = _args(argv, "ml-features")
     spark = _spark(spark)
     t, m, vs = tables(a.catalog), ml_tables(a.catalog), a.variant_list
-    feats = assign_split(transaction_features(_in(spark.table(t["transactions"]), vs), _in(spark.table(t["edges"]), vs)))
+    feats = assign_split(transaction_features(_in(spark.table(t["transactions"]), vs), _in(spark.table(t["edges"]), vs),
+                                              _in(spark.table(t["accounts"]), vs)))
     replace_variants(spark, feats, m["features"], vs, ("variant", "split"))
     print(f"features written for {vs}", flush=True)
     return 0
@@ -96,8 +97,9 @@ def _scorer(model_str: str):
         import lightgbm as lgb
 
         booster = lgb.Booster(model_str=model_str)
+        names = booster.feature_name()
         for pdf in batches:
-            pdf["raw"] = booster.predict(pdf[list(FEATURES)])
+            pdf["raw"] = booster.predict(pdf[names])
             yield pdf[["variant", "split", "label", "pattern", "rule_score", "raw"]]
     return score
 
@@ -112,11 +114,20 @@ def _curves(rows, key_cols: Sequence[str], score_col: str) -> dict[tuple, mx.Cur
 
 
 def evaluate(scored: DataFrame, variants: Sequence[str]) -> dict:
-    """Binned counts in Spark, metrics in Python: model vs rule baseline, per simulation and per pattern."""
-    binned = scored.withColumn("bin", F.floor(F.col("raw") * mx.BINS) / mx.BINS)
-    agg = [F.sum("label").alias("pos"), (F.count("*") - F.sum("label")).alias("neg")]
-    model = _curves(binned.groupBy("variant", "split", "bin").agg(*agg).collect(), ("variant", "split"), "bin")
-    rule = _curves(binned.groupBy("variant", "split", "rule_score").agg(*agg).collect(), ("variant", "split"), "rule_score")
+    """Model vs rule baseline, per simulation and per pattern, from ONE pass over the scored rows: counts per
+    (simulation, split, model score bin, rule score, pattern). Serverless Spark can't cache, so every further query
+    would score all valid and test rows again (80-90 minutes each on the full dataset)."""
+    counts = (scored.withColumn("bin", F.floor(F.col("raw") * mx.BINS) / mx.BINS)
+              .groupBy("variant", "split", "bin", "rule_score", "pattern")
+              .agg(F.sum("label").alias("pos"), (F.count("*") - F.sum("label")).alias("neg")).collect())
+    return report_from_counts([r.asDict() for r in counts], variants)
+
+
+def report_from_counts(rows: Sequence[dict], variants: Sequence[str]) -> dict:
+    """The evaluation report from (variant, split, bin, rule_score, pattern, pos, neg) counts. `pattern` is set only
+    on laundering rows."""
+    model = _curves(rows, ("variant", "split"), "bin")
+    rule = _curves(rows, ("variant", "split"), "rule_score")
     m_thr = mx.best_f1_threshold(model[(ALL, "valid")])
     r_thr = mx.best_f1_threshold(rule[(ALL, "valid")])
     groups = [ALL, *variants]
@@ -125,12 +136,15 @@ def evaluate(scored: DataFrame, variants: Sequence[str]) -> dict:
         "model": {g: mx.summary(model[(g, "test")], m_thr) for g in groups if (g, "test") in model},
         "baseline": {g: mx.summary(rule[(g, "test")], r_thr) for g in groups if (g, "test") in rule},
     }
-    pat = (binned.where((F.col("split") == "test") & (F.col("label") == 1))
-           .groupBy("pattern").agg(F.count("*").alias("n"), F.sum(F.when(F.col("raw") >= m_thr, 1).otherwise(0)).alias("caught"),
-                                   F.sum(F.when(F.col("rule_score") >= r_thr, 1).otherwise(0)).alias("caught_baseline"))
-           .collect())
-    report["recall_by_pattern"] = {r.pattern: {"test_rows": r.n, "model_recall": r.caught / r.n,
-                                               "baseline_recall": r.caught_baseline / r.n} for r in pat}
+    pat: dict[str, list[int]] = {}
+    for r in rows:
+        if r["split"] == "test" and r["pattern"] is not None and r["pos"]:
+            p = pat.setdefault(r["pattern"], [0, 0, 0])
+            p[0] += r["pos"]
+            p[1] += r["pos"] if r["bin"] >= m_thr else 0  # the curves' rule: flagged when the bin is at or above it
+            p[2] += r["pos"] if r["rule_score"] >= r_thr else 0
+    report["recall_by_pattern"] = {k: {"test_rows": n, "model_recall": c / n, "baseline_recall": b / n}
+                                   for k, (n, c, b) in pat.items()}
     report["valid_bins"] = [(float(s), int(p), int(n)) for s, p, n in
                             zip(model[(ALL, "valid")].upper, model[(ALL, "valid")].pos, model[(ALL, "valid")].neg, strict=True)]
     return report
@@ -275,8 +289,9 @@ def _calibrated_scorer(model_str: str, calibration: dict):
         import numpy as np
 
         booster = lgb.Booster(model_str=model_str)
+        names = booster.feature_name()
         for pdf in batches:
-            raw = booster.predict(pdf[list(FEATURES)])
+            raw = booster.predict(pdf[names])
             pdf["raw"] = raw
             pdf["score"] = np.interp(raw, calibration["x"], calibration["y"])
             yield pdf[["txn_id", "variant", "ts", "day", "from_account", "to_account", "raw", "score"]]
@@ -318,8 +333,10 @@ def score_main(argv: Sequence[str], spark: Any = None) -> int:
     except Exception:  # noqa: BLE001 - no M3 at this alias: alerts go out without a predicted pattern
         mv3, m3 = None, None
 
+    # each model reads its own feature list, so a champion trained before the feature set grew keeps working
+    m1_features = m1.feature_name()
     feats = _in(spark.table(m["features"]), vs)
-    scores = (feats.select("txn_id", "variant", "ts", "day", "from_account", "to_account", *FEATURES)
+    scores = (feats.select("txn_id", "variant", "ts", "day", "from_account", "to_account", *m1_features)
               .mapInPandas(_calibrated_scorer(m1.model_to_string(), calibration), SCORE_SCHEMA)
               .withColumn("m1_version", F.lit(mv1.version)))
     replace_variants(spark, scores, m["scores"], vs, ("variant", "day"))
@@ -335,12 +352,13 @@ def score_main(argv: Sequence[str], spark: Any = None) -> int:
     rank = F.row_number().over(Window.partitionBy("variant", "day").orderBy(F.desc("score"), "account_id"))
     top = (_in(spark.table(m["account_day"]), vs).withColumn("rank_in_day", rank)
            .where((F.col("rank_in_day") <= a.budget) & (F.col("score") >= a.min_score)))
-    alert_feats = top.join(feats.select(F.col("txn_id").alias("top_txn_id"), *FEATURES), "top_txn_id").toPandas()
+    needed = sorted(set(m1_features) | set(m3.feature_name() if m3 is not None else ()))
+    alert_feats = top.join(feats.select(F.col("txn_id").alias("top_txn_id"), *needed), "top_txn_id").toPandas()
     now = datetime.now(UTC).replace(tzinfo=None)
     rows = []
     if len(alert_feats):
         reasons = top_reasons(m1, alert_feats)
-        probs = m3.predict(alert_feats[list(FEATURES)]) if m3 is not None else None
+        probs = m3.predict(alert_feats[m3.feature_name()]) if m3 is not None else None
         for i, r in alert_feats.iterrows():
             pattern, p_pattern = (None, None)
             if probs is not None:

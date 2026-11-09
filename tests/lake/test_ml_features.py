@@ -8,12 +8,12 @@ import sample_data as sd
 from pyspark.sql import functions as F
 
 from trustnova_ml.baseline import RULES, rule_hits, rule_score
-from trustnova_ml.features import BANNED, FEATURES, assign_split, transaction_features
+from trustnova_ml.features import BANNED, ENTITY_TYPES, FEATURES, assign_split, transaction_features
 
 
 @pytest.fixture(scope="module")
 def feats(built):
-    return assign_split(transaction_features(built["tx"], built["edges"])).cache()
+    return assign_split(transaction_features(built["tx"], built["edges"], built["accounts"])).cache()
 
 
 def row_for(feats, built, raw, variant="HIS", nth=0):
@@ -90,6 +90,25 @@ def test_unusual_for_this_account_features(feats, built):
     assert r.s_format_first == 1.0              # its first cheque
     wire = [row_for(feats, built, sd.EURO_TO_USD[i]).s_format_first for i in (0, 1)]
     assert wire == [1.0, 0.0]
+
+
+def test_ach_flow_features(feats, built):
+    c = row_for(feats, built, sd.L_C_TO_A, variant="LIS")  # C got its first ACH from B at 08:30, then pays A by ACH
+    assert c.s_d0_ach_new_in == 1.0
+    a = row_for(feats, built, sd.L_CLOSE, variant="LIS")   # A got new ACH from C at 08:45 (the 09:00 cash doesn't count)
+    assert a.s_d0_ach_new_in == 1.0
+    assert row_for(feats, built, sd.L_LAUNDER, variant="LIS").s_d0_ach_new_in == 0.0  # 08:00: nothing yet
+    btc = row_for(feats, built, sd.T_BITCOIN)  # 8000AAA03 bought Bitcoin by ACH 22 times on 3 Sep, all self-transfers
+    assert (btc.s_p1_ach_out, btc.s_p1_ach_in) == (22.0, 22.0)
+    assert (btc.s_p1_ach_new_out, btc.s_p1_ach_new_in) == (0.0, 0.0)  # a self-transfer has no counterparty
+
+
+def test_owner_features(feats, built):
+    r = row_for(feats, built, sd.T_EURO_LOCAL)  # 8000AAA05 (owner 800E00001: two accounts at one bank) -> 8000AAA04
+    assert r.s_entity_type_code == float(ENTITY_TYPES.index("Corporation"))
+    assert (r.s_owner_n_accounts, r.s_owner_n_banks) == (2.0, 1.0)
+    assert r.r_entity_type_code == float(ENTITY_TYPES.index("Sole Proprietorship"))
+    assert (r.r_owner_n_accounts, r.r_owner_n_banks) == (1.0, 1.0)
 
 
 def test_temporal_split_per_simulation(feats):

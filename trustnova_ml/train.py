@@ -69,9 +69,9 @@ def calibrate(raw: np.ndarray, calibration: Mapping) -> np.ndarray:
 
 def top_reasons(booster: lgb.Booster, features: pd.DataFrame, k: int = 5) -> list[list[dict]]:
     """The k features pushing each row's score up the most (LightGBM's own per-feature contributions)."""
-    x = features[list(FEATURES)]
+    names = booster.feature_name()  # the model's own inputs, which may predate the current FEATURES
+    x = features[names]
     contrib = np.asarray(booster.predict(x, pred_contrib=True))[:, :-1]  # the last column is the bias term
-    names = booster.feature_name()
     values = x.to_numpy(dtype=float)
     out = []
     for r, row in enumerate(contrib):

@@ -15,6 +15,8 @@ def synthetic(n: int, seed: int) -> pd.DataFrame:
     rng = np.random.default_rng(seed)
     df = pd.DataFrame({f: rng.random(n) for f in FEATURES})
     df["payment_format_code"] = rng.integers(0, 7, n).astype(float)
+    df["s_entity_type_code"] = rng.integers(0, 4, n).astype(float)
+    df["r_entity_type_code"] = rng.integers(0, 4, n).astype(float)
     df["s_p1_cp_out"] = rng.poisson(1.0, n).astype(float)
     df["in_band"] = (rng.random(n) < 0.05).astype(float)
     logit = -6 + 1.2 * df["s_p1_cp_out"] + 3.0 * df["in_band"]
@@ -26,7 +28,7 @@ def synthetic(n: int, seed: int) -> pd.DataFrame:
 
 @pytest.fixture(scope="module")
 def data():
-    return synthetic(20000, 1), synthetic(8000, 2), synthetic(8000, 3)
+    return synthetic(40000, 1), synthetic(8000, 2), synthetic(8000, 3)
 
 
 @pytest.fixture(scope="module")
@@ -60,6 +62,22 @@ def test_reasons_name_the_features_that_raised_the_score(m1, data):
     assert len(reasons) == 3 and all(len(r) <= 5 for r in reasons)
     assert {"s_p1_cp_out", "in_band"} & {x["feature"] for x in reasons[0]}
     assert all(x["contribution"] > 0 for r in reasons for x in r)
+
+
+def test_a_model_trained_on_an_older_feature_list_still_scores_and_explains(data):
+    """Production scoring must keep working with the champion after FEATURES grows: models read their own inputs."""
+    import lightgbm as lgb
+
+    pytest.importorskip("pyspark")
+    from trustnova_ml.jobs import _scorer
+
+    train, _, test = data
+    old = [f for f in FEATURES if not f.endswith(("ach_new_in", "entity_type_code"))]
+    booster = lgb.train({"objective": "binary", "verbose": -1, "num_leaves": 7}, lgb.Dataset(train[old], train["label"]), 20)
+    rows = test.assign(variant="HIS", split="test", rule_score=0.0).head(50)
+    scored = next(_scorer(booster.model_to_string())(iter([rows.copy()])))
+    assert scored["raw"].to_numpy() == pytest.approx(booster.predict(rows[old]))
+    assert len(tr.top_reasons(booster, rows.head(3))) == 3
 
 
 def test_gate_requires_beating_the_baseline_everywhere():

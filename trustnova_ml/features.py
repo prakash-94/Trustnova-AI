@@ -12,6 +12,12 @@ Feature families
                    normal-looking traffic of busy accounts)
     multi-hop      money coming straight back (2-step), 3-step cycles through a low-degree intermediary, minutes
                    since money last came in, and the payment against what came in over the last day (pass-through)
+    ACH flow       ACH payments in and out, and those with a counterparty never seen before: the labelled laundering
+                   patterns move money by ACH between new pairs, so ACH arriving from new counterparties and then
+                   leaving again is the upstream half of a layering chain
+    owner          from the IBM accounts file: the owner's type (individual, sole proprietorship, partnership,
+                   corporation...) and how many accounts and banks it has. These are account-opening (KYC) facts, not
+                   activity, so they are the same at every point in time
 """
 
 from pyspark.sql import Column, DataFrame, Window
@@ -26,15 +32,19 @@ PAYMENT_FORMATS = ("ACH", "Bitcoin", "Cash", "Cheque", "Credit Card", "Reinvestm
 DAY = 86400
 
 DAILY_METRICS = ("n_out", "n_in", "usd_out", "usd_in", "cp_out", "cp_in", "band_out", "band_in", "cash_out",
-                 "crypto_out", "usd_out_sq", "usd_in_sq", "new_cp_out", "new_cp_in")
-INTRADAY = ("d0_n_out", "d0_n_in", "d0_usd_out", "d0_usd_in")
+                 "crypto_out", "usd_out_sq", "usd_in_sq", "new_cp_out", "new_cp_in",
+                 "ach_out", "ach_in", "ach_new_out", "ach_new_in")
+INTRADAY = ("d0_n_out", "d0_n_in", "d0_usd_out", "d0_usd_in", "d0_ach_new_in")
 DERIVED = ("amount_z_28d", "burst_vs_28d", "new_cp_share_7d", "format_first", "minutes_since_in", "vs_inflow_24h")
 SIDE_FEATURES = (*INTRADAY, *[f"p{w}_{m}" for w in WINDOW_DAYS for m in DAILY_METRICS], "account_age_days", *DERIVED)
 TXN_FEATURES = ("log_amount_usd", "payment_format_code", "currency_change", "cross_bank", "is_self_transfer",
                 "hour", "weekday", "in_band", "round_amount", "first_time_pair", "reverse_n_7d", "reverse_usd_7d",
                 "closes_3cycle_7d")
-FEATURES = (*TXN_FEATURES, *[f"s_{c}" for c in SIDE_FEATURES], *[f"r_{c}" for c in SIDE_FEATURES])
-CATEGORICAL = ("payment_format_code",)
+ENTITY_TYPES = ("Individual", "Sole Proprietorship", "Partnership", "Corporation", "Country", "Direct")
+OWNER_FEATURES = ("entity_type_code", "owner_n_accounts", "owner_n_banks")
+FEATURES = (*TXN_FEATURES, *[f"s_{c}" for c in SIDE_FEATURES], *[f"r_{c}" for c in SIDE_FEATURES],
+            *[f"s_{c}" for c in OWNER_FEATURES], *[f"r_{c}" for c in OWNER_FEATURES])
+CATEGORICAL = ("payment_format_code", "s_entity_type_code", "r_entity_type_code")
 BANNED = ("is_laundering", "attempt_id", "pattern_type", "variant", "entity_id", "entity_name")
 
 
@@ -56,6 +66,7 @@ def side_features(edges: DataFrame) -> DataFrame:
     """One row per (txn_id, direction): the account's history at the moment of that transaction."""
     out, inn = F.col("direction") == "out", F.col("direction") == "in"
     real = ~F.col("is_self_transfer")
+    ach = F.col("payment_format") == "ACH"
     usd = F.col("amount_usd").cast("double")
     e = with_time(edges)
 
@@ -70,6 +81,7 @@ def side_features(edges: DataFrame) -> DataFrame:
           .withColumn("d0_n_in", F.coalesce(F.sum(_flag(inn)).over(same_day_before), F.lit(0)))
           .withColumn("d0_usd_out", F.coalesce(F.sum(F.when(out, usd)).over(same_day_before), F.lit(0.0)))
           .withColumn("d0_usd_in", F.coalesce(F.sum(F.when(inn, usd)).over(same_day_before), F.lit(0.0)))
+          .withColumn("d0_ach_new_in", F.coalesce(F.sum(_flag(inn & ach & F.col("_new_cp"))).over(same_day_before), F.lit(0)))
           .withColumn("_d0_last_in", F.max(F.when(inn, F.col("sec"))).over(same_day_before)))
 
     band = (usd >= BAND_LOW_USD) & (usd < BAND_HIGH_USD)
@@ -88,6 +100,10 @@ def side_features(edges: DataFrame) -> DataFrame:
         F.coalesce(F.sum(F.when(inn, usd * usd)), F.lit(0.0)).alias("usd_in_sq"),
         F.sum(_flag(out & F.col("_new_cp"))).alias("new_cp_out"),
         F.sum(_flag(inn & F.col("_new_cp"))).alias("new_cp_in"),
+        F.sum(_flag(out & ach)).alias("ach_out"),
+        F.sum(_flag(inn & ach)).alias("ach_in"),
+        F.sum(_flag(out & ach & F.col("_new_cp"))).alias("ach_new_out"),
+        F.sum(_flag(inn & ach & F.col("_new_cp"))).alias("ach_new_in"),
         F.max(F.when(inn, F.col("sec"))).alias("_last_in"),
     )
     hist = daily
@@ -128,6 +144,21 @@ def _prefixed(sides: DataFrame, direction: str, prefix: str) -> DataFrame:
         "txn_id", *[F.col(c).alias(f"{prefix}{c}") for c in SIDE_FEATURES])
 
 
+def owner_attributes(accounts: DataFrame) -> DataFrame:
+    """One row per account: its owner's type and how many accounts and banks the owner has (in that simulation)."""
+    owners = accounts.groupBy("variant", "entity_id").agg(F.count("*").cast("double").alias("owner_n_accounts"),
+                                                         F.countDistinct("bank_id").cast("double").alias("owner_n_banks"))
+    code = F.coalesce(F.array_position(F.array(*[F.lit(t) for t in ENTITY_TYPES]), F.col("entity_type")) - 1, F.lit(-1))
+    return (accounts.join(owners, ["variant", "entity_id"])
+            .groupBy("account_id").agg(F.first(code.cast("double")).alias("entity_type_code"),
+                                       F.first("owner_n_accounts").alias("owner_n_accounts"),
+                                       F.first("owner_n_banks").alias("owner_n_banks")))
+
+
+def _owner(owners: DataFrame, key: str, prefix: str) -> DataFrame:
+    return owners.select(F.col("account_id").alias(key), *[F.col(c).alias(f"{prefix}{c}") for c in OWNER_FEATURES])
+
+
 def money_back(real: DataFrame) -> DataFrame:
     """2-step: an earlier transaction from this receiver to this sender within CYCLE_DAYS."""
     earlier_reverse = real.select(
@@ -160,7 +191,7 @@ def three_step_cycles(real: DataFrame) -> DataFrame:
             .groupBy("txn_id").agg(F.count("*").cast("double").alias("closes_3cycle_7d")))
 
 
-def transaction_features(tx: DataFrame, edges: DataFrame) -> DataFrame:
+def transaction_features(tx: DataFrame, edges: DataFrame, accounts: DataFrame) -> DataFrame:
     """All model features for every transaction, plus the keys needed downstream (no label)."""
     t = with_time(tx)
     usd = F.col("amount_paid_usd").cast("double")
@@ -183,11 +214,16 @@ def transaction_features(tx: DataFrame, edges: DataFrame) -> DataFrame:
     real = t.where(~F.col("is_self_transfer"))
     sides = side_features(edges)
     side_cols = [f"{p}{c}" for p in ("s_", "r_") for c in SIDE_FEATURES]
+    owners = owner_attributes(accounts)
     return (base.join(_prefixed(sides, "out", "s_"), "txn_id", "left")
             .join(_prefixed(sides, "in", "r_"), "txn_id", "left")
             .join(money_back(real), "txn_id", "left")
             .join(three_step_cycles(real), "txn_id", "left")
-            .fillna(0.0, subset=[*side_cols, "reverse_n_7d", "reverse_usd_7d", "closes_3cycle_7d"]))
+            .join(_owner(owners, "from_account", "s_"), "from_account", "left")
+            .join(_owner(owners, "to_account", "r_"), "to_account", "left")
+            .fillna(0.0, subset=[*side_cols, "reverse_n_7d", "reverse_usd_7d", "closes_3cycle_7d",
+                                 *[f"{p}{c}" for p in ("s_", "r_") for c in OWNER_FEATURES[1:]]])
+            .fillna(-1.0, subset=["s_entity_type_code", "r_entity_type_code"]))
 
 
 def assign_split(features: DataFrame, train: float = 0.6, valid: float = 0.8) -> DataFrame:

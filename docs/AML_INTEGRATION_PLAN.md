@@ -375,6 +375,32 @@ GenAI isn't used anywhere in this phase. Everything runs as Databricks Jobs in t
     - `OTHER` is still not detected. It needs different signals, not more rows.
     - LI simulations score about half as well as HI ones, because laundering is rarer there.
   - **Cost to fix next:** evaluation scores the 603M valid and test rows three times, once per query, because serverless compute can't cache. That's 80–90 minutes each time. Folding the three aggregations into one pass would cut training time by about 3 hours.
+- **Promoted (8 Nov 2026, approved by the user):** `trustnova_prod.ml.m1_transaction_risk` v1 and `m3_pattern_type` v1 are `@champion`.
+- **Round 3 (8 Nov 2026).**
+  - **Evaluation in one pass.** One grouped query (simulation, split, score bin, rule score, pattern) now feeds the model curve, the baseline curve and recall by pattern. That removes two of the three scoring passes.
+  - **Models read their own feature list** when scoring and explaining. A champion trained on an older feature set keeps working after the set grows.
+  - **What "Other" laundering is (staging data):**
+    - 34% of it comes from senders that sent "Other" laundering before.
+    - Only 1% follows laundering money that came into the sender. For patterned laundering this is 43%.
+    - Its most suspicious slice (first-time ACH from senders with 10 transactions or fewer) is still only 0.7% laundering.
+    - About 30% looks like routine repeat payments.
+    - It is largely indistinguishable from normal traffic, so features target the labelled patterns instead.
+  - **32 new features (151 in total):**
+    - ACH flow: ACH out and in, and ACH with a new counterparty, earlier today and over the previous 1, 7 and 28 days.
+    - Owner attributes: entity type, and the number of accounts and banks of the owner, from the IBM accounts file.
+  - **Staging v3 results vs v2:**
+
+    | | v2 | v3 |
+    |---|---|---|
+    | PR-AUC (HI-Small, LI-Small) | 0.514 (0.655, 0.274) | **0.562** (0.695, 0.325) |
+    | Precision / recall at threshold | 74% / 40% | 76% / 44% |
+    | Recall, top 0.5% | 69.7% | **77.8%** |
+    | M3 macro-F1 | 0.382 | **0.443** |
+    | `OTHER` recall | 1.5% | 2.7% |
+
+    - **Recall by pattern:** gather-scatter 82%, fan-out 81%, fan-in 76%, scatter-gather 67%, cycle 63% (all up); stack 54% and bipartite 40% (down from 57% and 55%; these are small test sets of 166 and 119 rows).
+    - **Weight of the new features:** ACH flow 7.5% of gain, owner 7.6% (`s_owner_n_accounts` 4.2%). `payment_format_code` falls to 27.7%.
+    - **Gate:** passed. Staging v3 is `@candidate`.
 
 **6. Governance and monitoring** (in the style of SR 11-7 model risk management).
 - **Documentation:** a model card and validation report for each registered version, covering data, features, metrics per variant and pattern, limitations and the known effects of combining all six files into one bank.
