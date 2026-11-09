@@ -401,6 +401,21 @@ GenAI isn't used anywhere in this phase. Everything runs as Databricks Jobs in t
     - **Recall by pattern:** gather-scatter 82%, fan-out 81%, fan-in 76%, scatter-gather 67%, cycle 63% (all up); stack 54% and bipartite 40% (down from 57% and 55%; these are small test sets of 166 and 119 rows).
     - **Weight of the new features:** ACH flow 7.5% of gain, owner 7.6% (`s_owner_n_accounts` 4.2%). `payment_format_code` falls to 27.7%.
     - **Gate:** passed. Staging v3 is `@candidate`.
+  - **Production v2 results vs the v1 champion** (all six simulations; 86.2M test rows, 113,605 laundering; 199 minutes for features, training and evaluation):
+
+    | | v1 (champion) | v2 |
+    |---|---|---|
+    | PR-AUC | 0.614 | **0.644** |
+    | Precision / recall at threshold | 85.6% / 50.0% | **88.4% / 51.6%** |
+    | F1 | 0.631 | **0.652** |
+    | Recall, top 0.1% / 0.5% | 53.9% / 74.5% | **55.9% / 79.5%** |
+    | PR-AUC HIS / HIM / HIL | 0.738 / 0.768 / 0.713 | **0.762 / 0.788 / 0.740** |
+    | PR-AUC LIS / LIM / LIL | 0.366 / 0.412 / 0.298 | **0.395 / 0.440 / 0.327** |
+    | M3 macro-F1 / accuracy | 0.463 / 65.8% | **0.502 / 68.5%** |
+
+    - **Recall by pattern (v1 → v2):** fan-out 87 → 90%, gather-scatter 86 → 89%, fan-in 86 → 88%, scatter-gather 85 → 88%, cycle 73 → 80%, random 71 → 79%, stack 69 → 70%, bipartite 69 → 64% (down), Other 0.9 → 0.8%.
+    - **Weight of the new features:** ACH flow 8.4% of gain, owner 4.4%. `payment_format_code` 35.2%, `first_time_pair` 12.0%. 1,201 trees.
+    - **Gate:** passed. Production v2 is `@candidate`; v1 stays `@champion` until promotion is approved.
 
 **6. Governance and monitoring** (in the style of SR 11-7 model risk management).
 - **Documentation:** a model card and validation report for each registered version, covering data, features, metrics per variant and pattern, limitations and the known effects of combining all six files into one bank.
