@@ -427,6 +427,20 @@ GenAI isn't used anywhere in this phase. Everything runs as Databricks Jobs in t
     - *Pass-through* (`pt_`): matching amounts received within 5% and 20% over 7 days, the closest and most recent match, and the chain of best matches followed back up to 6 hops, including whether it started at this payment's receiver (cycles of up to 7 accounts).
     - *Owner activity* (`so_` and `ro_`): account-style history summed over all of an owner's accounts, plus how many of them were active in the previous 7 days. Transfers between an owner's own accounts count as self-transfers.
     - Intermediate results go to scratch tables `<catalog>.ml.tmp_*`, so they are computed once.
+  - **Staging v4 results vs v3** (HIS and LIS, 8 minutes for features and training):
+
+    | | v3 | v4 |
+    |---|---|---|
+    | PR-AUC (HI-Small, LI-Small) | 0.562 (0.695, 0.325) | **0.589** (0.719, 0.348) |
+    | Precision / recall at threshold | 75.7% / 43.8% | **86.6%** / 42.8% |
+    | F1 | 0.555 | **0.573** |
+    | Recall, top 0.1% / 0.5% | 50.3% / 77.8% | **51.8% / 79.5%** |
+    | M3 macro-F1 / accuracy | 0.443 / 65.3% | **0.498 / 68.5%** |
+
+    - **Recall by pattern (v3 → v4):** random 50 → 63%, scatter-gather 67 → 72%, cycle 63 → 66%, stack 54 → 55%; gather-scatter 82 → 79%, fan-out 81 → 76%, fan-in 76 → 70%, bipartite 40 → 31%, Other 2.7 → 1.3%. The staging test sets are small (110–477 rows per pattern), so moves of a few points are within noise.
+    - **The features are filled in correctly.** On HIS, a payment matches an amount received in the last 7 days (within 5%) for 47% of cycle and 49% of random laundering, against 2.4% of normal payments. The average chain length is 2.5 hops for cycles against 0.09 for normal payments.
+    - **Weight in the model:** owner activity 7.3% of gain (`so_d0_n_out` 1.5%), pass-through 0.8%. Staging trains on only 4,110 laundering rows, so the production run (190,000) is the real test.
+    - **Gate:** passed. Staging v4 is `@candidate`.
   - **Next:** remember recent risk (a two-stage model), shared funders (check its signal against normal traffic first), and an optional re-score after 24 hours.
 
 **6. Governance and monitoring** (in the style of SR 11-7 model risk management).
