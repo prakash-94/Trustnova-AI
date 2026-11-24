@@ -54,8 +54,15 @@ def features_main(argv: Sequence[str], spark: Any = None) -> int:
     a = _args(argv, "ml-features")
     spark = _spark(spark)
     t, m, vs = tables(a.catalog), ml_tables(a.catalog), a.variant_list
+
+    def scratch(df: DataFrame, name: str) -> DataFrame:
+        """Intermediate results read more than once go to a scratch table (serverless Spark cannot cache)."""
+        table = f"{a.catalog}.ml.tmp_{name}"
+        df.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(table)
+        return spark.table(table)
+
     feats = assign_split(transaction_features(_in(spark.table(t["transactions"]), vs), _in(spark.table(t["edges"]), vs),
-                                              _in(spark.table(t["accounts"]), vs)))
+                                              _in(spark.table(t["accounts"]), vs), scratch))
     replace_variants(spark, feats, m["features"], vs, ("variant", "split"))
     print(f"features written for {vs}", flush=True)
     return 0

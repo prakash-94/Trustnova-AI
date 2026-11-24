@@ -13,7 +13,8 @@ from trustnova_ml.features import BANNED, ENTITY_TYPES, FEATURES, assign_split, 
 
 @pytest.fixture(scope="module")
 def feats(built):
-    return assign_split(transaction_features(built["tx"], built["edges"], built["accounts"])).cache()
+    checkpoint = lambda df, name: df.localCheckpoint()  # the jobs write these to scratch tables instead
+    return assign_split(transaction_features(built["tx"], built["edges"], built["accounts"], checkpoint)).cache()
 
 
 def row_for(feats, built, raw, variant="HIS", nth=0):

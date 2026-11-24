@@ -38,6 +38,7 @@ def spark():
          .config("spark.default.parallelism", "1")  # the sample is tiny; fewer tasks = fewer slow Python-worker starts
          .config("spark.sql.session.timeZone", "UTC")
          .config("spark.sql.ansi.enabled", "true")  # as on Databricks serverless
+         .config("spark.driver.memory", "3g")  # the full feature plan is large
          .getOrCreate())
     s.sparkContext.setLogLevel("ERROR")
     yield s

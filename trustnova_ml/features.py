@@ -18,10 +18,23 @@ Feature families
     owner          from the IBM accounts file: the owner's type (individual, sole proprietorship, partnership,
                    corporation...) and how many accounts and banks it has. These are account-opening (KYC) facts, not
                    activity, so they are the same at every point in time
+    owner activity (so_ sender's owner, ro_ receiver's owner) the same history as an account's, but summed over every
+                   account the owner holds: one launderer spreading a pattern over many accounts keeps each account
+                   quiet, while the owner as a whole is busy. Transfers between two accounts of the same owner count
+                   as self-transfers (no counterparty), and an account missing from the accounts file is its own owner
+    pass-through   (pt_) money received recently and sent on at almost the same amount, the signature of cycles,
+                   random walks and stacks (IBM keeps the amount within a few percent along a chain): matches within
+                   5% and 20% over the last 7 days, how close and how recent the best match is, how many hops the
+                   chain of best matches runs back (up to PT_CHAIN_HOPS) and whether it started at this payment's
+                   receiver, i.e. the money is going home (cycles of up to PT_CHAIN_HOPS + 1 accounts)
 """
+
+from collections.abc import Callable
 
 from pyspark.sql import Column, DataFrame, Window
 from pyspark.sql import functions as F
+
+Materialize = Callable[[DataFrame, str], DataFrame]
 
 EPOCH = "2022-01-01"
 WINDOW_DAYS = (1, 7, 28)
@@ -42,8 +55,19 @@ TXN_FEATURES = ("log_amount_usd", "payment_format_code", "currency_change", "cro
                 "closes_3cycle_7d")
 ENTITY_TYPES = ("Individual", "Sole Proprietorship", "Partnership", "Corporation", "Country", "Direct")
 OWNER_FEATURES = ("entity_type_code", "owner_n_accounts", "owner_n_banks")
+# the owner's history: a subset of SIDE_FEATURES (computed the same way) plus how many of its accounts were active
+OWNER_HISTORY = ("d0_n_out", "d0_n_in", "p1_n_out", "p7_n_out", "p7_n_in", "p7_cp_out", "p7_new_cp_out",
+                 "p7_ach_new_out", "p7_ach_new_in")
+OWNER_ACTIVITY = (*OWNER_HISTORY, "n_accounts_active_7d")
+PT_DAYS = 7
+PT_CLOSE, PT_LOOSE = 0.05, 0.20        # an amount within 5% / 20% of what came in
+PT_CHAIN_HOPS = 6                       # how far back a chain of matches is followed
+MAX_PASS_THROUGH_TXNS = 2000            # hub accounts (more transactions than this) are skipped, as for 3-step cycles
+PASS_THROUGH = ("pt_match_5pct", "pt_match_20pct", "pt_best_gap", "pt_minutes_since_match", "pt_chain_len",
+                "pt_chain_returns")
 FEATURES = (*TXN_FEATURES, *[f"s_{c}" for c in SIDE_FEATURES], *[f"r_{c}" for c in SIDE_FEATURES],
-            *[f"s_{c}" for c in OWNER_FEATURES], *[f"r_{c}" for c in OWNER_FEATURES])
+            *[f"s_{c}" for c in OWNER_FEATURES], *[f"r_{c}" for c in OWNER_FEATURES],
+            *[f"so_{c}" for c in OWNER_ACTIVITY], *[f"ro_{c}" for c in OWNER_ACTIVITY], *PASS_THROUGH)
 CATEGORICAL = ("payment_format_code", "s_entity_type_code", "r_entity_type_code")
 BANNED = ("is_laundering", "attempt_id", "pattern_type", "variant", "entity_id", "entity_name")
 
@@ -159,6 +183,99 @@ def _owner(owners: DataFrame, key: str, prefix: str) -> DataFrame:
     return owners.select(F.col("account_id").alias(key), *[F.col(c).alias(f"{prefix}{c}") for c in OWNER_FEATURES])
 
 
+def owner_activity(edges: DataFrame, accounts: DataFrame) -> DataFrame:
+    """One row per (txn_id, direction): the history of the account's OWNER (all its accounts together) at the moment
+    of the transaction. Built by re-keying every edge from account to owner and reusing `side_features`, so owner
+    history follows exactly the same point-in-time rules as account history."""
+    own = accounts.select("variant", "account_id", F.col("entity_id").alias("_owner"))
+    cp_own = own.select("variant", F.col("account_id").alias("counterparty_id"), F.col("_owner").alias("_cp_owner"))
+    e = (edges.join(own, ["variant", "account_id"], "left").join(cp_own, ["variant", "counterparty_id"], "left")
+         .withColumn("_owner", F.coalesce("_owner", "account_id"))
+         .withColumn("_cp_owner", F.coalesce("_cp_owner", "counterparty_id")))
+    by_owner = e.select(
+        F.col("_owner").alias("account_id"), "counterparty_id", "direction", "amount_usd", "ts", "payment_format",
+        (F.col("is_self_transfer") | (F.col("_owner") == F.col("_cp_owner"))).alias("is_self_transfer"),
+        "txn_id", "variant", F.col("account_id").alias("_account"))
+    history = side_features(by_owner).select("txn_id", "direction", *OWNER_HISTORY)
+
+    # how many of the owner's accounts paid out (or received) on any of the previous 7 whole days
+    timed = with_time(by_owner).select("variant", F.col("account_id").alias("_owner"), "direction", "day", "_account")
+    account_days = timed.distinct()
+    owner_days = timed.select("variant", "_owner", "direction", "day").distinct()
+    active = (owner_days.alias("o").join(
+                  account_days.alias("a"),
+                  (F.col("o.variant") == F.col("a.variant")) & (F.col("o._owner") == F.col("a._owner"))
+                  & (F.col("o.direction") == F.col("a.direction"))
+                  & (F.col("a.day") >= F.col("o.day") - 7) & (F.col("a.day") < F.col("o.day")))
+              .groupBy("o.variant", "o._owner", "o.direction", "o.day")
+              .agg(F.countDistinct("a._account").cast("double").alias("n_accounts_active_7d")))
+    per_txn = (with_time(by_owner).select("txn_id", "variant", F.col("account_id").alias("_owner"), "direction", "day")
+               .join(active, ["variant", "_owner", "direction", "day"], "left")
+               .select("txn_id", "direction", F.coalesce("n_accounts_active_7d", F.lit(0.0)).alias("n_accounts_active_7d")))
+    return history.join(per_txn, ["txn_id", "direction"])
+
+
+def _owner_side(activity: DataFrame, direction: str, prefix: str) -> DataFrame:
+    return activity.where(F.col("direction") == direction).select(
+        "txn_id", *[F.col(c).cast("double").alias(f"{prefix}{c}") for c in OWNER_ACTIVITY])
+
+
+def _same(df: DataFrame, name: str) -> DataFrame:
+    return df
+
+
+def pass_through(real: DataFrame, materialize: Materialize = _same) -> DataFrame:
+    """For each payment A->B: money A received from someone other than B in the previous PT_DAYS at almost the same
+    amount (received USD against paid USD), and the chain of such best matches running back from it.
+
+    Candidate matches are found by an equi-join on (account, amount bucket): buckets are PT_LOOSE wide on a log scale
+    and each incoming payment is offered to its own and both neighbouring buckets, so every pair within PT_LOOSE meets
+    at least once (duplicates are removed). Hub accounts are skipped to keep the join bounded."""
+    deg = (real.select("variant", F.col("from_account").alias("a"))
+           .unionByName(real.select("variant", F.col("to_account").alias("a")))
+           .groupBy("variant", "a").count().where(F.col("count") <= MAX_PASS_THROUGH_TXNS).select("variant", "a"))
+    bucket = lambda c: F.floor(F.log(F.greatest(c, F.lit(0.01))) / F.log(F.lit(1 + PT_LOOSE))).cast("long")
+    out_usd, in_usd = F.col("amount_paid_usd").cast("double"), F.col("amount_received_usd").cast("double")
+    outs = (real.select("txn_id", "variant", F.col("from_account").alias("a"), F.col("to_account").alias("b"), "sec",
+                        out_usd.alias("out_usd"))
+            .join(deg, ["variant", "a"]).withColumn("bucket", bucket(F.col("out_usd"))))
+    ins = (real.select(F.col("txn_id").alias("in_txn"), "variant", F.col("to_account").alias("a"),
+                       F.col("from_account").alias("in_from"), F.col("sec").alias("in_sec"), in_usd.alias("in_usd"))
+           .join(deg, ["variant", "a"])
+           .withColumn("bucket", F.explode(F.array(*[bucket(F.col("in_usd")) + k for k in (-1, 0, 1)]))))
+    gap = F.abs(F.col("in_usd") - F.col("out_usd")) / F.greatest(F.col("out_usd"), F.lit(0.01))
+    pairs = (outs.join(ins, ["variant", "a", "bucket"])
+             .where((F.col("in_sec") < F.col("sec")) & (F.col("in_sec") >= F.col("sec") - PT_DAYS * DAY)
+                    & (F.col("in_from") != F.col("b")))
+             .withColumn("gap", gap).where(F.col("gap") <= PT_LOOSE)
+             .select("txn_id", "in_txn", "in_from", "in_sec", "sec", "gap").distinct())
+    pairs = materialize(pairs, "pt_pairs")  # read by the statistics and by every step of the chain below
+    stats = pairs.groupBy("txn_id").agg(
+        F.sum(_flag(F.col("gap") <= PT_CLOSE)).cast("double").alias("pt_match_5pct"),
+        F.count("*").cast("double").alias("pt_match_20pct"),
+        F.min("gap").cast("double").alias("pt_best_gap"),
+        ((F.min(F.col("sec") - F.col("in_sec"))) / 60).cast("double").alias("pt_minutes_since_match"))
+
+    # chain: each payment links to its single best match (closest amount, then most recent); follow the links back
+    best = (pairs.withColumn("_r", F.row_number().over(Window.partitionBy("txn_id").orderBy("gap", F.desc("in_sec"), "in_txn")))
+            .where(F.col("_r") == 1).select("txn_id", F.col("in_txn").alias("parent"), F.col("in_from").alias("parent_from")))
+    best = materialize(best, "pt_links")
+    chain = best.select("txn_id", F.lit(1).alias("pt_chain_len"), F.array("parent_from").alias("_senders"),
+                        F.col("parent").alias("_next"))
+    for _ in range(PT_CHAIN_HOPS - 1):
+        step = best.select(F.col("txn_id").alias("_next"), F.col("parent").alias("_nn"), F.col("parent_from").alias("_pf"))
+        chain = (chain.join(step, "_next", "left")
+                 .select("txn_id",
+                         (F.col("pt_chain_len") + _flag(F.col("_nn").isNotNull())).alias("pt_chain_len"),
+                         F.when(F.col("_nn").isNotNull(), F.concat("_senders", F.array("_pf"))).otherwise(F.col("_senders")).alias("_senders"),
+                         F.col("_nn").alias("_next")))
+    receivers = real.select("txn_id", F.col("to_account").alias("_b"))
+    chain = (chain.join(receivers, "txn_id")
+             .select("txn_id", F.col("pt_chain_len").cast("double"),
+                     _flag(F.array_contains("_senders", F.col("_b"))).cast("double").alias("pt_chain_returns")))
+    return stats.join(chain, "txn_id", "left")
+
+
 def money_back(real: DataFrame) -> DataFrame:
     """2-step: an earlier transaction from this receiver to this sender within CYCLE_DAYS."""
     earlier_reverse = real.select(
@@ -191,8 +308,13 @@ def three_step_cycles(real: DataFrame) -> DataFrame:
             .groupBy("txn_id").agg(F.count("*").cast("double").alias("closes_3cycle_7d")))
 
 
-def transaction_features(tx: DataFrame, edges: DataFrame, accounts: DataFrame) -> DataFrame:
-    """All model features for every transaction, plus the keys needed downstream (no label)."""
+def transaction_features(tx: DataFrame, edges: DataFrame, accounts: DataFrame,
+                         materialize: Materialize = _same) -> DataFrame:
+    """All model features for every transaction, plus the keys needed downstream (no label).
+
+    `materialize(df, name)` saves an intermediate result that is read more than once and returns it re-read, so it is
+    computed once and the query plan stays small: the jobs write it to a scratch table (serverless Spark cannot
+    cache), tests checkpoint it in memory. The default keeps everything in one plan."""
     t = with_time(tx)
     usd = F.col("amount_paid_usd").cast("double")
     fmt_code = F.coalesce(F.array_position(F.array(*[F.lit(f) for f in PAYMENT_FORMATS]), F.col("payment_format")) - 1,
@@ -215,15 +337,22 @@ def transaction_features(tx: DataFrame, edges: DataFrame, accounts: DataFrame) -
     sides = side_features(edges)
     side_cols = [f"{p}{c}" for p in ("s_", "r_") for c in SIDE_FEATURES]
     owners = owner_attributes(accounts)
+    activity = materialize(owner_activity(edges, accounts), "owner_activity")
+    owner_cols = [f"{p}{c}" for p in ("so_", "ro_") for c in OWNER_ACTIVITY]
     return (base.join(_prefixed(sides, "out", "s_"), "txn_id", "left")
             .join(_prefixed(sides, "in", "r_"), "txn_id", "left")
             .join(money_back(real), "txn_id", "left")
             .join(three_step_cycles(real), "txn_id", "left")
+            .join(pass_through(real, materialize), "txn_id", "left")
             .join(_owner(owners, "from_account", "s_"), "from_account", "left")
             .join(_owner(owners, "to_account", "r_"), "to_account", "left")
+            .join(_owner_side(activity, "out", "so_"), "txn_id", "left")
+            .join(_owner_side(activity, "in", "ro_"), "txn_id", "left")
             .fillna(0.0, subset=[*side_cols, "reverse_n_7d", "reverse_usd_7d", "closes_3cycle_7d",
-                                 *[f"{p}{c}" for p in ("s_", "r_") for c in OWNER_FEATURES[1:]]])
-            .fillna(-1.0, subset=["s_entity_type_code", "r_entity_type_code"]))
+                                 *[f"{p}{c}" for p in ("s_", "r_") for c in OWNER_FEATURES[1:]], *owner_cols,
+                                 "pt_match_5pct", "pt_match_20pct", "pt_chain_len", "pt_chain_returns"])
+            .fillna(1.0, subset=["pt_best_gap"])
+            .fillna(-1.0, subset=["s_entity_type_code", "r_entity_type_code", "pt_minutes_since_match"]))
 
 
 def assign_split(features: DataFrame, train: float = 0.6, valid: float = 0.8) -> DataFrame:

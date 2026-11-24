@@ -416,6 +416,18 @@ GenAI isn't used anywhere in this phase. Everything runs as Databricks Jobs in t
     - **Recall by pattern (v1 → v2):** fan-out 87 → 90%, gather-scatter 86 → 89%, fan-in 86 → 88%, scatter-gather 85 → 88%, cycle 73 → 80%, random 71 → 79%, stack 69 → 70%, bipartite 69 → 64% (down), Other 0.9 → 0.8%.
     - **Weight of the new features:** ACH flow 8.4% of gain, owner 4.4%. `payment_format_code` 35.2%, `first_time_pair` 12.0%. 1,201 trees.
     - **Gate:** passed. Production v2 is `@candidate`; v1 stays `@champion` until promotion is approved.
+- **Round 4 (Nov 2026): what v2 misses, and new features.**
+  - **Miss analysis** (v2 on the test laundering of HIS, HIM, LIS, LIM; 17,149 rows):
+    - Lowest recall: bipartite 47–59% and stack 61–72%. "Other" is about 0%, and it is 76% of all missed laundering.
+    - 65% of missed pattern transactions come after another transaction of the same attempt was already caught. 54% fall in the first 24 hours of an attempt.
+    - Cycle, random and stack keep the amount almost the same from hop to hop (spread within an attempt about 5%). A matching amount received in the previous 7 days (within 5%) is found for 47–49% of cycle and random payments and 38% of stack, against 7% of normal ones.
+    - Missed pattern rows come from owners with a median of 8 accounts (caught rows: 3).
+    - "Other" is mostly criminals spending their own funds. Its senders rarely received laundering money before (1.3%, normal 0.5%). It is weakly linked to receivers whose owner was in a pattern earlier (15%, normal 4.3%).
+  - **New features (26, 177 in total; not trained yet):**
+    - *Pass-through* (`pt_`): matching amounts received within 5% and 20% over 7 days, the closest and most recent match, and the chain of best matches followed back up to 6 hops, including whether it started at this payment's receiver (cycles of up to 7 accounts).
+    - *Owner activity* (`so_` and `ro_`): account-style history summed over all of an owner's accounts, plus how many of them were active in the previous 7 days. Transfers between an owner's own accounts count as self-transfers.
+    - Intermediate results go to scratch tables `<catalog>.ml.tmp_*`, so they are computed once.
+  - **Next:** remember recent risk (a two-stage model), shared funders (check its signal against normal traffic first), and an optional re-score after 24 hours.
 
 **6. Governance and monitoring** (in the style of SR 11-7 model risk management).
 - **Documentation:** a model card and validation report for each registered version, covering data, features, metrics per variant and pattern, limitations and the known effects of combining all six files into one bank.
