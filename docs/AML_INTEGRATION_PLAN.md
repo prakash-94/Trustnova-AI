@@ -455,7 +455,7 @@ GenAI isn't used anywhere in this phase. Everything runs as Databricks Jobs in t
     - **PR-AUC per simulation (v2 → v3):** HIS .762 → .774, HIM .788 → .801, HIL .740 → .746, LIS .395 → .415, LIM .440 → .450, LIL .327 → .339. Every simulation improved.
     - **Recall by pattern (v2 → v3):** cycle 80 → 84%, random 79 → 84%, bipartite 64 → 65%, stack 70 → 71%, fan-out 90 → 90%, fan-in 88 → 88%, gather-scatter 89 → 88%, scatter-gather 88 → 88%, Other 0.8 → 1.8%. The two patterns the pass-through features targeted (cycle, random) gained the most.
     - **Weight in the model:** owner activity 5.1% of gain (`so_d0_n_out` 2.1%), pass-through 0.5% (almost all `pt_best_gap`). The chain features carry almost no weight: other features already capture most of what they know.
-    - **Gate:** passed. `m1_transaction_risk` v3 and `m3_pattern_type` v3 are `@candidate`, awaiting approval.
+    - **Gate:** passed. **Approved by the user and promoted on 24 Nov 2026:** `m1_transaction_risk` v3 and `m3_pattern_type` v3 are now `@champion` (replacing v1; v2 was skipped).
   - **Next:** remember recent risk (a two-stage model), shared funders (check its signal against normal traffic first), and an optional re-score after 24 hours.
 
 **6. Governance and monitoring** (in the style of SR 11-7 model risk management).

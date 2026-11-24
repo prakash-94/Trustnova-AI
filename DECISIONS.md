@@ -116,6 +116,13 @@ Each entry: **Decision**, then *Why*, *Rejected*, and *What broke / what we lear
   - shared-funder features for bipartite (signal not yet checked against normal traffic)
   - a 24-hour delayed re-score (alerts would arrive up to a day later; needs a product decision)
 
+### 3.10 Promote production v3 to champion, skipping v2 (24 Nov 2026)
+- **Decision:** the user approved making v3 (both M1 risk and M3 pattern type) the live `@champion`, replacing v1.
+- **Why:** v3 beat v1 and v2 on every overall measure and in all six simulations (PR-AUC 0.652 vs 0.614 for v1; precision 89.7%, recall 52.3%). Cycle and random laundering, the targets of the new features, gained the most (+4–5 points). Nothing got meaningfully worse.
+- **Rejected:** promoting v2 first. There was no reason to put a weaker model live in between.
+- **Cost we accepted:** a production training run now takes about 5.5 hours instead of 3.3, because the pass-through features are expensive to build.
+- **What we learned:** the long chain-following features carry almost no weight; the simple "closest matching amount" does the work. If training time becomes a problem, the chain is the first thing to cut.
+
 ---
 
 ## 4. Engineering practice
