@@ -441,6 +441,21 @@ GenAI isn't used anywhere in this phase. Everything runs as Databricks Jobs in t
     - **The features are filled in correctly.** On HIS, a payment matches an amount received in the last 7 days (within 5%) for 47% of cycle and 49% of random laundering, against 2.4% of normal payments. The average chain length is 2.5 hops for cycles against 0.09 for normal payments.
     - **Weight in the model:** owner activity 7.3% of gain (`so_d0_n_out` 1.5%), pass-through 0.8%. Staging trains on only 4,110 laundering rows, so the production run (190,000) is the real test.
     - **Gate:** passed. Staging v4 is `@candidate`.
+  - **Production v3 results** (all six simulations, 86M test rows, 334 minutes; v1 is the `@champion`, v2 was never promoted):
+
+    | | v1 (champion) | v2 | v3 |
+    |---|---|---|---|
+    | PR-AUC | 0.614 | 0.644 | **0.652** |
+    | Precision / recall at threshold | 85.6% / 50.0% | 88.4% / 51.6% | **89.7% / 52.3%** |
+    | F1 | 0.631 | 0.652 | **0.661** |
+    | Recall, top 0.5% | 74.5% | 79.5% | **80.2%** |
+    | Recall, top 0.1% | — | 55.9% | **56.4%** |
+    | M3 macro-F1 / accuracy | — | 0.502 / 68.5% | **0.512 / 69.2%** |
+
+    - **PR-AUC per simulation (v2 → v3):** HIS .762 → .774, HIM .788 → .801, HIL .740 → .746, LIS .395 → .415, LIM .440 → .450, LIL .327 → .339. Every simulation improved.
+    - **Recall by pattern (v2 → v3):** cycle 80 → 84%, random 79 → 84%, bipartite 64 → 65%, stack 70 → 71%, fan-out 90 → 90%, fan-in 88 → 88%, gather-scatter 89 → 88%, scatter-gather 88 → 88%, Other 0.8 → 1.8%. The two patterns the pass-through features targeted (cycle, random) gained the most.
+    - **Weight in the model:** owner activity 5.1% of gain (`so_d0_n_out` 2.1%), pass-through 0.5% (almost all `pt_best_gap`). The chain features carry almost no weight: other features already capture most of what they know.
+    - **Gate:** passed. `m1_transaction_risk` v3 and `m3_pattern_type` v3 are `@candidate`, awaiting approval.
   - **Next:** remember recent risk (a two-stage model), shared funders (check its signal against normal traffic first), and an optional re-score after 24 hours.
 
 **6. Governance and monitoring** (in the style of SR 11-7 model risk management).
