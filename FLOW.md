@@ -87,7 +87,7 @@ ml.txn_scores, ml.account_day_scores, ml.ml_alerts   (score, top reasons, model 
 
 - **Why "point-in-time":** in production you only know the past. Every feature uses activity strictly before the payment's own minute, and tests check that removing later data changes nothing.
 - **Why a gate and a person:** a model can look good on average and still fail on one simulation; the gate checks each one, and a human signs off.
-- **Status:** `ml_score` has never been run yet.
+- **Status:** the first production scoring run (24 Nov 2026, champion v3, 108 minutes) wrote 9,822 alerts. See `docs/AML_INTEGRATION_PLAN.md` for what they contain.
 
 ---
 

@@ -456,6 +456,13 @@ GenAI isn't used anywhere in this phase. Everything runs as Databricks Jobs in t
     - **Recall by pattern (v2 → v3):** cycle 80 → 84%, random 79 → 84%, bipartite 64 → 65%, stack 70 → 71%, fan-out 90 → 90%, fan-in 88 → 88%, gather-scatter 89 → 88%, scatter-gather 88 → 88%, Other 0.8 → 1.8%. The two patterns the pass-through features targeted (cycle, random) gained the most.
     - **Weight in the model:** owner activity 5.1% of gain (`so_d0_n_out` 2.1%), pass-through 0.5% (almost all `pt_best_gap`). The chain features carry almost no weight: other features already capture most of what they know.
     - **Gate:** passed. **Approved by the user and promoted on 24 Nov 2026:** `m1_transaction_risk` v3 and `m3_pattern_type` v3 are now `@champion` (replacing v1; v2 was skipped).
+  - **First production scoring run** (24 Nov 2026, `ml_score` with champion v3, 108 minutes): scored every transaction in all six simulations and wrote **9,822 alerts** (the top 25 accounts per simulation per day) to `trustnova_prod.ml.ml_alerts`.
+    - **Accuracy on the test period** (labels used only to measure): 99–100% of alerts are accounts that really took part in laundering that day, in every simulation.
+    - **Busy days vs quiet days:** the IBM data ends with a long tail of quiet days where about 60% of the few remaining payments are laundering. 3,672 of the 4,894 test-period alerts fall on those quiet days, where finding laundering is easy. On normal busy days (about 1.9M payments a day in the Large simulations) the top 25 are still 97–100% laundering.
+    - **The budget is the limit, not the model:** a busy HI-Large day has about 2,400 laundering payments, and 25 alerts can only cover a small part of them. The budget is a staffing choice.
+    - **Predicted pattern (M3) on alerts is weak:** right 48% of the time (gather-scatter 91%, fan-out only 15%), lower than the 69% on all laundering. The typology agent must treat it as a hint, never as a fact.
+    - **Typical reasons:** an ACH payment, an amount matching one just received (`pt_best_gap` = 0), a first payment between the two accounts, and a long pass-through chain.
+    - **Alerts on training-period days** are less accurate (76–98%) and don't count as a test, because the model learned from those days.
   - **Next:** remember recent risk (a two-stage model), shared funders (check its signal against normal traffic first), and an optional re-score after 24 hours.
 
 **6. Governance and monitoring** (in the style of SR 11-7 model risk management).
