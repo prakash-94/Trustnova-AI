@@ -109,7 +109,7 @@ evidence ──► typology ──► narrative ──► faithfulness ──►
 | faithfulness | `guardrails/faithfulness.py` | A second LLM must quote evidence for every sentence |
 | conclude | `investigation.py` (`decide_outcome`) | Ends in `draft_ready` (needs a human), `no_action`, `incomplete` (a source was down, which is never treated as "all clear") or `failed` |
 
-A person always makes the final decision (`databricks/notebooks/review`).
+A person always makes the final decision (`databricks/notebooks/review.py`).
 
 ---
 
