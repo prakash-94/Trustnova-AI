@@ -2,6 +2,15 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## The project in two minutes
+
+TrustNova AI is a banking copilot for bank staff: relationship managers, fraud, KYC and AML (anti-money-laundering) analysts, executives. It has three working parts:
+1. **An AI chat assistant** that answers questions from the bank's own data and policy documents (RAG), respects each of 13 roles' permissions, and shows a trust score with every answer.
+2. **A machine-learning detector** trained on IBM's public AML dataset: 430 million transactions across six simulated banks. It scores every payment for laundering risk using only information available at the time of the payment. On all six simulations it catches 79% of laundering within the riskiest 0.5% of payments, with 88% precision at its alert threshold (production v2).
+3. **An AML investigation copilot** that takes a flagged account, gathers evidence, matches it to laundering typologies, drafts a Suspicious Activity Report, and fact-checks every sentence. A human always makes the final decision.
+
+The key design rule: **models decide, GenAI explains.** Detection is a measurable, auditable model; LLMs only gather, explain and document. Reasons for every choice are in `DECISIONS.md`; how a request moves through the code is in `FLOW.md`.
+
 ## What this repo is
 
 One product made of four codebases that are being merged (plan and status: `docs/AML_INTEGRATION_PLAN.md`, the source of truth for phases, decisions and ML results):
@@ -76,6 +85,13 @@ Production ML training takes ~3.3 h (features ~1 h, training + one-pass evaluati
 **TrustNova backend (`src`)**: `src/api/main.py` mounts the route modules in `src/api/routes/`; auth/RBAC is `src/api/auth.py`. Note `require_permission` matches on the resource prefix (so `aml:read` satisfies `aml:sar`) — the integration plan adds an exact-match check for AML endpoints. Chat uses `src/api/llm_router.py` (Groq default) over the RAG stack in `src/rag/`.
 
 ## Repo rules
+
+- **Keep the three project-record files current as you build, in the same commit as the change:**
+  - `DECISIONS.md`: every real choice (what, when, why, what was rejected, what broke).
+  - `FLOW.md`: whenever the path of a request, a pipeline step or a file's role changes.
+  - This file: when commands, rules or the overall picture change.
+
+  Write them in plain English; the user is not a programmer and explains the project in interviews from these files.
 
 - Every change is committed and pushed to `main` on GitHub; a task isn't finished until the push succeeds. Don't commit the untracked local files (`.claude/`, `test_output.txt`, `tests/debug_fuzzy.py`, `tests/test_difflib_live.py`), `.env`, `banking.db`/`mlflow.db` or logs.
 - Secrets (Groq key, `JWT_SECRET_KEY`, Databricks/GCP credentials) live only in `.env`; gitleaks runs in CI.
