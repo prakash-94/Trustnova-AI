@@ -125,6 +125,23 @@ Each entry: **Decision**, then *Why*, *Rejected*, and *What broke / what we lear
 
 ---
 
+### 3.11 Connect the ML alerts to the AML Center by copying them into the app database (24 Nov 2026)
+- **Decision:** a sync script copies `ml.ml_alerts` from Databricks into the app database's `ml_alerts` table, and the AML Center reads only that table. The old screen read `fraud_alerts` and called them AML cases; that is gone.
+- **Why:**
+  - screens answer in milliseconds without waiting for a Databricks warehouse to wake up
+  - the web app needs no Databricks credentials
+  - this is the planned design (nightly sync into Supabase); only the destination changes when Supabase arrives
+- **Rejected:** having the API query Databricks on every page load (slow cold starts, credentials in the web app, cost per click).
+- **Design choices:**
+  - A re-sync updates the model's fields but never overwrites an analyst's status or assignment.
+  - Severity comes from the calibrated score: 0.9 or more is critical, 0.7 high, 0.4 medium. Most alerts are critical, because the 25 riskiest accounts a day really are very likely laundering.
+  - The predicted pattern is labelled a hint, because it is right only about half the time on alerts.
+  - Ground truth is never copied. The app must not know the answers.
+  - The AML Center no longer needs a customer selected, because alerts are bank-wide. IBM accounts aren't linked to TrustNova customers yet (Phase 3).
+- **What broke / learned:**
+  - The UI's dev proxy pointed at port 8000 while every doc said 8001. The proxy is now on 8001.
+  - Changing two filters quickly let an older response overwrite a newer one. The screen now ignores answers to requests it no longer needs.
+
 ## 4. Engineering practice
 
 | Decision | Why |
@@ -142,7 +159,7 @@ Each entry: **Decision**, then *Why*, *Rejected*, and *What broke / what we lear
 
 - **Tune the rule baseline** so the promotion gate measures something meaningful.
 - **Fix the permission check:** `require_permission` matches on the resource prefix, so `aml:read` currently satisfies `aml:sar`. AML endpoints need an exact-match check.
-- **The AML screens still read the wrong table:** `/aml` endpoints read `fraud_alerts` and call them cases. Phase 6 points them at real ML alerts.
+- **The AML screens read the wrong table** (`/aml` endpoints showed `fraud_alerts` as AML cases). Fixed on 24 Nov 2026: they now show the ML alerts (3.11).
 - **Plan for GPU compute early:** the graph neural network challenger has been blocked since day one.
 - **Low-laundering simulations** (LI) score about half as well as HI. Better features for rare laundering matter more than more data.
 

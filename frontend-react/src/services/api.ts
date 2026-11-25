@@ -1,7 +1,7 @@
 import { Auth } from './auth';
 import type {
   Customer, Customer360, Account, Transaction,
-  Loan, AMLCase, KYCRecord, KYCQueueItem,
+  Loan, AMLCase, AMLCasesResponse, KYCRecord, KYCQueueItem,
   FraudAlert, RiskProfile,
 } from '@/types/banking';
 
@@ -288,13 +288,15 @@ export const loansApi = {
 
 // ── AML ───────────────────────────────────────────────────────────────────────
 export const amlApi = {
-  cases: (params?: { status?: string; severity?: string; customer_id?: string; limit?: number }) => {
+  cases: (params?: { status?: string; severity?: string; customer_id?: string; simulation?: string; limit?: number; offset?: number }) => {
     const p = new URLSearchParams();
     if (params?.status) p.set('status', params.status);
     if (params?.severity) p.set('severity', params.severity);
     if (params?.customer_id) p.set('customer_id', params.customer_id);
+    if (params?.simulation) p.set('simulation', params.simulation);
     if (params?.limit) p.set('limit', String(params.limit));
-    return request<{ cases: AMLCase[]; summary: Record<string, number>; total: number }>(`/aml/cases?${p}`);
+    if (params?.offset) p.set('offset', String(params.offset));
+    return request<AMLCasesResponse>(`/aml/cases?${p}`);
   },
   case: (id: string) => request<AMLCase>(`/aml/cases/${id}`),
   summary: () => request<Record<string, unknown>>('/aml/stats/summary'),

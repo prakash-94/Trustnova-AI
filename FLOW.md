@@ -113,10 +113,24 @@ A person always makes the final decision (`databricks/notebooks/review.py`).
 
 ---
 
+## Flow E — ML alerts reach the AML Center screen (built, 24 Nov 2026)
+
+| # | Where | What happens | Why |
+|---|---|---|---|
+| 1 | `ml_score` job (Flow C) | Writes `<catalog>.ml.ml_alerts`: the 25 riskiest accounts per simulation per day, with reason codes and a predicted pattern | The model decides what is suspicious |
+| 2 | `src/data/sync_ml_alerts.py` (`python -m src.data.sync_ml_alerts`) | Reads the alerts from Databricks, adds the riskiest payment (amount, format, counterparty) and the owner and bank, and upserts them into the app database's `ml_alerts` table. A rerun refreshes the model's fields but keeps status and analyst | Screens must not wait on Databricks; analysts' work must survive a re-sync |
+| 3 | `src/api/routes/aml.py` | `GET /aml/cases` (filters: status, severity, simulation, account; paging with limit and offset), `GET /aml/cases/{id}` (404 if unknown), `GET /aml/stats/summary`. All need `aml:read` | One place that shapes an alert for the UI |
+| 4 | `src/api/aml_reasons.py` | Turns each reason code (`s_p7_ach_new_out = 9`) into a sentence ("Sender: ACH payments to new accounts in the previous 7 days: 9") | Analysts read sentences, not feature names |
+| 5 | `frontend-react/src/features/aml/AMLCenter.tsx` | Lists the alerts (filter chips, bank picker, "load more") and shows one alert's score, reasons, predicted pattern (marked as a hint), riskiest payment and model version | The analyst's work queue |
+
+Ground truth is never read on this path: the app can't tell which alerts are real laundering.
+
+---
+
 ## How they will connect (planned — see `docs/AML_INTEGRATION_PLAN.md`, Phases 3–9)
 
 ```
-ml.ml_alerts ──nightly sync──► Supabase aml_alerts → aml_cases ──► AML Center screen
+ml.ml_alerts ──sync (built; SQLite today)──► Supabase aml_alerts → aml_cases ──► AML Center screen (built)
                                                                      │ "Run AI Investigation"
                                                                      ▼
                          POST /aml/investigations ──► Cloud Tasks ──► Flow D (with the ML score
@@ -125,4 +139,4 @@ ml.ml_alerts ──nightly sync──► Supabase aml_alerts → aml_cases ─�
                                        SAR draft + trust score ──► analyst approves / rejects / escalates
 ```
 
-Not built yet: Supabase, the `/aml/investigations` routes, the AML Center button, Vertex Vector Search and the GCP deployment.
+Not built yet: Supabase (the sync writes to SQLite `banking.db` for now), a nightly schedule for the sync, the `/aml/investigations` routes, the "Run AI Investigation" button, Vertex Vector Search and the GCP deployment.

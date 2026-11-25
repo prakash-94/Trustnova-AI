@@ -147,6 +147,38 @@ export interface AMLCase {
   sar_reference?: string | null;
   related_transactions?: string[];
   created_at: string;
+  // ML alert fields (from the ml_alerts table)
+  account_id?: string;
+  simulation?: string;
+  simulation_name?: string;
+  owner_name?: string | null;
+  bank_name?: string | null;
+  predicted_pattern?: string | null;
+  pattern_probability?: number | null;
+  risk_score?: number;
+  rank_in_day?: number | null;
+  reasons?: AMLReason[];
+  top_transaction?: {
+    txn_id?: string | null; timestamp?: string | null; from_account?: string | null; to_account?: string | null;
+    amount_usd?: number | null; payment_format?: string | null; currency?: string | null;
+  };
+  model_version?: string;
+  synced_at?: string | null;
+}
+
+export interface AMLReason {
+  text: string;
+  feature?: string;
+  value?: number;
+  contribution?: number;
+}
+
+export interface AMLCasesResponse {
+  cases: AMLCase[];
+  summary: Record<string, number | string | null>;
+  total: number;
+  source?: string;
+  source_ready?: boolean;
 }
 
 // ── KYC ───────────────────────────────────────────────────────────────────────

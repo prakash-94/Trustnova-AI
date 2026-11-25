@@ -82,10 +82,11 @@ const NAV_GROUPS = [
  * CUSTOMER_GATED: tabs that require a customer to be selected first.
  * NOTE: 'accounts', 'transactions', 'loans' are NO LONGER in this set
  * because they are now Bank Operations modules (bank-wide, no customer needed).
- * Only compliance/risk modules retain the customer-gating indicator.
+ * Only compliance/risk modules retain the customer-gating indicator. 'aml_center' left the set when it
+ * started showing the ML model's bank-wide alerts.
  */
 const CUSTOMER_GATED: Set<NavSection> = new Set([
-  'aml_center', 'kyc_center', 'fraud_center', 'risk_center',
+  'kyc_center', 'fraud_center', 'risk_center',
 ]);
 
 interface SidebarProps {

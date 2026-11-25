@@ -35,9 +35,10 @@ python -m src.data.generate_customers   # also generate_transactions, generate_i
                                         # generate_fraud_alerts, generate_chat_transcripts, generate_complaints
 python -m src.data.etl_pipeline
 python -m src.rag.document_loader
+python -m src.data.sync_ml_alerts                 # copy ML alerts from Databricks (profile trustnova) into banking.db
 uvicorn src.api.main:app --reload --port 8001      # docs at http://localhost:8001/docs
 
-# Frontend (dev server on :3000, proxies the API to :8001)
+# Frontend (dev server on :5173, proxies the API to :8001)
 cd frontend-react && npm install && npm run dev
 npm run build                                       # tsc -b && vite build
 
@@ -82,7 +83,7 @@ Production ML training takes ~3.3 h (features ~1 h, training + one-pass evaluati
 
 **AML copilot (`aml_copilot`)**: GenAI explains and documents alerts; it never raises or clears one. Its settings use `AML_`-prefixed env vars (`AML_LLM_PROVIDER`, `AML_LLM_MODEL`, ...) to avoid clashing with TrustNova's `LLM_PROVIDER`/`LLM_MODEL`; don't call its global `configure_logging()` from the host app. Not yet wired into the TrustNova API/UI.
 
-**TrustNova backend (`src`)**: `src/api/main.py` mounts the route modules in `src/api/routes/`; auth/RBAC is `src/api/auth.py`. Note `require_permission` matches on the resource prefix (so `aml:read` satisfies `aml:sar`) — the integration plan adds an exact-match check for AML endpoints. Chat uses `src/api/llm_router.py` (Groq default) over the RAG stack in `src/rag/`.
+**TrustNova backend (`src`)**: `src/api/main.py` mounts the route modules in `src/api/routes/`; auth/RBAC is `src/api/auth.py`. Note `require_permission` matches on the resource prefix (so `aml:read` satisfies `aml:sar`) — the integration plan adds an exact-match check for AML endpoints. Chat uses `src/api/llm_router.py` (Groq default) over the RAG stack in `src/rag/`. The AML Center (`/aml/*`, `src/api/routes/aml.py`) reads the `ml_alerts` table filled by `src/data/sync_ml_alerts.py`, never Databricks directly; reason codes become sentences in `src/api/aml_reasons.py`.
 
 ## Repo rules
 
