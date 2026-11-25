@@ -18,6 +18,7 @@ from trustnova_ml.features import BANNED, CATEGORICAL, FEATURES
 PATTERN_CLASSES = (*PATTERN_TYPES, "OTHER")
 NEGATIVES_PER_POSITIVE = 50
 GATE_BUDGET = "recall_at_top_0.5pct"
+STAGE1_FOLDS = 3  # out-of-fold stage-1 scores for the training sample (see memory.py)
 
 M1_PARAMS = {
     "objective": "binary", "learning_rate": 0.05, "num_leaves": 63, "min_data_in_leaf": 40,
@@ -38,17 +39,44 @@ def check_features(features: Sequence[str] = FEATURES) -> None:
         raise ValueError(f"banned columns in the feature list: {leaked}")
 
 
-def _dataset(df: pd.DataFrame, label: str, reference: lgb.Dataset | None = None) -> lgb.Dataset:
-    return lgb.Dataset(df[list(FEATURES)], label=df[label], categorical_feature=list(CATEGORICAL),
+def _dataset(df: pd.DataFrame, label: str, reference: lgb.Dataset | None = None,
+             features: Sequence[str] = FEATURES) -> lgb.Dataset:
+    return lgb.Dataset(df[list(features)], label=df[label], categorical_feature=[c for c in CATEGORICAL if c in features],
                        reference=reference, free_raw_data=False)
 
 
-def train_m1(train: pd.DataFrame, valid: pd.DataFrame, rounds: int = 2000, patience: int = 100) -> lgb.Booster:
-    check_features()
-    dtrain = _dataset(train, "label")
-    dvalid = _dataset(valid, "label", dtrain)
+def train_m1(train: pd.DataFrame, valid: pd.DataFrame, rounds: int = 2000, patience: int = 100,
+             features: Sequence[str] = FEATURES) -> lgb.Booster:
+    check_features(features)
+    dtrain = _dataset(train, "label", features=features)
+    dvalid = _dataset(valid, "label", dtrain, features=features)
     return lgb.train(M1_PARAMS, dtrain, rounds, valid_sets=[dvalid],
                      callbacks=[lgb.early_stopping(patience, verbose=False)])
+
+
+def fold_of(keys: pd.Series, folds: int) -> np.ndarray:
+    """A stable fold number per row from a grouping key (the laundering attempt, or the transaction itself), so all
+    payments of one attempt land in the same fold and re-runs agree."""
+    return (pd.util.hash_pandas_object(keys.astype(str), index=False).to_numpy() % folds).astype(int)
+
+
+def out_of_fold(train: pd.DataFrame, keys: pd.Series, rounds: int, folds: int = STAGE1_FOLDS,
+                features: Sequence[str] = FEATURES) -> np.ndarray:
+    """Stage-1 scores for the training rows from models that never saw them (or any payment of the same attempt).
+
+    A model's scores on its own training rows are too confident; stage 2 must learn from scores that look like the
+    ones it will meet on new data. Each fold is scored by a model trained on the other folds for `rounds` trees
+    (the full model's best iteration, so no early-stopping data is needed)."""
+    check_features(features)
+    fold = fold_of(keys, folds)
+    out = np.zeros(len(train))
+    for k in range(folds):
+        fit, held = fold != k, fold == k
+        if not held.any():
+            continue
+        booster = lgb.train(M1_PARAMS, _dataset(train[fit], "label", features=features), max(1, rounds))
+        out[held] = booster.predict(train.loc[held, list(features)])
+    return out
 
 
 def fit_calibration(rows: Sequence[tuple[float, int, int]], bin_width: float) -> dict:
@@ -100,20 +128,21 @@ def gate(model: Mapping[str, Mapping], baseline: Mapping[str, Mapping], groups: 
     return not reasons, reasons
 
 
-def train_m3(train_pos: pd.DataFrame, valid_pos: pd.DataFrame, rounds: int = 500, patience: int = 50) -> lgb.Booster:
+def train_m3(train_pos: pd.DataFrame, valid_pos: pd.DataFrame, rounds: int = 500, patience: int = 50,
+             features: Sequence[str] = FEATURES) -> lgb.Booster:
     """Pattern classifier on laundering transactions; `pattern` is one of PATTERN_CLASSES."""
-    check_features()
+    check_features(features)
     code = {c: i for i, c in enumerate(PATTERN_CLASSES)}
     tr, va = train_pos.assign(_y=train_pos["pattern"].map(code)), valid_pos.assign(_y=valid_pos["pattern"].map(code))
-    dtrain = _dataset(tr, "_y")
-    dvalid = _dataset(va, "_y", dtrain)
+    dtrain = _dataset(tr, "_y", features=features)
+    dvalid = _dataset(va, "_y", dtrain, features=features)
     return lgb.train(M3_PARAMS, dtrain, rounds, valid_sets=[dvalid],
                      callbacks=[lgb.early_stopping(patience, verbose=False)])
 
 
 def evaluate_m3(booster: lgb.Booster, test_pos: pd.DataFrame) -> dict:
     """Per-pattern precision/recall and macro F1, next to always guessing the most common pattern."""
-    probs = booster.predict(test_pos[list(FEATURES)])
+    probs = booster.predict(test_pos[booster.feature_name()])
     pred = np.array(PATTERN_CLASSES)[np.argmax(probs, axis=1)]
     truth = test_pos["pattern"].to_numpy()
     per = {}

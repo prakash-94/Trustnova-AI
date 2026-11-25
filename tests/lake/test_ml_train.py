@@ -106,3 +106,41 @@ def test_m3_learns_patterns_and_beats_guessing(data):
     report = tr.evaluate_m3(m3, pos[2])
     assert report["macro_f1"] > report["majority_class_macro_f1"]
     assert report["per_pattern"]["FAN-OUT"]["recall"] > 0.5
+
+
+# ---------------------------------------------------------------- stage 1 out-of-fold scores (risk memory)
+def test_folds_keep_an_attempt_together_and_are_stable():
+    keys = pd.Series(["HIS-P1", "HIS-P1", "HIS-P2", "t9", "HIS-P1"])
+    f = tr.fold_of(keys, 3)
+    assert f[0] == f[1] == f[4]
+    assert (tr.fold_of(keys, 3) == f).all() and set(f) <= {0, 1, 2}
+
+
+def test_out_of_fold_scores_are_honest_where_in_sample_scores_are_not():
+    """Labels are pure noise. A model scoring its own training rows still looks good (it memorised them);
+    out-of-fold scores must not, because stage 2 has to learn from scores like the ones it will see live."""
+    from sklearn.metrics import roc_auc_score
+
+    rng = np.random.default_rng(5)
+    df = synthetic(6000, 4)
+    df["label"] = (rng.random(len(df)) < 0.2).astype(int)
+    keys = pd.Series([f"t{i}" for i in range(len(df))])
+    oof = tr.out_of_fold(df, keys, rounds=200)
+    assert len(oof) == len(df)
+    in_sample = tr.lgb.train(tr.M1_PARAMS, tr._dataset(df, "label"), 200).predict(df[list(FEATURES)])
+    assert roc_auc_score(df["label"], in_sample) > 0.9
+    assert roc_auc_score(df["label"], oof) < 0.6
+
+
+def test_a_two_stage_feature_list_trains_and_is_checked():
+    from trustnova_ml.memory import MEMORY_FEATURES
+
+    train, valid = synthetic(4000, 6), synthetic(1000, 7)
+    for d in (train, valid):
+        for c in MEMORY_FEATURES:
+            d[c] = 0.0
+    feats = (*FEATURES, *MEMORY_FEATURES)
+    booster = tr.train_m1(train, valid, rounds=20, patience=5, features=feats)
+    assert booster.feature_name() == list(feats)
+    with pytest.raises(ValueError):
+        tr.train_m1(train, valid, rounds=5, features=(*feats, "attempt_id"))

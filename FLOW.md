@@ -71,17 +71,23 @@ gold + silver tables
    │  features_main        trustnova_ml/features.py: 177 point-in-time features per transaction
    ▼                       (amounts, account history, owner history, cycles, pass-through chains)
 ml.txn_features  (+ split: train 60% / valid 20% / test 20%, by time, per simulation)
-   │  train_main           trustnova_ml/jobs.py + train.py
+   │  train_main           trustnova_ml/jobs.py + train.py + memory.py
    ▼   1. join the locked labels (training only)
-       2. all laundering rows + a sample of normal rows → LightGBM M1 (risk) and M3 (pattern type)
-       3. score valid + test once → counts per score bucket → precision / recall / PR-AUC
-       4. calibrate the scores (isotonic regression on validation)
-       5. gate: beat the rule baseline (baseline.py) overall and in every simulation?
-          yes → register in Unity Catalog as @candidate (MLflow)
+       2. all laundering rows + a sample of normal rows → stage-1 LightGBM on the 177 features
+       3. stage 1 scores every transaction; the training sample instead gets "out-of-fold" scores from 3 models
+          that never saw those rows (or any payment of the same laundering attempt)
+       4. risk memory (memory.py): for each payment, the stage-1 scores of the sender's and the receiver's
+          earlier payments (earlier today + 7 days): riskiest in / out, totals, how many were "hot"
+       5. stage 2 = M1: features + memory → LightGBM M1 (risk) and M3 (pattern type)
+       6. score valid + test once → counts per score bucket → precision / recall / PR-AUC
+       7. calibrate the scores (isotonic regression on validation)
+       8. gate: beat the rule baseline (baseline.py) overall and in every simulation?
+          yes → register in Unity Catalog as @candidate (MLflow); the stage-1 model is saved in the same run
    │  ml_promote           a person approves: @candidate → @champion
    ▼
-   │  ml_score             score new transactions with @champion, roll up per account per day,
-   ▼                       keep the top accounts within the alert budget (25 per simulation per day),
+   │  ml_score             a two-stage champion first rebuilds the risk memory with its own stage-1 model;
+   ▼                       then score, roll up per account per day,
+                           keep the top accounts within the alert budget (25 per simulation per day),
 ml.txn_scores, ml.account_day_scores, ml.ml_alerts   (score, top reasons, model version, M3 pattern)
 ```
 

@@ -151,6 +151,15 @@ Each entry: **Decision**, then *Why*, *Rejected*, and *What broke / what we lear
 - **Decision:** don't build it. Nothing visible before the payment links the six transfers, so no point-in-time feature can.
 - **What we learned:** check a pattern's real structure in the data before designing a feature from its textbook description. The check cost minutes; the training run it saved would have cost 5.5 hours.
 
+### 3.13 Two-stage "risk memory" model (24 Nov 2026)
+- **Decision:** stage 1 is the ordinary model. Stage 2 (the registered M1) also sees what stage 1 thought of the sender's and the receiver's earlier payments: earlier today plus the 7 days before. That is the riskiest payment in and out, the totals, and how many scored 0.5 or more.
+- **Why:** in stacks and chains each hop looks ordinary on its own, but the account in the middle has just handled money the model already found risky. In production those earlier scores really are known at payment time.
+- **The trap, and the fix:** a model is over-confident on the rows it was trained on. If stage 2 learned from those inflated scores, it would trust the memory too much and disappoint on new data. So the training sample gets "out-of-fold" scores from 3 models, each trained without that part. A whole laundering attempt always stays in one part, so a model never scores a payment whose siblings it learned. A test shows the difference: on random labels, the in-sample score looks excellent (AUC above 0.9), while the out-of-fold score correctly shows nothing.
+- **Rejected:**
+  - using the label of earlier payments (not known in production)
+  - re-scoring the whole training set with 3 models (only the sampled rows were seen in training, so only they need out-of-fold scores, which is much cheaper)
+- **Cost:** stage 1 must score every transaction during training and scoring, and 3 extra stage-1 models are trained. Scoring keeps working for older single-stage champions.
+
 ## 4. Engineering practice
 
 | Decision | Why |

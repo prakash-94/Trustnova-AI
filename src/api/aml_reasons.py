@@ -44,6 +44,12 @@ _SIDE_SINGLE = {
     "owner_n_accounts": ("accounts held by the owner", "count"),
     "owner_n_banks": ("banks used by the owner", "count"),
     "n_accounts_active_7d": ("accounts active in the last 7 days", "count"),
+    # risk memory: the first-stage model's scores of the account's own earlier payments (today + 7 days)
+    "mem_max_in": ("riskiest payment it received recently (model score)", "num"),
+    "mem_max_out": ("riskiest payment it sent recently (model score)", "num"),
+    "mem_sum_in": ("total risk of payments it received recently", "num"),
+    "mem_sum_out": ("total risk of payments it sent recently", "num"),
+    "mem_n_hot": ("recent payments the model already found risky", "count"),
 }
 _TXN = {
     "currency_change": "The currency changed during the payment",

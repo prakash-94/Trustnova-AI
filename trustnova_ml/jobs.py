@@ -24,6 +24,7 @@ from trustnova_lake.jobs import _in, _spark, replace_variants, tables
 from trustnova_ml import metrics as mx
 from trustnova_ml.baseline import rule_score
 from trustnova_ml.features import FEATURES, assign_split, transaction_features
+from trustnova_ml.memory import MEMORY_FEATURES, memory_features
 
 M1, M3 = "m1_transaction_risk", "m3_pattern_type"
 ALL = "ALL"
@@ -49,17 +50,21 @@ def _args(argv: Sequence[str], prog: str, extra=None) -> argparse.Namespace:
     return a
 
 
+def _scratch(spark: Any, catalog: str):
+    def scratch(df: DataFrame, name: str) -> DataFrame:
+        """Intermediate results read more than once go to a scratch table (serverless Spark cannot cache)."""
+        table = f"{catalog}.ml.tmp_{name}"
+        df.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(table)
+        return spark.table(table)
+    return scratch
+
+
 # ------------------------------------------------------------------------------------------------ features
 def features_main(argv: Sequence[str], spark: Any = None) -> int:
     a = _args(argv, "ml-features")
     spark = _spark(spark)
     t, m, vs = tables(a.catalog), ml_tables(a.catalog), a.variant_list
-
-    def scratch(df: DataFrame, name: str) -> DataFrame:
-        """Intermediate results read more than once go to a scratch table (serverless Spark cannot cache)."""
-        table = f"{a.catalog}.ml.tmp_{name}"
-        df.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(table)
-        return spark.table(table)
+    scratch = _scratch(spark, a.catalog)
 
     feats = assign_split(transaction_features(_in(spark.table(t["transactions"]), vs), _in(spark.table(t["edges"]), vs),
                                               _in(spark.table(t["accounts"]), vs), scratch))
@@ -73,7 +78,8 @@ def labelled(spark: Any, catalog: str, variants: Sequence[str]) -> DataFrame:
     """Features joined to the restricted ground truth (training and evaluation only)."""
     t, m = tables(catalog), ml_tables(catalog)
     labels = spark.table(t["labels"]).select("txn_id", F.col("is_laundering").alias("label"))
-    pats = spark.table(t["patterns"]).groupBy("txn_id").agg(F.first("pattern_type").alias("_pattern"))
+    pats = spark.table(t["patterns"]).groupBy("txn_id").agg(F.first("pattern_type").alias("_pattern"),
+                                                            F.first("attempt_id").alias("attempt_id"))
     return (_in(spark.table(m["features"]), variants).join(labels, "txn_id").join(pats, "txn_id", "left")
             .withColumn("pattern", F.when(F.col("label") == 1, F.coalesce("_pattern", F.lit("OTHER"))))
             .drop("_pattern").withColumn("rule_score", rule_score()))
@@ -161,6 +167,27 @@ def _flat(prefix: str, d: dict) -> dict[str, float]:
     return {f"{prefix}.{k}": float(v) for k, v in d.items() if isinstance(v, (int, float))}
 
 
+STAGE1_ARTIFACT = "m1_stage1.txt"
+STAGE1_KEYS = ("txn_id", "variant", "from_account", "to_account", "sec", "day")
+STAGE1_SCHEMA = T.StructType([
+    T.StructField("txn_id", T.StringType()), T.StructField("variant", T.StringType()),
+    T.StructField("from_account", T.StringType()), T.StructField("to_account", T.StringType()),
+    T.StructField("sec", T.LongType()), T.StructField("day", T.IntegerType()), T.StructField("stage1", T.DoubleType()),
+])
+
+
+def _stage1_scorer(model_str: str):
+    def score(batches):
+        import lightgbm as lgb
+
+        booster = lgb.Booster(model_str=model_str)
+        names = booster.feature_name()
+        for pdf in batches:
+            pdf["stage1"] = booster.predict(pdf[names])
+            yield pdf[list(STAGE1_KEYS) + ["stage1"]]
+    return score
+
+
 EVAL_SCHEMA = T.StructType([
     T.StructField("model", T.StringType()), T.StructField("version", T.StringType()), T.StructField("run_id", T.StringType()),
     T.StructField("variants", T.StringType()), T.StructField("grp", T.StringType()), T.StructField("metric", T.StringType()),
@@ -171,29 +198,48 @@ EVAL_SCHEMA = T.StructType([
 
 def train_main(argv: Sequence[str], spark: Any = None) -> int:
     import mlflow
+    import pandas as pd
     from mlflow import MlflowClient
     from mlflow.models import infer_signature
 
     from trustnova_ml import train as tr
 
     a = _args(argv, "ml-train", lambda p: (p.add_argument("--experiment", default=""),
-                                           p.add_argument("--ratio", type=int, default=tr.NEGATIVES_PER_POSITIVE)))
+                                           p.add_argument("--ratio", type=int, default=tr.NEGATIVES_PER_POSITIVE),
+                                           p.add_argument("--scratch", choices=("table", "checkpoint"), default="table")))
     spark = _spark(spark)
     m, vs = ml_tables(a.catalog), a.variant_list
+    scratch = _scratch(spark, a.catalog) if a.scratch == "table" else (lambda df, name: df.localCheckpoint())
     data = labelled(spark, a.catalog, vs)
-
     fractions = negative_fractions(data, a.ratio)
-    # float32 halves the driver memory for the production sample (all laundering + `ratio` normal rows each)
+
+    # ---- stage 1: the ordinary model on FEATURES
+    keep = ["txn_id", "attempt_id", "label", "pattern", "split", "variant"]
     f32 = [F.col(c).cast("float").alias(c) for c in FEATURES]
-    pdf = (sampled(data.where(F.col("split").isin("train", "valid")), fractions)
-           .select(*f32, "label", "pattern", "split", "variant").toPandas())
+    pdf = sampled(data.where(F.col("split").isin("train", "valid")), fractions).select(*f32, *keep).toPandas()
     train_pd, valid_pd = pdf[pdf.split == "train"], pdf[pdf.split == "valid"]
     print(f"M1 training rows: {len(train_pd):,} ({int(train_pd.label.sum()):,} laundering); "
           f"early-stopping rows: {len(valid_pd):,}; negative sample fractions {fractions}", flush=True)
-    m1 = tr.train_m1(train_pd, valid_pd)
+    stage1 = tr.train_m1(train_pd, valid_pd)
+
+    # ---- stage-1 scores for every transaction; the training sample gets out-of-fold scores instead
+    oof = tr.out_of_fold(train_pd, train_pd.attempt_id.fillna(train_pd.txn_id), stage1.best_iteration)
+    oof_df = spark.createDataFrame(pd.DataFrame({"txn_id": train_pd.txn_id.to_numpy(), "_oof": oof}))
+    s1 = (data.select(*STAGE1_KEYS, *FEATURES).mapInPandas(_stage1_scorer(stage1.model_to_string()), STAGE1_SCHEMA)
+          .join(oof_df, "txn_id", "left").withColumn("stage1", F.coalesce("_oof", "stage1")).drop("_oof"))
+    memory = scratch(memory_features(scratch(s1, "stage1")), "memory")
+    print(f"stage 1: {stage1.best_iteration} trees; out-of-fold scores for {len(oof):,} training rows", flush=True)
+
+    # ---- stage 2: FEATURES + risk memory
+    feats = (*FEATURES, *MEMORY_FEATURES)
+    data = data.join(memory, "txn_id")
+    f32 = [F.col(c).cast("float").alias(c) for c in feats]
+    pdf = sampled(data.where(F.col("split").isin("train", "valid")), fractions).select(*f32, *keep).toPandas()
+    train_pd, valid_pd = pdf[pdf.split == "train"], pdf[pdf.split == "valid"]
+    m1 = tr.train_m1(train_pd, valid_pd, features=feats)
 
     scored = (data.where(F.col("split").isin("valid", "test"))
-              .select("variant", "split", "label", "pattern", "rule_score", *FEATURES)
+              .select("variant", "split", "label", "pattern", "rule_score", *feats)
               .mapInPandas(_scorer(m1.model_to_string()), SCORED_SCHEMA))
     report = evaluate(scored, vs)
     calibration = tr.fit_calibration(report.pop("valid_bins"), 1 / mx.BINS)
@@ -201,7 +247,7 @@ def train_main(argv: Sequence[str], spark: Any = None) -> int:
     report["gate"] = {"passed": passed, "reasons": reasons}
 
     pos = data.where(F.col("label") == 1).select(*f32, "pattern", "split").toPandas()
-    m3 = tr.train_m3(pos[pos.split == "train"], pos[pos.split == "valid"])
+    m3 = tr.train_m3(pos[pos.split == "train"], pos[pos.split == "valid"], features=feats)
     m3_report = tr.evaluate_m3(m3, pos[pos.split == "test"])
     m3_ok = m3_report["macro_f1"] > m3_report["majority_class_macro_f1"]
 
@@ -209,11 +255,12 @@ def train_main(argv: Sequence[str], spark: Any = None) -> int:
     user = spark.sql("SELECT current_user() AS u").first().u
     mlflow.set_experiment(a.experiment or f"/Users/{user}/trustnova-aml-detection")
     client = MlflowClient()
-    example = train_pd[list(FEATURES)].head(20)
+    example = train_pd[list(feats)].head(20)
     with mlflow.start_run(run_name=f"{a.catalog} {','.join(vs)}") as run:
         mlflow.log_params({"catalog": a.catalog, "variants": ",".join(vs), "negatives_per_positive": a.ratio,
                            "m1_best_iteration": m1.best_iteration, "m3_best_iteration": m3.best_iteration,
-                           "features": len(FEATURES), **{f"m1.{k}": v for k, v in tr.M1_PARAMS.items()}})
+                           "features": len(feats), "stage1_best_iteration": stage1.best_iteration,
+                           "stage1_folds": tr.STAGE1_FOLDS, **{f"m1.{k}": v for k, v in tr.M1_PARAMS.items()}})
         for g, d in report["model"].items():
             mlflow.log_metrics(_flat(f"test.{g}", d))
         for g, d in report["baseline"].items():
@@ -222,7 +269,9 @@ def train_main(argv: Sequence[str], spark: Any = None) -> int:
         mlflow.log_dict(calibration, "calibration.json")
         mlflow.log_dict(report, "evaluation.json")
         mlflow.log_dict(m3_report, "m3_evaluation.json")
-        mlflow.log_dict({"features": list(FEATURES)}, "features.json")
+        mlflow.log_dict({"features": list(feats), "stage1_features": stage1.feature_name()}, "features.json")
+        # scoring rebuilds the memory features with this exact stage-1 model
+        mlflow.log_text(stage1.model_to_string(), STAGE1_ARTIFACT)
         mlflow.lightgbm.log_model(m1, name="m1", registered_model_name=m["m1"], input_example=example,
                                   signature=infer_signature(example, m1.predict(example)))
         mlflow.lightgbm.log_model(m3, name="m3", registered_model_name=m["m3"], input_example=example,
@@ -343,6 +392,19 @@ def score_main(argv: Sequence[str], spark: Any = None) -> int:
     # each model reads its own feature list, so a champion trained before the feature set grew keeps working
     m1_features = m1.feature_name()
     feats = _in(spark.table(m["features"]), vs)
+    try:  # a two-stage model carries its stage-1 model; older single-stage models don't
+        stage1_str = mlflow.artifacts.load_text(f"runs:/{mv1.run_id}/{STAGE1_ARTIFACT}")
+    except Exception:  # noqa: BLE001
+        stage1_str = None
+    if stage1_str:
+        import lightgbm as lgb
+
+        scratch = _scratch(spark, a.catalog)
+        stage1_features = lgb.Booster(model_str=stage1_str).feature_name()
+        s1 = scratch(feats.select(*STAGE1_KEYS, *stage1_features)
+                     .mapInPandas(_stage1_scorer(stage1_str), STAGE1_SCHEMA), "score_stage1")
+        feats = feats.join(scratch(memory_features(s1), "score_memory"), "txn_id")
+        print(f"two-stage model: risk memory rebuilt with its stage-1 model ({len(stage1_features)} features)", flush=True)
     scores = (feats.select("txn_id", "variant", "ts", "day", "from_account", "to_account", *m1_features)
               .mapInPandas(_calibrated_scorer(m1.model_to_string(), calibration), SCORE_SCHEMA)
               .withColumn("m1_version", F.lit(mv1.version)))
