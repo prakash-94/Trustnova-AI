@@ -478,7 +478,22 @@ GenAI isn't used anywhere in this phase. Everything runs as Databricks Jobs in t
     - **Recall by pattern (v4 → v5):** stack 55 → 72%, cycle 66 → 80%, random 63 → 78%, scatter-gather 72 → 86%, gather-scatter 79 → 90%, fan-out 76 → 92%, fan-in 70 → 78%, bipartite 31 → 37%, Other 1.3 → 2.7%. The staging test sets are small (110–477 rows per pattern), but every pattern moved up.
     - **Weight in the model:** risk memory 17.6% of gain. The top memory features are `s_mem_sum_out` (7.0%: how risky the sender's recent outgoing payments were), `r_mem_max_in` (4.5%) and `s_mem_n_hot` (2.3%).
     - **Gate:** passed. Staging v5 is `@candidate`.
-  - **Next:** production training of the two-stage model (training step only; the features are unchanged), then an optional re-score after 24 hours (needs a product decision).
+  - **Production v4 results vs champion v3** (25 Nov 2026, all six simulations, training step only, 184 minutes, test period 86.2M payments):
+
+    | | v3 (champion) | v4 (two-stage) |
+    |---|---|---|
+    | PR-AUC | 0.652 | **0.658** |
+    | Precision / recall at threshold | 89.7% / 52.3% | **90.2% / 53.7%** |
+    | F1 | 0.661 | **0.673** |
+    | Recall, top 0.1% / 0.5% | 56.4% / 80.2% | **57.5% / 80.4%** |
+    | M3 macro-F1 / accuracy | 0.512 / 69.2% | **0.517 / 69.9%** |
+
+    - **Per simulation (PR-AUC v3 → v4):** HIS .774 → .791, HIM .801 → .802, HIL .746 → .752, LIS .415 → .422, LIM .450 → .457, LIL .339 → .340. All six went up. Precision fell slightly in HIS (93.3 → 91.9%) and HIM (94.7 → 93.1%) while recall rose there; it rose in the LI simulations (LIL 73.1 → 77.8%).
+    - **Recall by pattern (v3 → v4):** scatter-gather 88 → 93%, fan-out 90 → 93%, gather-scatter 88 → 91%, fan-in 88 → 91%, cycle 84 → 86%, random 84 → 86%, stack 71 → 70%, bipartite 65 → 64%, Other 1.8 → 1.6%.
+    - **Why the gain is much smaller than on staging:** the production model already learns from all six simulations and five times more normal payments, so most of what the memory tells it, the 177 features already told it. The memory takes 20.8% of the gain (`s_mem_sum_out` 9.4%, `r_mem_max_in` 7.2%), mostly by replacing other features rather than adding new information.
+    - **Gate:** passed. Production v4 is `@candidate`; v3 stays `@champion` until the user approves.
+    - **Cost of switching:** scoring must first rebuild the risk memory with the stage-1 model, so `ml_score` will take longer than v3's 108 minutes.
+  - **Next:** decide on promoting v4, then an optional re-score after 24 hours (needs a product decision).
 
 **6. Governance and monitoring** (in the style of SR 11-7 model risk management).
 - **Documentation:** a model card and validation report for each registered version, covering data, features, metrics per variant and pattern, limitations and the known effects of combining all six files into one bank.
