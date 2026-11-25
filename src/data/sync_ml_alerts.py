@@ -7,7 +7,8 @@ Databricks.
 It reads `<catalog>.ml.ml_alerts` (written by the `ml_score` job) joined to the alert's riskiest transaction and
 the account's owner and bank, and upserts them into the `ml_alerts` table of the app database (`DATABASE_URL`,
 SQLite `banking.db` today, Supabase Postgres later). Running it again updates the model's fields but keeps what
-analysts did (status, assigned analyst), so it is safe to schedule nightly.
+analysts did (status, assigned analyst), so it is safe to schedule nightly. Alerts the current model no longer
+raises (for example after a new champion) are removed, unless an analyst has already started work on them.
 
 Ground truth (`restricted.*`) is never read: the app must not know which alerts are real laundering.
 """
@@ -116,8 +117,13 @@ def _typed(row: Sequence) -> dict:
     return d
 
 
-def upsert(engine: Engine, rows: Iterable[Sequence], now: datetime | None = None) -> int:
-    """Insert new alerts and refresh the model's fields on existing ones. Analyst fields are never overwritten."""
+def upsert(engine: Engine, rows: Iterable[Sequence], now: datetime | None = None, retire: bool = False) -> int:
+    """Insert new alerts and refresh the model's fields on existing ones. Analyst fields are never overwritten.
+
+    `retire=True` means `rows` is the model's complete current list: an alert that is no longer in it (a new
+    champion stopped raising it) is removed, unless an analyst has already touched it (status not 'open' or an
+    analyst assigned). An empty list never retires anything, so a failed or empty read can't wipe the queue.
+    """
     stamp = (now or datetime.now(UTC)).replace(tzinfo=None).isoformat(timespec="seconds")
     model_cols = [c for c in COLUMNS if c != "alert_id"]
     sql = text(f"""
@@ -133,6 +139,15 @@ def upsert(engine: Engine, rows: Iterable[Sequence], now: datetime | None = None
             conn.execute(text(ix))
         if batch:
             conn.execute(sql, batch)
+        if retire and batch:
+            conn.execute(text("CREATE TEMP TABLE IF NOT EXISTS ml_alerts_current (alert_id TEXT PRIMARY KEY)"))
+            conn.execute(text("DELETE FROM ml_alerts_current"))
+            conn.execute(text("INSERT INTO ml_alerts_current (alert_id) VALUES (:alert_id)"),
+                         [{"alert_id": b["alert_id"]} for b in batch])
+            conn.execute(text("""
+                DELETE FROM ml_alerts
+                WHERE status = 'open' AND analyst_id IS NULL
+                  AND alert_id NOT IN (SELECT alert_id FROM ml_alerts_current)"""))
     return len(batch)
 
 
@@ -147,7 +162,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     from src.models.database import engine
 
     rows = fetch(a.catalog, a.profile or None, a.warehouse_id)
-    n = upsert(engine, rows)
+    n = upsert(engine, rows, retire=True)
     print(f"synced {n:,} alerts from {a.catalog}.ml.ml_alerts into ml_alerts")
     return 0
 

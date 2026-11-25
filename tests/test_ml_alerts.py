@@ -92,6 +92,19 @@ def test_upsert_keeps_analyst_work(db):
     assert n == 2
 
 
+def test_a_full_sync_retires_alerts_the_model_dropped_but_keeps_analyst_work(db):
+    sync.upsert(db, [_row(), _row("HIS-300-HIS:3:C", "HIS:3:C", rank=2), _row("HIS-300-HIS:4:D", "HIS:4:D", rank=3)])
+    with db.begin() as c:
+        c.execute(text("UPDATE ml_alerts SET status = 'escalated' WHERE alert_id = 'HIS-300-HIS:3:C'"))
+    sync.upsert(db, [_row(), _row("HIS-301-HIS:5:E", "HIS:5:E", day=301)], retire=True)  # a new champion
+    with db.connect() as c:
+        ids = {r[0] for r in c.execute(text("SELECT alert_id FROM ml_alerts"))}
+    assert ids == {"HIS-300-HIS:1:A", "HIS-300-HIS:3:C", "HIS-301-HIS:5:E"}  # 4:D was untouched, so it goes
+    sync.upsert(db, [], retire=True)  # an empty read never wipes the queue
+    with db.connect() as c:
+        assert c.execute(text("SELECT COUNT(*) FROM ml_alerts")).scalar() == 3
+
+
 # ---------------------------------------------------------------- routes
 def test_routes_before_the_first_sync(db):
     res = run(aml.list_aml_cases(None, None, None, None, 50, 0, current_user=None))

@@ -93,7 +93,7 @@ ml.txn_scores, ml.account_day_scores, ml.ml_alerts   (score, top reasons, model 
 
 - **Why "point-in-time":** in production you only know the past. Every feature uses activity strictly before the payment's own minute, and tests check that removing later data changes nothing.
 - **Why a gate and a person:** a model can look good on average and still fail on one simulation; the gate checks each one, and a human signs off.
-- **Status:** the first production scoring run (24 Nov 2026, champion v3, 108 minutes) wrote 9,822 alerts. See `docs/AML_INTEGRATION_PLAN.md` for what they contain.
+- **Status:** the latest production scoring run (25 Nov 2026, two-stage champion v4, 167 minutes) wrote 9,824 alerts; the first one (24 Nov, v3, 108 minutes) wrote 9,822. See `docs/AML_INTEGRATION_PLAN.md` for what they contain.
 
 ---
 
@@ -124,7 +124,7 @@ A person always makes the final decision (`databricks/notebooks/review.py`).
 | # | Where | What happens | Why |
 |---|---|---|---|
 | 1 | `ml_score` job (Flow C) | Writes `<catalog>.ml.ml_alerts`: the 25 riskiest accounts per simulation per day, with reason codes and a predicted pattern | The model decides what is suspicious |
-| 2 | `src/data/sync_ml_alerts.py` (`python -m src.data.sync_ml_alerts`) | Reads the alerts from Databricks, adds the riskiest payment (amount, format, counterparty) and the owner and bank, and upserts them into the app database's `ml_alerts` table. A rerun refreshes the model's fields but keeps status and analyst | Screens must not wait on Databricks; analysts' work must survive a re-sync |
+| 2 | `src/data/sync_ml_alerts.py` (`python -m src.data.sync_ml_alerts`) | Reads the alerts from Databricks, adds the riskiest payment (amount, format, counterparty) and the owner and bank, and upserts them into the app database's `ml_alerts` table. A rerun refreshes the model's fields but keeps status and analyst. Alerts the current model no longer raises are removed, unless an analyst has started on them | Screens must not wait on Databricks; analysts' work must survive a re-sync |
 | 3 | `src/api/routes/aml.py` | `GET /aml/cases` (filters: status, severity, simulation, account; paging with limit and offset), `GET /aml/cases/{id}` (404 if unknown), `GET /aml/stats/summary`. All need `aml:read` | One place that shapes an alert for the UI |
 | 4 | `src/api/aml_reasons.py` | Turns each reason code (`s_p7_ach_new_out = 9`) into a sentence ("Sender: ACH payments to new accounts in the previous 7 days: 9") | Analysts read sentences, not feature names |
 | 5 | `frontend-react/src/features/aml/AMLCenter.tsx` | Lists the alerts (filter chips, bank picker, "load more") and shows one alert's score, reasons, predicted pattern (marked as a hint), riskiest payment and model version | The analyst's work queue |

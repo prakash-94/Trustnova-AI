@@ -492,8 +492,14 @@ GenAI isn't used anywhere in this phase. Everything runs as Databricks Jobs in t
     - **Recall by pattern (v3 → v4):** scatter-gather 88 → 93%, fan-out 90 → 93%, gather-scatter 88 → 91%, fan-in 88 → 91%, cycle 84 → 86%, random 84 → 86%, stack 71 → 70%, bipartite 65 → 64%, Other 1.8 → 1.6%.
     - **Why the gain is much smaller than on staging:** the production model already learns from all six simulations and five times more normal payments, so most of what the memory tells it, the 177 features already told it. The memory takes 20.8% of the gain (`s_mem_sum_out` 9.4%, `r_mem_max_in` 7.2%), mostly by replacing other features rather than adding new information.
     - **Gate:** passed. Production v4 is `@candidate`; v3 stays `@champion` until the user approves.
-    - **Cost of switching:** scoring must first rebuild the risk memory with the stage-1 model, so `ml_score` will take longer than v3's 108 minutes.
-  - **Next:** decide on promoting v4, then an optional re-score after 24 hours (needs a product decision).
+    - **Cost of switching:** scoring must first rebuild the risk memory with the stage-1 model, so `ml_score` takes longer than v3's 108 minutes.
+  - **v4 promoted and re-scored (25 Nov 2026).** The user approved v4 (M1 and M3) as `@champion` (`DECISIONS.md` 3.14). The scoring run took 167 minutes (v3: 108) and wrote 9,824 alerts (v3: 9,822).
+    - **Accuracy on the test period:** 99.0–100% of alerts are payments that really were laundering, in every simulation; 100% of alerts are accounts that really took part in laundering that day. On busy days the top 25 are 100% laundering in all six simulations (v3: 97–100%).
+    - **Changed alerts:** 6,150 alerts are the same as v3's; 3,674 are new and 3,672 dropped. Most changes are on quiet days, where far more than 25 accounts are laundering and many score close to 1, so a small score change reorders the top 25.
+    - **Predicted pattern (M3) on alerts:** right 57% of the time (v3: 48%): gather-scatter 92%, scatter-gather 71%, fan-in 65%, stack 58%, cycle 52%, random 42%, fan-out still only 13%. Still a hint, not a fact.
+    - **Reasons:** 97% of alerts (9,484) cite at least one risk-memory reason, most often "the sender recently received a payment the model found risky" (`s_mem_max_in`, 5,830 alerts).
+    - **App sync:** the sync now removes alerts the current model no longer raises, unless an analyst has started work on them (status not open, or an analyst assigned). The AML Center shows only v4 alerts.
+  - **Next:** an optional re-score after 24 hours (needs a product decision).
 
 **6. Governance and monitoring** (in the style of SR 11-7 model risk management).
 - **Documentation:** a model card and validation report for each registered version, covering data, features, metrics per variant and pattern, limitations and the known effects of combining all six files into one bank.

@@ -160,6 +160,14 @@ Each entry: **Decision**, then *Why*, *Rejected*, and *What broke / what we lear
   - re-scoring the whole training set with 3 models (only the sampled rows were seen in training, so only they need out-of-fold scores, which is much cheaper)
 - **Cost:** stage 1 must score every transaction during training and scoring, and 3 extra stage-1 models are trained. Scoring keeps working for older single-stage champions.
 
+### 3.14 Promote production v4 (two-stage) to champion (25 Nov 2026)
+- **Decision:** the user approved making v4 (M1 risk and M3 pattern type) the live `@champion`, replacing v3.
+- **Why:** v4 was a little better on every overall measure and in all six simulations (PR-AUC 0.658 vs 0.652; precision 90.2%, recall 53.7%). Fan-in, fan-out, gather-scatter and scatter-gather gained 3–5 points.
+- **What we learned:** the staging gain (stack +17 points) mostly did not carry over. The production model already sees six simulations and far more normal payments, so most of what the memory says, the other features already said. A feature that helps a small model a lot can help a big model only a little.
+- **Rejected:** keeping v3. The gain is small, but it is consistent and nothing got meaningfully worse (stack and bipartite each down about 1 point).
+- **Cost we accepted:** scoring is now two stages, so each scoring run takes longer (167 minutes instead of 108), and the setup is more complex to explain and maintain.
+- **Follow-up fix:** the sync used to only add and update alerts, so after the switch 3,672 old v3 alerts that v4 no longer raises would have stayed on the screen. Now a full sync removes alerts the current model dropped, but never one an analyst has started on, and an empty read never removes anything (so a failed Databricks query can't wipe the queue).
+
 ## 4. Engineering practice
 
 | Decision | Why |
