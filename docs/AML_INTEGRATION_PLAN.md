@@ -463,7 +463,8 @@ GenAI isn't used anywhere in this phase. Everything runs as Databricks Jobs in t
     - **Predicted pattern (M3) on alerts is weak:** right 48% of the time (gather-scatter 91%, fan-out only 15%), lower than the 69% on all laundering. The typology agent must treat it as a hint, never as a fact.
     - **Typical reasons:** an ACH payment, an amount matching one just received (`pt_best_gap` = 0), a first payment between the two accounts, and a long pass-through chain.
     - **Alerts on training-period days** are less accurate (76–98%) and don't count as a test, because the model learned from those days.
-  - **Next:** remember recent risk (a two-stage model), shared funders (check its signal against normal traffic first), and an optional re-score after 24 hours.
+  - **Shared funders checked and dropped (24 Nov 2026):** bipartite attempts in the IBM data are about 6 one-to-one payments with different owners, banks and amounts, not a many-to-many web. "Rectangle" payments are rarer in bipartite laundering (0.26%) than in normal traffic (0.54%). See `DECISIONS.md` 3.12.
+  - **Next:** remember recent risk (a two-stage model), and an optional re-score after 24 hours (needs a product decision).
 
 **6. Governance and monitoring** (in the style of SR 11-7 model risk management).
 - **Documentation:** a model card and validation report for each registered version, covering data, features, metrics per variant and pattern, limitations and the known effects of combining all six files into one bank.

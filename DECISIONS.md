@@ -113,7 +113,7 @@ Each entry: **Decision**, then *Why*, *Rejected*, and *What broke / what we lear
 - **Fix:** intermediate results are saved once and re-read (scratch tables `<catalog>.ml.tmp_*` in jobs, `localCheckpoint()` in tests).
 - **Rejected or deferred:**
   - a two-stage "remember recent risk" model (next)
-  - shared-funder features for bipartite (signal not yet checked against normal traffic)
+  - shared-funder features for bipartite (checked and dropped on 24 Nov 2026, see 3.12)
   - a 24-hour delayed re-score (alerts would arrive up to a day later; needs a product decision)
 
 ### 3.10 Promote production v3 to champion, skipping v2 (24 Nov 2026)
@@ -141,6 +141,15 @@ Each entry: **Decision**, then *Why*, *Rejected*, and *What broke / what we lear
 - **What broke / learned:**
   - The UI's dev proxy pointed at port 8000 while every doc said 8001. The proxy is now on 8001.
   - Changing two filters quickly let an older response overwrite a newer one. The screen now ignores answers to requests it no longer needs.
+
+### 3.12 Drop the "shared funders" idea for bipartite laundering (24 Nov 2026)
+- **The idea:** bipartite laundering was assumed to be many-to-many (several senders each paying several receivers). A payment A→B would then often form a "rectangle": another sender also paid B and also paid an account A paid.
+- **The check** (HI-Small and LI-Small, past days only, before any training):
+  - bipartite payments formed a rectangle 0.26% of the time, against 0.54% for normal payments, so the signal points the wrong way
+  - the reason: in the IBM data a bipartite attempt is about 6 separate one-to-one payments (each sender pays exactly one receiver), so a rectangle can't happen
+  - the six payments have six different owners on each side, mostly different banks and very different amounts. Only the payment method and a ~33-hour window are shared
+- **Decision:** don't build it. Nothing visible before the payment links the six transfers, so no point-in-time feature can.
+- **What we learned:** check a pattern's real structure in the data before designing a feature from its textbook description. The check cost minutes; the training run it saved would have cost 5.5 hours.
 
 ## 4. Engineering practice
 
