@@ -464,7 +464,21 @@ GenAI isn't used anywhere in this phase. Everything runs as Databricks Jobs in t
     - **Typical reasons:** an ACH payment, an amount matching one just received (`pt_best_gap` = 0), a first payment between the two accounts, and a long pass-through chain.
     - **Alerts on training-period days** are less accurate (76–98%) and don't count as a test, because the model learned from those days.
   - **Shared funders checked and dropped (24 Nov 2026):** bipartite attempts in the IBM data are about 6 one-to-one payments with different owners, banks and amounts, not a many-to-many web. "Rectangle" payments are rarer in bipartite laundering (0.26%) than in normal traffic (0.54%). See `DECISIONS.md` 3.12.
-  - **Next:** remember recent risk (a two-stage model), and an optional re-score after 24 hours (needs a product decision).
+  - **Round 5: risk memory (two-stage model).** Stage 2 also sees stage-1 scores of the sender's and the receiver's earlier payments (earlier today plus 7 days), with out-of-fold scores for the training sample (`DECISIONS.md` 3.13). 187 features.
+  - **Staging v5 results vs v4** (HIS and LIS, 6 minutes for training only; the features were unchanged):
+
+    | | v4 | v5 (two-stage) |
+    |---|---|---|
+    | PR-AUC (HI-Small, LI-Small) | 0.589 (0.719, 0.348) | **0.631** (0.757, 0.384) |
+    | Precision / recall at threshold | **86.6%** / 42.8% | 83.2% / **51.2%** |
+    | F1 | 0.573 | **0.634** |
+    | Recall, top 0.1% / 0.5% | 51.8% / 79.5% | **56.3% / 80.0%** |
+    | M3 macro-F1 / accuracy | 0.498 / 68.5% | **0.522 / 72.5%** |
+
+    - **Recall by pattern (v4 → v5):** stack 55 → 72%, cycle 66 → 80%, random 63 → 78%, scatter-gather 72 → 86%, gather-scatter 79 → 90%, fan-out 76 → 92%, fan-in 70 → 78%, bipartite 31 → 37%, Other 1.3 → 2.7%. The staging test sets are small (110–477 rows per pattern), but every pattern moved up.
+    - **Weight in the model:** risk memory 17.6% of gain. The top memory features are `s_mem_sum_out` (7.0%: how risky the sender's recent outgoing payments were), `r_mem_max_in` (4.5%) and `s_mem_n_hot` (2.3%).
+    - **Gate:** passed. Staging v5 is `@candidate`.
+  - **Next:** production training of the two-stage model (training step only; the features are unchanged), then an optional re-score after 24 hours (needs a product decision).
 
 **6. Governance and monitoring** (in the style of SR 11-7 model risk management).
 - **Documentation:** a model card and validation report for each registered version, covering data, features, metrics per variant and pattern, limitations and the known effects of combining all six files into one bank.
